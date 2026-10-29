@@ -1,0 +1,59 @@
+[package]
+name = "open-canvas-app-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "UI-independent application logic for the OpenCanvas desktop app (viewport, document, gestures, persistence)"
+
+[lib]
+name = "open_canvas_app_core"
+path = "src/lib.rs"
+
+[features]
+# `Doc::demo()`, the P1 static scene: a test fixture only. `crates/app`'s test
+# target links this crate as a library, where `cfg(test)` is off, so the fixture
+# needs an explicit opt-in instead of `#[cfg(test)]`. Its dev-dependency enables
+# it; no non-test build does, so it stays out of the shipped binary.
+test-fixtures = []
+
+# Deliberately Slint-free: no `slint`, no `build.rs`, no generated UI types.
+# Everything here compiles on its own, so `crates/app` (the Slint codegen unit)
+# is not on the critical path when only this logic changes. Dependencies are the
+# ones the moved modules already used inside `crates/app` -- nothing new.
+[dependencies]
+open-canvas-core = { path = "../core" }
+open-canvas-ai = { path = "../ai" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# System clipboard for the Ctrl+V fallback path; already in the dependency graph
+# through Slint's winit backend, so no new tree is built.
+arboard = "3.7"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+let_underscore_must_use = "deny"
+allow_attributes = "deny"
+
+# These modules were `pub` inside a *binary* crate until they moved here, where
+# an item is never "exported", so the "exported item" pedantic lints could not
+# fire. They fire only for a library's public surface, and this crate is an
+# internal implementation detail of the app binary, not a published API: leaving
+# them off keeps the pre-split lint behaviour exactly (85 `#[must_use]` demands
+# and 3 `# Errors` sections for no reader -- and `#[must_use]` would interact
+# with the workspace's `unused_must_use = "deny"` at every call site).
+must_use_candidate = "allow"
+missing_errors_doc = "allow"

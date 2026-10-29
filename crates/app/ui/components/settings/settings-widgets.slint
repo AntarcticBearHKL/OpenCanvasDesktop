@@ -1,0 +1,374 @@
+// Shared building blocks of the settings tabs: the editable field, the
+// single-select group, the section card and the page/row pieces the refreshed
+// tabs are built from (header, card chrome, status, chip, share bar, divider,
+// empty state). Each tab imports only what it uses; the modal shell no longer
+// defines any of these itself.
+
+import { Theme } from "../../theme.slint";
+import { Icons } from "../icons.slint";
+import { Button } from "../widgets.slint";
+import { ConfigOptionRow } from "../overlay-types.slint";
+
+
+// Single-line editable field; owns a local draft so the repeater item (and its
+// focus) survives the Rust-side config updates that follow every keystroke.
+// `mono` renders the draft in the code face (the Cost tab's generation id).
+export component FieldInput inherits Rectangle {
+    in property <string> initial: "";
+    in property <string> placeholder: "";
+    in property <bool> mono: false;
+    in-out property <string> draft: initial;
+    callback edited(string);
+
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.node-accent : Theme.node-stroke;
+    background: Theme.card;
+    animate border-color {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    if root.draft == "" : Text {
+        x: 8px;
+        width: parent.width - 14px;
+        height: 100%;
+        text: root.placeholder;
+        font-size: 12px;
+        font-family: root.mono ? "Cascadia Mono" : "Baloo 2";
+        color: Theme.node-placeholder;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    input := TextInput {
+        x: 8px;
+        width: parent.width - 14px;
+        height: 100%;
+        text <=> root.draft;
+        single-line: true;
+        font-size: 12px;
+        font-family: root.mono ? "Cascadia Mono" : "Inter";
+        color: Theme.node-text;
+        vertical-alignment: center;
+        edited => {
+            root.edited(root.draft);
+        }
+    }
+}
+
+// One selectable option of a single-select group (the appearance tab's theme
+// and canvas-background groups).
+component OptionRow inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> selected: false;
+    callback pick();
+
+    height: Theme.row-h;
+    border-radius: Theme.radius-sm;
+    background: root.selected ? Theme.node-accent-soft : (ta.has-hover ? Theme.hover : transparent);
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.pick();
+        }
+    }
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-2;
+        Text {
+            text: root.label;
+            horizontal-stretch: 1;
+            font-size: 12px;
+            color: root.selected ? Theme.node-accent : Theme.node-text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if root.selected : Path {
+            width: 14px;
+            height: 14px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: Icons.check;
+            fill: transparent;
+            stroke-width: 2px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: Theme.node-accent;
+        }
+    }
+}
+
+// One single-select group rendered from Rust rows (the web's AntD `Select` in
+// the appearance tab).
+export component OptionGroup inherits VerticalLayout {
+    in property <[ConfigOptionRow]> options: [];
+    callback pick(string);
+
+    spacing: Theme.space-1;
+    for option in root.options : OptionRow {
+        label: option.label;
+        selected: option.selected;
+        pick => {
+            root.pick(option.value);
+        }
+    }
+}
+
+
+// Settings section card (`glass-card` sections of `config-*.tsx`): heading,
+// muted hint, then the caller's controls.
+export component SectionCard inherits Rectangle {
+    in property <string> heading: "";
+    in property <string> hint: "";
+
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.node-stroke;
+    background: Theme.card;
+
+    VerticalLayout {
+        padding: Theme.panel-pad;
+        spacing: Theme.panel-gap;
+
+        if root.heading != "" : Text {
+            text: root.heading;
+            font-size: 13px;
+            font-weight: 600;
+            color: Theme.node-text;
+            vertical-alignment: center;
+        }
+        if root.hint != "" : Text {
+            vertical-alignment: center;
+            text: root.hint;
+            font-size: 11px;
+            color: Theme.muted-foreground;
+            wrap: word-wrap;
+        }
+        @children
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// The settings page pieces
+// ---------------------------------------------------------------------------
+// A settings tab opens with this header: one 15px title and one 12px line that
+// explains the page. The description is optional; a page that needs no
+// explanation leaves it empty instead of shipping filler.
+export component SettingsPageHeader inherits VerticalLayout {
+    in property <string> title: "";
+    in property <string> description: "";
+
+    spacing: 4px;
+    Text {
+        text: root.title;
+        font-size: 15px;
+        font-weight: 600;
+        color: Theme.node-text;
+        vertical-alignment: center;
+    }
+    if root.description != "" : Text {
+        text: root.description;
+        font-size: 12px;
+        color: Theme.muted-foreground;
+        wrap: word-wrap;
+    }
+}
+
+// A settings card: the mono uppercase eyebrow, the 13px title, an optional
+// right-aligned action and an optional hint, then the caller's rows. The card
+// is the only raised surface inside the pane (no inner drop shadows).
+export component SettingsCard inherits Rectangle {
+    in property <string> eyebrow: "";
+    in property <string> title: "";
+    in property <string> hint: "";
+    // The one action the card offers in its header (empty hides it). It is
+    // outlined; `action-danger` + `action-armed` give the two-step look.
+    in property <string> action-label: "";
+    in property <bool> action-danger: false;
+    in property <bool> action-armed: false;
+    in property <bool> action-enabled: true;
+    callback action();
+
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.node-stroke;
+    background: Theme.card;
+    // A card keeps its content height even when the pane is taller than the
+    // tab: only the pane's trailing space grows, never a card's header gap.
+    vertical-stretch: 0;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+
+        HorizontalLayout {
+            spacing: 12px;
+            cross-axis-alignment: center;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 3px;
+                if root.eyebrow != "" : Text {
+                    text: root.eyebrow;
+                    font-size: 10px;
+                    font-family: "Cascadia Mono";
+                    letter-spacing: 1.2px;
+                    color: Theme.muted-foreground;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: root.title;
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: Theme.node-text;
+                    vertical-alignment: center;
+                }
+            }
+            if root.action-label != "" : Button {
+                variant: "ghost";
+                height: 28px;
+                radius: Theme.radius-sm;
+                font-size: 12px;
+                font-weight: 600;
+                pad: 10px;
+                label: root.action-label;
+                danger: root.action-danger;
+                armed: root.action-armed;
+                enabled: root.action-enabled;
+                clicked => {
+                    root.action();
+                }
+            }
+        }
+        if root.hint != "" : Text {
+            text: root.hint;
+            font-size: 12px;
+            color: Theme.muted-foreground;
+            wrap: word-wrap;
+        }
+        @children
+    }
+}
+
+// A status line: a 6px dot plus its label. The dot carries the tone (success
+// when the capability is ready, muted when it is not) so the label is never a
+// bare coloured word.
+export component SettingsStatus inherits HorizontalLayout {
+    in property <bool> active: false;
+    in property <string> label: "";
+
+    spacing: 8px;
+    cross-axis-alignment: center;
+    Rectangle {
+        width: 6px;
+        height: 6px;
+        border-radius: 3px;
+        background: root.active ? Theme.node-success : Theme.muted-foreground;
+    }
+    Text {
+        text: root.label;
+        font-size: 12px;
+        font-weight: 500;
+        color: root.active ? Theme.node-text : Theme.muted-foreground;
+        vertical-alignment: center;
+    }
+}
+
+// A small state pill (installed / not installed). The label always carries the
+// state as text; the wash only reinforces it. `tone` adds the semantic washes a
+// ledger or a log level needs ("warn" / "danger" / "info"); empty keeps the
+// success/muted pair the state pills use.
+export component SettingsChip inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> on: false;
+    in property <string> tone: "";
+
+    height: 20px;
+    width: self.preferred-width;
+    border-radius: 10px;
+    background: root.tone == "danger" ? Theme.node-danger-soft
+        : root.tone == "warn" ? Theme.node-warning-soft
+        : root.tone == "info" ? Theme.node-info-soft
+        : root.on ? Theme.node-success-soft : Theme.muted;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        alignment: center;
+        Text {
+            text: root.label;
+            font-size: 11px;
+            font-weight: 500;
+            color: root.tone == "danger" ? Theme.node-danger
+                : root.tone == "warn" ? Theme.node-warning
+                : root.tone == "info" ? Theme.node-info
+                : root.on ? Theme.node-success : Theme.muted-foreground;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// A proportional bar: `share` is 0..1 of the widest row, painted at 70% brand
+// over the toolbar hairline so a list's largest entry reads at a glance.
+export component SettingsShareBar inherits Rectangle {
+    in property <float> share: 0;
+
+    height: 8px;
+    border-radius: Theme.radius-sm;
+    background: Theme.toolbar-border;
+
+    Rectangle {
+        width: parent.width * min(1, max(0, root.share));
+        height: 100%;
+        border-radius: Theme.radius-sm;
+        background: Theme.brand.with-alpha(0.7);
+    }
+}
+
+// The hairline *between* two rows (never above the first or below the last).
+export component SettingsDivider inherits Rectangle {
+    height: 1px;
+    background: Theme.toolbar-border;
+}
+
+// A short empty state, vertically centred in a 120px block so a new page never
+// leaves a large blank card behind.
+export component SettingsEmptyState inherits Rectangle {
+    in property <string> title: "";
+    in property <string> hint: "";
+
+    height: 120px;
+    background: transparent;
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        alignment: center;
+        spacing: 4px;
+        Text {
+            text: root.title;
+            font-size: 13px;
+            font-weight: 600;
+            color: Theme.node-text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.hint;
+            font-size: 12px;
+            color: Theme.muted-foreground;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}

@@ -1,0 +1,37 @@
+[package]
+name = "open-canvas-ai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenAI-compatible AI service client (image/text-SSE/video/audio-speech) + provider/model config for the OpenCanvas desktop port"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+open-canvas-core = { path = "../core" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "multipart", "rustls-tls"] }
+base64 = "0.22"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "sync", "macros", "net", "io-util"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+
+# Same safety denies as the app crate: no unwrap/expect/panic/todo in library
+# code. `clippy::pedantic` is intentionally NOT enabled here — this crate is an
+# internal port of `web/src/services/api/*` consumed only by the app binary, so
+# the public-API pedantic doc lints (missing_errors_doc, …) do not apply.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+let_underscore_must_use = "deny"
+allow_attributes = "deny"

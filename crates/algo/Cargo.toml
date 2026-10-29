@@ -1,0 +1,40 @@
+[package]
+name = "open-canvas-algo"
+description = "Depth-agnostic, tile-aware CPU image filters (blur, sharpen, noise, distort, stylize)"
+version.workspace = true
+# Vendored from PhotoCraft's edition-2024 workspace (let-chains in the sources).
+edition = "2024"
+license.workspace = true
+
+[lib]
+name = "open_canvas_algo"
+path = "src/lib.rs"
+
+[features]
+default = []
+# The whole vendored engine: select tools, content-aware fill, matting, warping,
+# panorama stitching, the RAW pipeline and the filters `ps::algo_bridge` has no
+# tag for. Off by default so the app build compiles only the surface the bridge
+# reaches (`lib.rs` has the module list); on for this crate's own tests and
+# examples, which reach every module, and for anyone who wants the full menu.
+full = []
+
+[dependencies]
+open-canvas-geom = { workspace = true }
+open-canvas-color = { workspace = true }
+open-canvas-raster = { workspace = true }
+serde = { workspace = true }
+rustfft = { workspace = true }
+
+# Parallel tiles on native; wasm builds stay single-threaded.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rayon = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+# The unit tests, integration tests and examples exercise the modules gated
+# behind `full`, so they opt into it here: feature unification keeps `cargo
+# test`/`--all-targets` on the full engine while `cargo build --workspace`
+# (which does not build dev-dependencies) gets the gated subset. Same pattern as
+# `open-canvas-psd`'s `testgen` dev-dependency.
+open-canvas-algo = { path = ".", features = ["full"] }

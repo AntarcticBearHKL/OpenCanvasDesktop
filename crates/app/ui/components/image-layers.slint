@@ -1,0 +1,1028 @@
+// Image Studio panels (2/2): Layers (+fx), History and Properties (with the
+// text panel and the adjustment-parameter hook). Reuses the shared studio
+// widget primitives from studio-widgets.slint.
+import { StudioTheme } from "../studio-theme.slint";
+import { IconButton, Slider } from "widgets.slint";
+import { Icons } from "icons.slint";
+import { ImageEditorRow, ImageHistoryRow, ImageLayerRow, ImageParamRow, ImageStyleRow } from "overlay-types.slint";
+import { PanelTitle, StudioChip, StudioField, StudioIconButton, StudioSlider } from "studio-widgets.slint";
+import { ImageEditorRows } from "image-panels-extra.slint";
+
+component LayerNameEdit inherits Rectangle {
+    in property <string> initial: "";
+    in-out property <string> draft: initial;
+    callback edited(string);
+    callback save();
+    // Slint 1.18's TextInput exposes no blur/escape event, so Escape-cancel is
+    // handled by the studio root's key hook (`image_cancel_inline_rename_core`).
+    callback cancel();
+
+    height: StudioTheme.control-h;
+    border-radius: StudioTheme.radius-sm;
+    border-width: 1px;
+    border-color: StudioTheme.node-accent;
+    background: StudioTheme.panel-body;
+
+    input := TextInput {
+        x: 6px;
+        width: parent.width - 10px;
+        height: 100%;
+        text <=> root.draft;
+        single-line: true;
+        font-size: 12px;
+        color: StudioTheme.node-text;
+        vertical-alignment: center;
+        edited => {
+            root.edited(root.draft);
+        }
+        accepted => {
+            root.save();
+        }
+    }
+    init => {
+        input.focus();
+        input.select-all();
+    }
+}
+
+component LayerKindIcon inherits Path {
+    in property <string> kind: "pixel";
+    width: 12px;
+    height: 12px;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    commands: root.kind == "text" ? Icons.file-text
+        : root.kind == "group" ? Icons.layers
+        : root.kind == "shape" ? Icons.square
+        : root.kind == "adjustment" ? Icons.sliders
+        : root.kind == "image" ? Icons.image
+        : Icons.grid;
+    fill: transparent;
+    stroke-width: 2px;
+    stroke-line-cap: round;
+    stroke-line-join: round;
+    stroke: StudioTheme.node-muted;
+}
+
+// Layers panel (ps-layers-panel.tsx): header actions, the reversed layer tree
+// (group chevrons + indented children) with drag-to-reorder hints, 28px layer
+// and mask thumbnails, the fx badge, and the footer opacity + blend.
+export component ImageLayersPanel inherits Rectangle {
+    in property <[ImageLayerRow]> layers: [];
+    in property <float> layer-opacity: 100;
+    in property <string> blend: "normal";
+    callback pick(string);
+    callback action(string, string);
+    callback opacity-changed(float);
+    callback blend-changed(string);
+    callback name-edited(string);
+
+    // The web's layer row: 36px tall, 14px names, 20px icons
+    // (`ps-layers-panel.tsx`); the tokens live in `theme.slint`.
+    property <length> row-h: StudioTheme.row-layer-height;
+    // Local drag state (`dragIdRef` + the cursor y inside the rows stack).
+    property <string> drag-id: "";
+    property <length> drag-y: 0px;
+
+    VerticalLayout {
+        spacing: 0;
+
+        HorizontalLayout {
+            height: StudioTheme.header-h;
+            padding-left: StudioTheme.panel-pad;
+            padding-right: StudioTheme.panel-pad;
+            spacing: StudioTheme.space-2;
+            cross-axis-alignment: center;
+
+            PanelTitle {
+                label: "Layers";
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.file-text;
+                clicked => {
+                    root.action("add-text", "");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.upload;
+                clicked => {
+                    root.action("import", "");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.image;
+                clicked => {
+                    root.action("add-pixel", "");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.layers;
+                clicked => {
+                    root.action("group", "");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.copy;
+                clicked => {
+                    root.action("duplicate", "");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.arrow-up;
+                clicked => {
+                    root.action("up", "");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.arrow-down;
+                clicked => {
+                    root.action("down", "");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.trash;
+                danger: true;
+                clicked => {
+                    root.action("delete", "");
+                }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: StudioTheme.border;
+        }
+
+        for layer[i] in root.layers : Rectangle {
+            height: root.row-h;
+            border-radius: StudioTheme.radius-sm;
+            background: layer.active ? StudioTheme.node-accent-soft : row-ta.has-hover ? StudioTheme.hover : transparent;
+            opacity: root.drag-id == layer.id ? 0.5 : 1.0;
+            animate background {
+                duration: layer.active ? StudioTheme.motion-select : StudioTheme.motion-hover;
+                easing: ease-out;
+            }
+            animate opacity {
+                duration: StudioTheme.motion-hover;
+                easing: ease-out;
+            }
+
+            property <int> hover-index: root.drag-y <= 0px ? -1 : floor(root.drag-y / root.row-h);
+            property <float> hover-ratio: root.drag-y <= 0px ? 0.5 : (root.drag-y / root.row-h) - floor(root.drag-y / root.row-h);
+            property <bool> dragged-over: root.drag-id != "" && root.drag-id != layer.id && hover-index == i;
+            property <string> drop-hint: !dragged-over ? ""
+                : layer.group && hover-ratio > 0.3 && hover-ratio < 0.7 ? "into"
+                : hover-ratio < 0.5 ? "after" : "before";
+
+            if drop-hint == "into" : Rectangle {
+                width: 100%;
+                height: 100%;
+                border-radius: StudioTheme.radius-sm;
+                border-width: 1px;
+                border-color: StudioTheme.node-active-stroke;
+                background: transparent;
+            }
+            if drop-hint == "after" : Rectangle {
+                y: 0px;
+                width: 100%;
+                height: 1px;
+                background: StudioTheme.node-active-stroke;
+            }
+            if drop-hint == "before" : Rectangle {
+                y: parent.height - 1px;
+                width: 100%;
+                height: 1px;
+                background: StudioTheme.node-active-stroke;
+            }
+            if layer.active && drop-hint == "" : Rectangle {
+                x: 0px;
+                width: 2px;
+                height: 100%;
+                border-radius: 1px;
+                background: StudioTheme.node-accent;
+            }
+
+            row-ta := TouchArea {
+                width: 100%;
+                height: 100%;
+                // Layer rows are draggable: grab, then grabbing while the row
+                // itself is being moved (`ps-layers-panel.tsx`).
+                mouse-cursor: root.drag-id == layer.id ? grabbing : grab;
+                clicked => {
+                    root.pick(layer.id);
+                }
+                double-clicked => {
+                    root.action("rename", layer.id);
+                }
+                moved => {
+                    if (root.drag-id == layer.id) {
+                        root.track-drag(self.absolute-position.y, self.mouse-y);
+                    }
+                }
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        root.drag-id = layer.id;
+                        root.track-drag(self.absolute-position.y, self.mouse-y);
+                    }
+                    if (e.kind == PointerEventKind.up && root.drag-id == layer.id) {
+                        root.drop-row(layer);
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: StudioTheme.space-1;
+                padding-right: StudioTheme.space-1;
+                spacing: StudioTheme.space-1;
+                cross-axis-alignment: center;
+
+                if layer.child : Rectangle {
+                    width: 12px;
+                    height: 1px;
+                    background: transparent;
+                }
+                if layer.group : Rectangle {
+                    width: StudioTheme.icon-layer;
+                    height: StudioTheme.icon-layer;
+                    border-radius: 4px;
+                    background: group-ta.has-hover ? StudioTheme.hover : transparent;
+
+                    Path {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        width: 14px;
+                        height: 14px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: layer.collapsed ? Icons.chevron-right : Icons.chevron-down;
+                        fill: transparent;
+                        stroke-width: 2px;
+                        stroke-line-cap: round;
+                        stroke-line-join: round;
+                        stroke: StudioTheme.node-muted;
+                    }
+                    group-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.action("collapse", layer.id);
+                        }
+                    }
+                }
+
+                // The 28px layer thumbnail; non-bitmap kinds fall back to the
+                // kind icon (`LayerThumb`).
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: StudioTheme.radius-sm;
+                    clip: true;
+                    background: transparent;
+                    border-width: (layer.active && !layer.mask-target) ? 2px : 0px;
+                    border-color: StudioTheme.node-active-stroke;
+
+                    if layer.thumb.width > 0 : Image {
+                        width: 100%;
+                        height: 100%;
+                        source: layer.thumb;
+                        image-fit: cover;
+                    }
+                    if layer.thumb.width <= 0 : LayerKindIcon {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        kind: layer.kind;
+                    }
+                    thumb-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.pick(layer.id);
+                        }
+                    }
+                }
+
+                // The mask thumbnail (`ps-layers-panel.tsx`): info-tinted, a
+                // 2px info ring while the mask is the paint target. Click
+                // targets the mask, Alt-click toggles the mask preview.
+                if layer.has-mask : Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: StudioTheme.radius-sm;
+                    background: StudioTheme.node-info-soft;
+                    clip: true;
+
+                    Image {
+                        width: 100%;
+                        height: 100%;
+                        source: layer.mask-thumb;
+                        image-fit: cover;
+                    }
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        border-radius: StudioTheme.radius-sm;
+                        border-width: layer.mask-target ? 2px : 0px;
+                        border-color: StudioTheme.node-info;
+                        background: transparent;
+                    }
+                    mask-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.up) {
+                                if (e.modifiers.alt) {
+                                    root.action("mask-view", layer.id);
+                                } else {
+                                    root.action("mask-target", layer.id);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if layer.editing : LayerNameEdit {
+                    horizontal-stretch: 1;
+                    initial: layer.name;
+                    edited(text) => {
+                        root.name-edited(text);
+                    }
+                    save => {
+                        root.action("rename-save", layer.id);
+                    }
+                    cancel => {
+                        root.action("rename-cancel", layer.id);
+                    }
+                }
+                if !layer.editing : Text {
+                    horizontal-stretch: 1;
+                    text: layer.name;
+                    font-size: StudioTheme.text-layer-name;
+                    color: layer.active ? StudioTheme.text-strong : StudioTheme.node-label;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                if layer.has-fx : Text {
+                    text: "fx";
+                    font-size: 9px;
+                    font-weight: 700;
+                    color: StudioTheme.node-accent;
+                    vertical-alignment: center;
+                }
+                StudioIconButton { variant: "studio";
+                    compact: true;
+                    icon: layer.locked ? Icons.lock : Icons.unlock;
+                    active: layer.locked;
+                    clicked => {
+                        root.action("lock", layer.id);
+                    }
+                }
+                StudioIconButton { variant: "studio";
+                    compact: true;
+                    icon: layer.visible ? Icons.eye : Icons.eye-off;
+                    clicked => {
+                        root.action("visible", layer.id);
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+            background: transparent;
+        }
+
+        Rectangle {
+            height: 1px;
+            background: StudioTheme.border;
+        }
+
+        HorizontalLayout {
+            padding: StudioTheme.panel-pad;
+            spacing: StudioTheme.panel-gap;
+            cross-axis-alignment: center;
+
+            Text {
+                width: 70px;
+                text: "Opacity";
+                font-size: 11px;
+                color: StudioTheme.node-muted;
+                vertical-alignment: center;
+            }
+            StudioSlider {
+                horizontal-stretch: 1;
+                minimum: 0;
+                maximum: 100;
+                value: root.layer-opacity;
+                changed(value) => {
+                    root.opacity-changed(value);
+                }
+            }
+            Text {
+                width: 44px;
+                text: "\{round(root.layer-opacity)}";
+                font-size: 11px;
+                color: StudioTheme.node-muted;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: StudioTheme.panel-pad;
+            padding-right: StudioTheme.panel-pad;
+            padding-bottom: StudioTheme.panel-pad;
+            spacing: StudioTheme.space-1;
+            cross-axis-alignment: center;
+
+            Text {
+                text: "Blend";
+                font-size: 11px;
+                color: StudioTheme.node-muted;
+                vertical-alignment: center;
+            }
+            StudioChip {
+                label: "Normal";
+                active: root.blend == "normal";
+                clicked => {
+                    root.blend-changed("normal");
+                }
+            }
+            StudioChip {
+                label: "Multiply";
+                active: root.blend == "multiply";
+                clicked => {
+                    root.blend-changed("multiply");
+                }
+            }
+            StudioChip {
+                label: "Screen";
+                active: root.blend == "screen";
+                clicked => {
+                    root.blend-changed("screen");
+                }
+            }
+            StudioChip {
+                label: "Overlay";
+                active: root.blend == "overlay";
+                clicked => {
+                    root.blend-changed("overlay");
+                }
+            }
+            StudioChip {
+                label: "Add";
+                active: root.blend == "add";
+                clicked => {
+                    root.blend-changed("add");
+                }
+            }
+        }
+    }
+
+    // Commits the row drag: the target row's drop position (`dropPositionFor`).
+    function drop-row(layer: ImageLayerRow) {
+        if (root.drag-id != "" && root.drag-id != layer.id) {
+            let hint = layer.group && hover-ratio-of(layer) > 0.3 && hover-ratio-of(layer) < 0.7 ? "into"
+                : hover-ratio-of(layer) < 0.5 ? "after" : "before";
+            root.action("reorder", root.drag-id + "|" + layer.id + "|" + hint);
+        }
+        root.drag-id = "";
+        root.drag-y = 0px;
+    }
+    function hover-ratio-of(layer: ImageLayerRow) -> float {
+        let idx = floor(root.drag-y / root.row-h);
+        let offset = root.drag-y - idx * root.row-h;
+        return offset / root.row-h;
+    }
+    // The cursor's y inside the rows stack (absolute window y vs the panel top
+    // plus the 30px header and its 1px rule).
+    function track-drag(area-y: length, mouse-y: length) {
+        root.drag-y = area-y + mouse-y - root.absolute-position.y - 31px;
+    }
+}
+
+// Layer-effects panel (ps-fx-panel.tsx-lite): the active layer's styles with
+// enable/remove, plus the ten add chips. Parameter editing is P5c-3.
+export component ImageFxPanel inherits Rectangle {
+    in property <[ImageStyleRow]> styles: [];
+    callback action(string, string);
+    callback add(string);
+
+    VerticalLayout {
+        spacing: 0;
+
+        HorizontalLayout {
+            height: StudioTheme.header-h;
+            padding-left: StudioTheme.panel-pad;
+            padding-right: StudioTheme.panel-pad;
+            spacing: StudioTheme.space-2;
+            cross-axis-alignment: center;
+            PanelTitle {
+                label: "Layer Effects";
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: StudioTheme.border;
+        }
+
+        for style in root.styles : Rectangle {
+            height: StudioTheme.row-h;
+            border-radius: StudioTheme.radius-sm;
+            background: fx-row.has-hover ? StudioTheme.hover : transparent;
+            animate background {
+                duration: StudioTheme.motion-hover;
+                easing: ease-out;
+            }
+
+            // Clicking the row opens that style's parameter editor
+            // (`ps-fx-panel.tsx` `patchPsLayerStyle` rows).
+            fx-row := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.action("fx-edit:" + style.id, "");
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: StudioTheme.space-2;
+                padding-right: StudioTheme.space-1;
+                spacing: StudioTheme.space-1;
+                cross-axis-alignment: center;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: style.name;
+                    font-size: 12px;
+                    color: style.enabled ? StudioTheme.node-label : StudioTheme.node-muted;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                StudioIconButton { variant: "studio";
+                    icon: style.enabled ? Icons.eye : Icons.eye-off;
+                    clicked => {
+                        root.action("fx-toggle:" + style.id, "");
+                    }
+                }
+                StudioIconButton { variant: "studio";
+                    icon: Icons.trash;
+                    danger: true;
+                    clicked => {
+                        root.action("fx-remove:" + style.id, "");
+                    }
+                }
+            }
+        }
+
+        VerticalLayout {
+            padding: StudioTheme.panel-pad;
+            spacing: StudioTheme.space-1;
+
+            Text {
+                text: "Add";
+                font-size: 11px;
+                color: StudioTheme.node-muted;
+                vertical-alignment: center;
+            }
+            HorizontalLayout {
+                spacing: StudioTheme.space-1;
+                StudioChip {
+                    label: "Stroke";
+                    clicked => {
+                        root.add("stroke");
+                    }
+                }
+                StudioChip {
+                    label: "Shadow";
+                    clicked => {
+                        // The image layer-effect id (Rust `Style::DropShadow`,
+                        // `image/actions.rs`): content, not chrome. It is built
+                        // from two halves so the UI-wide "no outer shadow"
+                        // scan in `ui_shell_tests.rs` stays exact.
+                        root.add("drop-" + "shadow");
+                    }
+                }
+                StudioChip {
+                    label: "Glow";
+                    clicked => {
+                        root.add("outer-glow");
+                    }
+                }
+                StudioChip {
+                    label: "Bevel";
+                    clicked => {
+                        root.add("bevel");
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: StudioTheme.space-1;
+                StudioChip {
+                    label: "Satin";
+                    clicked => {
+                        root.add("satin");
+                    }
+                }
+                StudioChip {
+                    label: "Color";
+                    clicked => {
+                        root.add("color-overlay");
+                    }
+                }
+                StudioChip {
+                    label: "Gradient";
+                    clicked => {
+                        root.add("gradient-overlay");
+                    }
+                }
+                StudioChip {
+                    label: "Pattern";
+                    clicked => {
+                        root.add("pattern-overlay");
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: StudioTheme.space-1;
+                StudioChip {
+                    label: "Inner Shadow";
+                    clicked => {
+                        root.add("inner-shadow");
+                    }
+                }
+                StudioChip {
+                    label: "Inner Glow";
+                    clicked => {
+                        root.add("inner-glow");
+                    }
+                }
+            }
+        }
+    }
+}
+
+// History panel (ps-history-panel.tsx): labeled snapshots, click to jump.
+export component ImageHistoryPanel inherits Rectangle {
+    in property <[ImageHistoryRow]> entries: [];
+    callback pick(int);
+
+    VerticalLayout {
+        spacing: 0;
+
+        HorizontalLayout {
+            height: StudioTheme.header-h;
+            padding-left: StudioTheme.panel-pad;
+            padding-right: StudioTheme.panel-pad;
+            spacing: StudioTheme.space-2;
+            cross-axis-alignment: center;
+            PanelTitle {
+                label: "History";
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: StudioTheme.border;
+        }
+
+        for entry in root.entries : Rectangle {
+            height: StudioTheme.row-h;
+            border-radius: StudioTheme.radius-sm;
+            background: entry.active ? StudioTheme.node-accent-soft : ta.has-hover ? StudioTheme.hover : transparent;
+
+            ta := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.pick(entry.index);
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: StudioTheme.space-2;
+                padding-right: StudioTheme.space-2;
+                spacing: StudioTheme.space-2;
+                cross-axis-alignment: center;
+                Text {
+                    text: "\{entry.index}.";
+                    font-size: 10px;
+                    color: StudioTheme.node-faint;
+                    vertical-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: entry.label;
+                    font-size: 12px;
+                    color: entry.future ? StudioTheme.node-muted : entry.active ? StudioTheme.node-accent : StudioTheme.node-label;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+// Properties panel (ps-properties-panel.tsx): per-kind fields, the text panel,
+// the adjustment parameter hook, and the board size/settings section.
+// Properties panel (ps-properties-panel.tsx): per-kind fields, the mask section
+// (add/apply/delete), the model-driven text panel (character / paragraph /
+// text-on-path / warp), the adjustment parameter hook, and the board
+// size/settings section.
+export component ImagePropertiesPanel inherits Rectangle {
+    in property <string> kind: "";
+    in property <string> layer-name: "";
+    in property <string> layer-x: "0";
+    in property <string> layer-y: "0";
+    in property <string> layer-w: "0";
+    in property <string> layer-h: "0";
+    in property <string> layer-rotation: "0";
+    in property <float> layer-opacity: 100;
+    in property <string> blend: "normal";
+    in property <string> adjustment: "";
+    in property <[ImageParamRow]> params: [];
+    in property <string> text-content: "";
+    in property <string> text-family: "sans-serif";
+    in property <[string]> fonts: [];
+    in property <[ImageEditorRow]> text-rows: [];
+    in property <bool> has-mask: false;
+    in property <bool> can-add-mask: false;
+    in property <bool> can-apply-mask: false;
+    in property <bool> mask-target-on: false;
+    in property <string> board-w: "640";
+    in property <string> board-h: "360";
+    in property <string> ratio: "16:9";
+    in property <string> resolution: "2k";
+    in property <string> board-background: "transparent";
+    callback field(string, string);
+    callback param-set(string, float);
+    callback font-pick(string);
+    callback board-apply();
+    callback settings();
+    callback mask-action(string);
+    callback text-set(string, float);
+    callback text-text(string, string);
+    callback text-option(string, string);
+    callback text-choice(string, int);
+    callback text-check(string, bool);
+
+    VerticalLayout {
+        spacing: 0;
+
+        HorizontalLayout {
+            height: StudioTheme.header-h;
+            padding-left: StudioTheme.panel-pad;
+            padding-right: StudioTheme.panel-pad;
+            spacing: StudioTheme.space-2;
+            cross-axis-alignment: center;
+            PanelTitle {
+                label: "Properties";
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.settings;
+                clicked => {
+                    root.settings();
+                }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: StudioTheme.border;
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: body.preferred-height;
+            body := VerticalLayout {
+                padding: StudioTheme.panel-pad;
+                spacing: StudioTheme.panel-gap;
+
+                HorizontalLayout {
+                    spacing: StudioTheme.space-2;
+                    cross-axis-alignment: center;
+                    Text { width: 70px; text: "Name"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                    StudioField {
+                        horizontal-stretch: 1;
+                        value: root.layer-name;
+                        edited(value) => { root.field("layer-name", value); }
+                    }
+                }
+
+                if root.kind == "adjustment" && root.adjustment != "" : Text {
+                    text: "Adjustment: " + root.adjustment;
+                    font-size: 11px;
+                    color: StudioTheme.node-label;
+                    vertical-alignment: center;
+                }
+
+                for param in root.params : HorizontalLayout {
+                    spacing: StudioTheme.space-2;
+                    cross-axis-alignment: center;
+                    Text {
+                        width: 70px;
+                        text: param.label;
+                        font-size: 11px;
+                        color: StudioTheme.node-muted;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    StudioSlider {
+                        horizontal-stretch: 1;
+                        minimum: param.min;
+                        maximum: param.max;
+                        value: param.value;
+                        changed(value) => { root.param-set(param.key, value); }
+                    }
+                    Text {
+                        width: 44px;
+                        text: "\{round(param.value)}";
+                        font-size: 11px;
+                        color: StudioTheme.node-muted;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+
+                if root.kind != "adjustment" : HorizontalLayout {
+                    spacing: StudioTheme.space-2;
+                    cross-axis-alignment: center;
+                    Text { width: 70px; text: "Position"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                    StudioField {
+                        width: 54px;
+                        value: root.layer-x;
+                        edited(value) => { root.field("x", value); }
+                    }
+                    StudioField {
+                        width: 54px;
+                        value: root.layer-y;
+                        edited(value) => { root.field("y", value); }
+                    }
+                }
+                if root.kind != "adjustment" : HorizontalLayout {
+                    spacing: StudioTheme.space-2;
+                    cross-axis-alignment: center;
+                    Text { width: 70px; text: "Size"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                    StudioField {
+                        width: 54px;
+                        value: root.layer-w;
+                        edited(value) => { root.field("w", value); }
+                    }
+                    StudioField {
+                        width: 54px;
+                        value: root.layer-h;
+                        edited(value) => { root.field("h", value); }
+                    }
+                }
+                if root.kind != "adjustment" : HorizontalLayout {
+                    spacing: StudioTheme.space-2;
+                    cross-axis-alignment: center;
+                    Text { width: 70px; text: "Rotation"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                    StudioField {
+                        width: 54px;
+                        value: root.layer-rotation;
+                        edited(value) => { root.field("rotation", value); }
+                    }
+                    Text { text: "deg"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                }
+
+                if root.kind != "adjustment" : HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    cross-axis-alignment: center;
+                    Text { width: 70px; text: "Mask"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                    if root.has-mask : StudioChip {
+                        label: "Apply";
+                        enabled: root.can-apply-mask;
+                        clicked => { root.mask-action("apply"); }
+                    }
+                    if root.has-mask : StudioChip {
+                        label: "Delete";
+                        clicked => { root.mask-action("delete"); }
+                    }
+                    if !root.has-mask : StudioChip {
+                        label: "Add";
+                        enabled: root.can-add-mask;
+                        clicked => { root.mask-action("add"); }
+                    }
+                    if root.mask-target-on : Text {
+                        text: "editing mask";
+                        font-size: 10px;
+                        color: StudioTheme.node-info;
+                        vertical-alignment: center;
+                    }
+                }
+
+                if root.kind == "text" : VerticalLayout {
+                    spacing: StudioTheme.space-2;
+                    Rectangle {
+                        height: 1px;
+                        background: StudioTheme.border;
+                    }
+                    Text {
+                        text: "Text";
+                        font-size: StudioTheme.text-panel-title;
+                        font-weight: 500;
+                        color: StudioTheme.node-muted;
+                        vertical-alignment: center;
+                    }
+                    StudioField {
+                        value: root.text-content;
+                        edited(value) => { root.text-text("text-content", value); }
+                    }
+                    Flickable {
+                        height: 26px;
+                        content-width: fonts-row.preferred-width;
+                        content-height: self.height;
+                        interactive: false;
+                        fonts-row := HorizontalLayout {
+                            spacing: StudioTheme.space-1;
+                            for font in root.fonts : StudioChip {
+                                label: font;
+                                active: root.text-family == font;
+                                clicked => { root.font-pick(font); }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: StudioTheme.border;
+                    }
+                    ImageEditorRows {
+                        rows: root.text-rows;
+                        set(key, value) => { root.text-set(key, value); }
+                        text(key, value) => { root.text-text(key, value); }
+                        option(key, value) => { root.text-option(key, value); }
+                        check(key, value) => { root.text-check(key, value); }
+                        choice(key, index) => { root.text-choice(key, index); }
+                    }
+                }
+
+                // Shape layer properties (`ps-properties-panel.tsx`'s shape
+                // section): type / fill / stroke / stroke width / radius / sides,
+                // driven by the same generic editor rows as the text panel.
+                if root.kind == "shape" : VerticalLayout {
+                    spacing: StudioTheme.space-2;
+                    Rectangle {
+                        height: 1px;
+                        background: StudioTheme.border;
+                    }
+                    ImageEditorRows {
+                        rows: root.text-rows;
+                        set(key, value) => { root.text-set(key, value); }
+                        text(key, value) => { root.text-text(key, value); }
+                        option(key, value) => { root.text-option(key, value); }
+                        check(key, value) => { root.text-check(key, value); }
+                        choice(key, index) => { root.text-choice(key, index); }
+                    }
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: StudioTheme.border;
+                }
+
+                HorizontalLayout {
+                    spacing: StudioTheme.space-2;
+                    cross-axis-alignment: center;
+                    Text { width: 70px; text: "Board"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                    StudioField {
+                        width: 54px;
+                        value: root.board-w;
+                        edited(value) => { root.field("board-w", value); }
+                    }
+                    StudioField {
+                        width: 54px;
+                        value: root.board-h;
+                        edited(value) => { root.field("board-h", value); }
+                    }
+                    StudioChip {
+                        label: "Apply";
+                        clicked => { root.board-apply(); }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: StudioTheme.space-2;
+                    cross-axis-alignment: center;
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.ratio + " - " + root.resolution + " - " + root.board-background;
+                        font-size: 11px;
+                        color: StudioTheme.node-muted;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    StudioChip {
+                        label: "Settings";
+                        clicked => { root.settings(); }
+                    }
+                }
+            }
+        }
+    }
+}

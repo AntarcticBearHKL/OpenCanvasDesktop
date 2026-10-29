@@ -1,0 +1,5 @@
+target/
+target-rel2/
+mcp/.venv/
+**/__pycache__/
+*.pyc

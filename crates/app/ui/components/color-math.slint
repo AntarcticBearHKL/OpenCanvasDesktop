@@ -1,0 +1,45 @@
+// HSV conversions shared by the studio colour pickers (pure, so bindings stay
+// declarative). Extracted from the web picker's `TextureColorMath` so the
+// Image Studio picker reuses the exact same maths.
+export global ColorMath {
+    public pure function hue(c: color) -> float {
+        let r = c.red;
+        let g = c.green;
+        let b = c.blue;
+        let mx = max(r, max(g, b));
+        let mn = min(r, min(g, b));
+        if (mx <= mn) {
+            return 0;
+        }
+        let d = mx - mn;
+        let h = mx == r ? (g - b) / d + (g < b ? 6 : 0) : mx == g ? (b - r) / d + 2 : (r - g) / d + 4;
+        return h / 6;
+    }
+
+    public pure function saturation(c: color) -> float {
+        let mx = max(c.red, max(c.green, c.blue));
+        let mn = min(c.red, min(c.green, c.blue));
+        if (mx <= 0) {
+            return 0;
+        }
+        return (mx - mn) / mx;
+    }
+
+    public pure function value(c: color) -> float {
+        return max(c.red, max(c.green, c.blue));
+    }
+
+    // hue/saturation/value in 0..1; returns the 8-bit RGB triple.
+    public pure function from-hsv(h: float, s: float, v: float) -> color {
+        let hp = min(5.999, max(0, h * 6));
+        let i = Math.floor(hp);
+        let f = hp - i;
+        let p = v * (1 - s);
+        let q = v * (1 - f * s);
+        let t = v * (1 - (1 - f) * s);
+        let r = i < 1 ? v : i < 2 ? q : i < 3 ? p : i < 4 ? p : i < 5 ? t : v;
+        let g = i < 1 ? t : i < 2 ? v : i < 3 ? v : i < 4 ? q : i < 5 ? p : p;
+        let b = i < 1 ? p : i < 2 ? p : i < 3 ? t : i < 4 ? v : i < 5 ? v : q;
+        return rgb(round(r * 255), round(g * 255), round(b * 255));
+    }
+}

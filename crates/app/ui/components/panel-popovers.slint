@@ -1,0 +1,507 @@
+import { Theme } from "../theme.slint";
+import { Slider } from "widgets.slint";
+import { GenerationSettings } from "overlay-types.slint";
+
+// Inline generation panel used by the canvas node cards.
+//
+// The frosted settings popovers and the model list that used to live here were
+// deleted together with the 600px node panel: the generation parameters are now
+// laid out flat inside the node card (`InlineGenerationPanel`).
+//
+// One rhythm, nothing hand-placed: every parameter is one row with a
+// left-aligned fixed-width label column (`space-8 + space-3` = 44px, 11px,
+// `node-muted`) and the value controls filling the rest. The model is a
+// full-width read-only label (elided name + brand badge, never a picker), the
+// chips share one 28px height and `radius-sm`, and the rows are `space-2` (8px)
+// apart. Rows take an equal share of any spare card height, so the action below
+// keeps one fixed gap and the card has no empty pocket.
+//
+// The whole panel is proportional: `vs` is the card's visual scale (canvas
+// zoom times the enter animation), and every length below -- paddings, gaps,
+// row heights, chip heights, fonts, radii, borders, the model badge and the
+// slider rail -- is a design length multiplied by it. Nothing in this file
+// carries an unscaled pixel length, so 0.5x/1x/2x/3x are the same design.
+// The card wrapper stretches this panel and pins the Generate button under it.
+
+// One chip of a parameter row. Uniform 28px height, `radius-sm`, 4px gaps. It
+// hugs its label by default; a row that wants equal shares sets
+// `horizontal-stretch: 1` on each chip *at the use site* (layout constraints
+// declared inside a component root are inherited and ignored by the parent
+// layout, so the stretch factor must be local to the instance).
+component InlinePill inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> selected: false;
+    in property <float> vs: 1;
+    callback clicked();
+
+    height: 28px * root.vs;
+    border-radius: Theme.radius-sm * root.vs;
+    border-width: 1px * root.vs;
+    border-color: root.selected ? Theme.brand : ip-ta.has-hover ? Theme.border-strong : Theme.node-stroke;
+    background: root.selected ? Theme.node-accent-soft : ip-ta.has-hover ? Theme.hover : Theme.toolbar-panel;
+    transform-scale-x: ip-ta.pressed ? 0.97 : 1.0;
+    transform-scale-y: ip-ta.pressed ? 0.97 : 1.0;
+    animate background {
+        duration: root.selected ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate border-color {
+        duration: root.selected ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate transform-scale-x {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+    animate transform-scale-y {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+
+    ip-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    HorizontalLayout {
+        alignment: center;
+        padding-left: Theme.space-2 * root.vs;
+        padding-right: Theme.space-2 * root.vs;
+
+        Text {
+            text: root.label;
+            font-size: 11px * root.vs;
+            font-weight: root.selected ? 600 : 400;
+            color: root.selected ? Theme.node-accent : Theme.node-muted;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+// The fixed label column of one parameter row. `space-8 + space-3` is the
+// 44px slot every label shares, so every value control starts on one line.
+component InlineLabel inherits Text {
+    in property <float> vs: 1;
+
+    width: (Theme.space-8 + Theme.space-3) * root.vs;
+    min-height: 32px * root.vs;
+    font-size: 11px * root.vs;
+    color: Theme.node-muted;
+    vertical-alignment: center;
+    horizontal-alignment: left;
+    overflow: elide;
+}
+
+// One parameter row: a left-aligned label column (44px) and the value controls
+// filling the rest. The row spans the panel width and takes an equal share of
+// any extra height, so row heights stay uniform and the content stays centred.
+component InlineParamRow inherits HorizontalLayout {
+    in property <string> label: "";
+    in property <float> vs: 1;
+
+    width: 100%;
+    horizontal-stretch: 1;
+    min-height: 32px * root.vs;
+    max-height: 1000px * root.vs;
+    vertical-stretch: 1;
+    spacing: Theme.space-2 * root.vs;
+    // No main-axis `alignment`: the default `stretch` is what hands the spare
+    // width to the chips/controls. An explicit `start` would ignore every
+    // stretch factor and leave every group hugging its labels.
+    cross-axis-alignment: center;
+
+    InlineLabel {
+        text: root.label;
+        vs: root.vs;
+    }
+    @children
+}
+
+component InlineStepper inherits Rectangle {
+    in property <int> value: 1;
+    in property <int> minimum: 1;
+    in property <int> maximum: 15;
+    in property <float> vs: 1;
+    callback changed(int);
+
+    height: 24px * root.vs;
+    width: 88px * root.vs;
+    border-radius: Theme.radius-sm * root.vs;
+    border-width: 1px * root.vs;
+    border-color: Theme.node-stroke;
+
+
+    HorizontalLayout {
+        spacing: 0px;
+        cross-axis-alignment: center;
+        Rectangle {
+            width: 24px * root.vs;
+            height: 100%;
+            border-radius: Theme.radius-sm * root.vs;
+            background: minus-ta.has-hover ? Theme.hover : transparent;
+            Text {
+                text: "-";
+                font-size: 13px * root.vs;
+                color: Theme.node-text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            minus-ta := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.changed(max(root.minimum, root.value - 1));
+                }
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: "\{root.value}";
+            font-size: 12px * root.vs;
+            color: Theme.node-text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            width: 24px * root.vs;
+            height: 100%;
+            border-radius: Theme.radius-sm * root.vs;
+            background: plus-ta.has-hover ? Theme.hover : transparent;
+            Text {
+                text: "+";
+                font-size: 13px * root.vs;
+                color: Theme.node-text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            plus-ta := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.changed(min(root.maximum, root.value + 1));
+                }
+            }
+        }
+    }
+}
+
+export component InlineGenerationPanel inherits VerticalLayout {
+    in property <string> mode: "image";
+    // The fixed model name for this card's capability. It is a label, not a
+    // picker: the provider/model assignment is locked.
+    in property <string> model: "";
+    // Provider brand letter of the fixed model (the model row's badge).
+    in property <string> model-brand: "A";
+    in property <GenerationSettings> settings: {
+        quality: "auto",
+        size-scale: "auto",
+        size-ratio: "1:1",
+        count: 1,
+        seconds: 6,
+        resolution: "720",
+        audio: true,
+        watermark: false,
+        reasoning: "auto",
+        text-count: 1,
+    };
+    in property <float> vs: 1;
+    callback setting(string, string);
+
+    in property <[string]> qualities: ["Auto", "High", "Medium", "Low"];
+    in property <[string]> quality-ids: ["auto", "high", "medium", "low"];
+    in property <[string]> ratios: ["1:1", "2:3", "3:2", "4:3", "3:4", "16:9", "9:16", "21:9", "9:21", "auto"];
+    in property <[string]> scales: ["1k", "2k", "4k", "auto"];
+    in property <[string]> resolutions: ["480", "720", "1080"];
+    in property <[string]> efforts: ["Auto", "Low", "Med", "High", "XH"];
+    in property <[string]> effort-ids: ["auto", "low", "medium", "high", "xhigh"];
+
+    // One spacing step between rows. The default stretch lets every row take an
+    // equal share of extra card height, so the rhythm stays even instead of
+    // collecting dead space above the action. The cross axis stretches too, so
+    // every row spans the card's full inner width.
+    spacing: Theme.space-2 * root.vs;
+    cross-axis-alignment: stretch;
+    // A cap rather than a fixed height: the panel is laid out at its preferred
+    // height everywhere (the text card's Flickable), and only a stretched
+    // instance (the image/video card body) takes the spare height. The cap is
+    // proportional too, so it cannot clamp one zoom and not another.
+    max-height: 2000px * root.vs;
+
+    // ---- model: one full-width static label (no picker) --------------------
+    model-row := Rectangle {
+        width: 100%;
+        min-height: 32px * root.vs;
+        max-height: 1000px * root.vs;
+        vertical-stretch: 1;
+        border-radius: Theme.radius-md * root.vs;
+        border-width: 1px * root.vs;
+        border-color: Theme.node-stroke;
+        background: Theme.toolbar-surface;
+
+        HorizontalLayout {
+            padding-left: Theme.space-2 * root.vs;
+            padding-right: Theme.space-2 * root.vs;
+            spacing: Theme.space-2 * root.vs;
+            cross-axis-alignment: center;
+
+            Rectangle {
+                width: 18px * root.vs;
+                height: 18px * root.vs;
+                border-radius: Theme.radius-sm * root.vs;
+                background: Theme.node-accent-soft;
+                border-width: 1px * root.vs;
+                border-color: Theme.brand.with-alpha(0.35);
+                Text {
+                    text: root.model-brand;
+                    font-size: 10px * root.vs;
+                    font-weight: 700;
+                    color: Theme.node-accent;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.model;
+                font-size: 12px * root.vs;
+                color: Theme.node-text;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+
+    // ---- image parameters ---------------------------------------------------
+    if root.mode == "image" : InlineParamRow {
+        label: "Quality";
+        vs: root.vs;
+        vertical-stretch: 1;
+        // Four equal shares of the control column: no ragged tail, no gap.
+        for index in 4 : InlinePill {
+            horizontal-stretch: 1;
+            vs: root.vs;
+            label: root.qualities[index];
+            selected: root.settings.quality == root.quality-ids[index];
+            clicked => {
+                root.setting("quality", root.quality-ids[index]);
+            }
+        }
+    }
+    if root.mode == "image" : InlineParamRow {
+        label: "Size";
+        vs: root.vs;
+        vertical-stretch: 1;
+        // Five equal columns, two chip rows: the ten ratios fill the full
+        // control width instead of hugging their labels into a cramped block.
+        VerticalLayout {
+            horizontal-stretch: 1;
+            vertical-stretch: 1;
+            spacing: Theme.space-1 * root.vs;
+            cross-axis-alignment: stretch;
+
+            HorizontalLayout {
+                spacing: Theme.space-1 * root.vs;
+                for index in 5 : InlinePill {
+                    horizontal-stretch: 1;
+                    vs: root.vs;
+                    label: root.ratios[index];
+                    selected: root.settings.size-ratio == root.ratios[index];
+                    clicked => {
+                        root.setting("size-ratio", root.ratios[index]);
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: Theme.space-1 * root.vs;
+                for index in 5 : InlinePill {
+                    horizontal-stretch: 1;
+                    vs: root.vs;
+                    label: root.ratios[index + 5] == "auto" ? "Auto" : root.ratios[index + 5];
+                    selected: root.settings.size-ratio == root.ratios[index + 5];
+                    clicked => {
+                        root.setting("size-ratio", root.ratios[index + 5]);
+                    }
+                }
+            }
+        }
+    }
+    if root.mode == "image" : InlineParamRow {
+        label: "Res";
+        vs: root.vs;
+        vertical-stretch: 1;
+        for index in 4 : InlinePill {
+            horizontal-stretch: 1;
+            vs: root.vs;
+            label: root.scales[index] == "auto" ? "Auto" : root.scales[index];
+            selected: root.settings.size-scale == root.scales[index];
+            clicked => {
+                root.setting("size-scale", root.scales[index]);
+            }
+        }
+    }
+    if root.mode == "image" : InlineParamRow {
+        label: "Count";
+        vs: root.vs;
+        vertical-stretch: 1;
+        InlineStepper {
+            vs: root.vs;
+            value: root.settings.count;
+            maximum: 15;
+            changed(value) => {
+                root.setting("count", "\{value}");
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.settings.count == 1 ? "1 image" : "\{root.settings.count} images";
+            font-size: 11px * root.vs;
+            color: Theme.node-muted;
+            vertical-alignment: center;
+            horizontal-alignment: left;
+        }
+    }
+
+    // ---- video parameters ---------------------------------------------------
+    if root.mode == "video" : InlineParamRow {
+        label: "Res";
+        vs: root.vs;
+        vertical-stretch: 1;
+        // Three equal columns: the group fills the control column exactly like
+        // the image Res row, at every zoom.
+        for value in root.resolutions : InlinePill {
+            horizontal-stretch: 1;
+            vs: root.vs;
+            label: "\{value}p";
+            selected: root.settings.resolution == value;
+            clicked => {
+                root.setting("resolution", value);
+            }
+        }
+    }
+    if root.mode == "video" : InlineParamRow {
+        label: "Seconds";
+        vs: root.vs;
+        vertical-stretch: 1;
+        // The slider is wrapped in its own stretch box: the rail, handle and
+        // touch target take the full control column and scale with `vs` (a
+        // bare Slider keeps its own fixed 20px/12px metrics and would collapse
+        // to a dot at this width).
+        Rectangle {
+            horizontal-stretch: 1;
+            height: 20px * root.vs;
+            background: transparent;
+
+            Slider {
+                width: 100%;
+                height: 100%;
+                minimum: 4;
+                maximum: 30;
+                step: 1;
+                value: root.settings.seconds;
+                track-height: 4px * root.vs;
+                track-radius: 2px * root.vs;
+                handle-size: 12px * root.vs;
+                track-color: Theme.node-stroke;
+                fill-color: Theme.node-active-stroke;
+                handle-color: Theme.node-text;
+                changed(value) => {
+                    root.setting("seconds", "\{round(value)}");
+                }
+            }
+        }
+        Text {
+            width: 28px * root.vs;
+            text: "\{root.settings.seconds}s";
+            font-size: 11px * root.vs;
+            color: Theme.node-muted;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+    if root.mode == "video" : InlineParamRow {
+        label: "Audio";
+        vs: root.vs;
+        vertical-stretch: 1;
+        InlinePill {
+            vs: root.vs;
+            label: "On";
+            selected: root.settings.audio;
+            clicked => {
+                root.setting("audio", "true");
+            }
+        }
+        InlinePill {
+            vs: root.vs;
+            label: "Off";
+            selected: !root.settings.audio;
+            clicked => {
+                root.setting("audio", "false");
+            }
+        }
+    }
+    if root.mode == "video" : InlineParamRow {
+        label: "Mark";
+        vs: root.vs;
+        vertical-stretch: 1;
+        InlinePill {
+            vs: root.vs;
+            label: "On";
+            selected: root.settings.watermark;
+            clicked => {
+                root.setting("watermark", "true");
+            }
+        }
+        InlinePill {
+            vs: root.vs;
+            label: "Off";
+            selected: !root.settings.watermark;
+            clicked => {
+                root.setting("watermark", "false");
+            }
+        }
+    }
+
+    // ---- text parameters ----------------------------------------------------
+    if root.mode == "text" : InlineParamRow {
+        label: "Reason";
+        vs: root.vs;
+        vertical-stretch: 1;
+        for index in 5 : InlinePill {
+            horizontal-stretch: 1;
+            vs: root.vs;
+            label: root.efforts[index];
+            selected: root.settings.reasoning == root.effort-ids[index];
+            clicked => {
+                root.setting("reasoning", root.effort-ids[index]);
+            }
+        }
+    }
+    if root.mode == "text" : InlineParamRow {
+        label: "Count";
+        vs: root.vs;
+        vertical-stretch: 1;
+        InlineStepper {
+            vs: root.vs;
+            value: root.settings.text-count;
+            maximum: 15;
+            changed(value) => {
+                root.setting("text-count", "\{value}");
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.settings.text-count == 1 ? "1 generation" : "\{root.settings.text-count} generations";
+            font-size: 11px * root.vs;
+            color: Theme.node-muted;
+            vertical-alignment: center;
+            horizontal-alignment: left;
+        }
+    }
+}

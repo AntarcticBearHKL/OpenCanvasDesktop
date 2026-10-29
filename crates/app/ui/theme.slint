@@ -1,0 +1,373 @@
+// Design tokens — literal values transcribed from
+// docs/research/design-system.md §1A/§1B (canvas/node/toolbar) and §3C/§3D
+// (globals), which mirror web/src/lib/canvas-theme.ts + globals.css.
+// `dark` is the only switch; every color re-evaluates instantly when it flips.
+
+// One dock tab group: panel ids in tab order, their display labels, the active
+// tab (`web/src/components/canvas/dock/dock-layout.ts` `DockGroup`).
+export struct DockTabGroup {
+    panels: [string],
+    labels: [string],
+    active: string,
+}
+
+// One studio's dock layout, as Rust pushes it (`crates/app/src/dock.rs`).
+export struct DockLayoutState {
+    left: [DockTabGroup],
+    right: [DockTabGroup],
+    bottom: [DockTabGroup],
+    left-size: length,
+    right-size: length,
+    bottom-size: length,
+    left-split: float,
+    right-split: float,
+}
+
+// The tooltip surface state (the web's AntD tooltip: 200ms enter delay, hidden
+// at once on leave, never shown for a disabled target).
+export struct TooltipState {
+    text: string,
+    // One-line explanation revealed after the second (longer) hover delay.
+    description: string,
+    visible: bool,
+    x: length,
+    y: length,
+}
+
+// One active toast (`App::notices`): a text, a tone and a stable id the
+// dismiss button reports back. The Rust side owns the stack and the auto-dismiss
+// deadlines (AntD `message`); this only carries what the stack renders.
+export struct ToastRow {
+    id: int,
+    text: string,
+    error: bool,
+}
+
+export global Theme {
+    in-out property <bool> dark: false;
+    // OS reduced-motion ("Show animations in Windows"); Rust reads it once
+    // (`dock.rs::reduced_motion`) and the animated chrome shortens to 0ms.
+    in-out property <bool> reduced-motion: false;
+
+    // ---- window surface ----------------------------------------------------
+    // The desktop behind the window is captured once, Gaussian-blurred in
+    // Rust (`crates/app/src/glass_capture.rs`) and pinned under the plate; see
+    // `crates/app/src/glass_runtime.rs`. The window plate paints `window-tint`
+    // over that captured blur. A move only changes the image offset; a blur
+    // change re-blurs the stored capture.
+    //
+    // Both values are the Appearance tab's settings, persisted in `ui.json`
+    // (`tint_opacity`, `blur`) and restored by `App::new`:
+    //
+    // * `tint-opacity` 0–100 is the plate's alpha: 0 is almost clear (a 4%
+    //   wash), 100 is 99% opaque. 80 is the shipped asset-library frost.
+    // * `blur` 0–100 is the in-app Gaussian strength: 0 removes the blurred
+    //   layer and falls back to the opaque plate, above 0 the whole-desktop
+    //   capture is blurred (`glass_capture.rs`). 100 is the shipped frost.
+    in-out property <float> tint-opacity: 80;
+    in-out property <float> blur: 100;
+
+    // 0 → 4% (almost clear), 100 → 99% (nearly opaque). The shipped 80 is the
+    // asset-library "20% transparency" tint, i.e. a bright 80% white frost
+    // over the blurred capture. Pure so the Appearance tab's helper line and
+    // the plate read one formula.
+    pure function plate-alpha(opacity: float) -> float {
+        return 0.04 + 0.95 * Math.max(0, Math.min(100, opacity)) / 100;
+    }
+    // Kept as a named helper for the plate binding; the dark theme uses the
+    // same tint strength (the asset-library implementation does not dim it).
+    pure function plate-wash-alpha(opacity: float, is-dark: bool) -> float {
+        return plate-alpha(opacity);
+    }
+    // The window plate over the captured blur: the ONE wash between the
+    // blurred desktop and every surface in the app. At the shipped 80 it is a
+    // bright ~80% white frost in light (and the same strength in dark), matching
+    // the asset-library look. Every surface above the plate is genuinely
+    // see-through (`glass-content`/`glass-panel`/`glass-panel-strong` below), so
+    // the frost is the plate *plus* the tier. Opaque `background` is used until
+    // the first capture lands (or when the Blur slider is 0).
+    out property <color> window-tint: (dark ? #121212 : #F4F5F7).with-alpha(plate-wash-alpha(tint-opacity, dark));
+
+    // ---- dock + tooltip runtime state (see the note below the tokens) -------
+    in-out property <DockLayoutState> dock-image: {
+        left: [],
+        right: [],
+        bottom: [],
+        left-size: 270px,
+        right-size: 288px,
+        bottom-size: 178px,
+        left-split: 0.5,
+        right-split: 0.5,
+    };
+    // The in-flight panel drag, shared with the drop overlay.
+    in-out property <string> dock-drag-studio: "";
+    in-out property <string> dock-drag-panel: "";
+    in-out property <string> dock-drag-label: "";
+    in-out property <length> dock-drag-x: 0px;
+    in-out property <length> dock-drag-y: 0px;
+    // `"edge|groupIndex"` while the pointer is over a drop zone, else "".
+    in-out property <string> dock-drag-target: "";
+    // studio, op, argument, detail (tooltip description), a, b (see
+    // `dock.rs::dock_request`).
+    callback dock-request(string, string, string, string, float, float);
+
+    // The tooltip surface (one at a time, whichever studio owns it).
+    in-out property <TooltipState> tooltip: {
+        text: "",
+        description: "",
+        visible: false,
+        x: 0px,
+        y: 0px,
+    };
+
+    // canvas.*
+    out property <color> canvas-background: dark ? #15120E : #F4F1EB;
+    // The canvas FIELD is `glass-content` (below): the same base tone, now at
+    // 30% over the blurred desktop. `canvas-background` stays the opaque
+    // reference the contrast tests and the wire labels measure against.
+    // Grid dot ink. A dot is a near-zero-length round segment, so the 2.5px
+    // stroke width IS its diameter and the ink alpha is the remaining lever.
+    // 0.52 light / 0.30 dark are neutral-gray inks with the old warm cast
+    // removed (the channels sit within a few points of each other instead of
+    // leaning red/yellow): the grid layer draws them at 0.65 opacity
+    // (`app.slint`), which measures ~1.50:1 (light) and ~1.53:1 (dark) against
+    // `canvas-background` — you notice the dots only when you look for them, but
+    // they never vanish.
+    out property <color> canvas-dot: dark ? rgba(200, 198, 194, 0.30) : rgba(118, 116, 112, 0.52);
+    out property <color> canvas-selection-stroke: dark ? #d6d1c8 : #8C8175;
+    out property <color> canvas-selection-fill: dark ? rgba(250, 249, 247, 0.1) : rgba(28, 25, 23, 0.07);
+    out property <color> canvas-accent-fill: dark ? rgba(245, 136, 90, 0.16) : rgba(216, 92, 58, 0.1);
+
+    // node.*
+    out property <color> node-label: dark ? #E7E1D8 : #4A443C;
+    out property <color> node-fill: dark ? #201D18 : #FFFFFF;
+    out property <color> node-panel: dark ? #1B1813 : #FFFEFC;
+    out property <color> node-stroke: dark ? #3A342C : #E8E2D8;
+    out property <color> node-active-stroke: dark ? #efe9df : #3A342D;
+    out property <color> node-placeholder: dark ? #9c958b : #9A9288;
+    out property <color> node-text: dark ? #faf8f5 : #26221D;
+    out property <color> node-muted: dark ? #C4BDB2 : #6B635A;
+    out property <color> node-faint: dark ? #a8a29e : #7E766C;
+    out property <color> node-danger: dark ? #f87171 : #b91c1c;
+    out property <color> node-danger-soft: dark ? rgba(248, 113, 113, 0.16) : #fbe7e7;
+    out property <color> node-accent: dark ? #F5885A : #D85C3A;
+    out property <color> node-accent-text: dark ? #FBAE82 : #B8451F;
+    out property <color> node-accent-soft: dark ? rgba(245, 136, 90, 0.16) : #FBEAE2;
+    out property <color> node-success: dark ? #4ade80 : #15803d;
+    out property <color> node-success-soft: dark ? rgba(74, 222, 128, 0.16) : #e4f4e8;
+    out property <color> node-warning: dark ? #fbbf24 : #96620a;
+    out property <color> node-warning-soft: dark ? rgba(251, 191, 36, 0.16) : #fbf0dc;
+    out property <color> node-info: dark ? #2dd4bf : #0f766e;
+    out property <color> node-info-soft: dark ? rgba(45, 212, 191, 0.16) : #e2f2ef;
+
+    // toolbar.*
+    out property <color> toolbar-panel: dark ? rgba(27, 24, 19, 0.86) : rgba(255, 254, 252, 0.86);
+    out property <color> toolbar-border: dark ? rgba(255, 255, 255, 0.14) : rgba(38, 34, 29, 0.12);
+    out property <color> toolbar-item: dark ? #dcd6cc : #3A342D;
+    out property <color> toolbar-item-hover: dark ? #201D18 : #F1ECE4;
+    out property <color> toolbar-active-bg: dark ? #2E2921 : #EFE9DF;
+    out property <color> toolbar-active-text: dark ? #faf8f5 : #26221D;
+    out property <color> toolbar-accent-bg: dark ? rgba(245, 136, 90, 0.16) : #FBEAE2;
+    out property <color> toolbar-accent-text: dark ? #F5885A : #B8451F;
+    out property <color> toolbar-surface: dark ? #1E1A15 : #FFFEFC;
+    out property <color> toolbar-item-text: dark ? #efe9df : #3A342D;
+
+    // globals (globals.css :root / .dark)
+    out property <color> background: dark ? #15120E : #F4F1EB;
+    out property <color> foreground: dark ? #faf8f5 : #26221D;
+    out property <color> brand: dark ? #F5885A : #D85C3A;
+    out property <color> brand-foreground: dark ? #1e1c19 : #ffffff;
+    out property <color> brand-soft: dark ? rgba(245, 136, 90, 0.16) : #FBEAE2;
+    out property <color> hover: dark ? rgba(245, 136, 90, 0.14) : rgba(216, 92, 58, 0.08);
+    out property <color> border: dark ? #3A342C : #E8E2D8;
+    // The hover step of a control's 1px border (sibling rule: `border` at rest,
+    // `border-strong` on hover, `accent` while active/open). One step darker
+    // than `border` in light, one step lighter in dark.
+    out property <color> border-strong: dark ? #554C41 : #C9C0B2;
+    out property <color> card: dark ? #1B1813 : #FFFEFC;
+    out property <color> popover: dark ? #1B1813 : #FFFEFC;
+    out property <color> muted: dark ? #201D18 : #F1ECE4;
+    out property <color> muted-foreground: dark ? #c8c2b8 : #6B635A;
+    // The modal scrim (was a literal `rgba(0, 0, 0, 0.45)` in `modals.slint`).
+    out property <color> overlay: dark ? rgba(0, 0, 0, 0.42) : rgba(28, 25, 23, 0.28);
+    // A neutral inset plate over a surface that may carry arbitrary imagery
+    // (the mention menu's preview box, was a literal `#0000001a`).
+    out property <color> mention-plate: dark ? rgba(255, 255, 255, 0.1) : rgba(0, 0, 0, 0.1);
+
+    // ---- surface tiers ------------------------------------------------------
+    // Everything draws over the captured blurred desktop plus `window-tint`. Three
+    // translucent tiers give the frost its depth. Same tier = same fill,
+    // everywhere:
+    //   content = the canvas field / view areas            (0.30 / 0.30)
+    //   panel   = side panel, dock, toolbars, rulers, bar  (0.55 / 0.55)
+    //   strong  = dialogs, menus, popovers, toasts         (0.80 / 0.82)
+    // Composited over the window tint (source-over, the root plate is the only
+    // wash), that stack lands at:
+    //   content  0.664 light / 0.566 dark  (the clear field: the frost shows)
+    //   panel    0.784 light / 0.721 dark  (frosted chrome, the target band)
+    //   strong   0.904 light / 0.888 dark  (menus stay comfortably legible)
+    // The field is deliberately the clearest layer — it is what lets the dot
+    // grid and the captured blur read — while the chrome carries the body text and
+    // therefore the paper-like weight. No tier is opaque: the modal scrim
+    // (`overlay`) is the only near-black plate, and it is untouched.
+    // The canvas field shares the plate's paper tone (249,247,243); the chrome
+    // tier keeps the app's older base (244,241,235) so it composites to the
+    // exact opaque fallback tone when the desktop is the window base — the
+    // tonal step is what separates a panel from the field without a hard edge.
+    // `canvas-field`, `glass`, `glass-surface`, `glass-raised`,
+    // `glass-highlight`, `glass-hairline`, `glass-shadow` and `window-bg` stay
+    // gone: every former user resolves to one of these tiers.
+    out property <color> glass-content: dark ? rgba(18, 18, 18, 0.30) : rgba(244, 245, 247, 0.30);
+    out property <color> glass-panel: dark ? rgba(21, 18, 14, 0.55) : rgba(244, 241, 235, 0.55);
+    out property <color> glass-panel-strong: dark ? rgba(21, 18, 14, 0.82) : rgba(244, 241, 235, 0.80);
+    out property <color> glass-panel-border: foreground.with-alpha(0.12);
+    // No shadow tokens: separation is the 1px hairline above plus the tier
+    // tone. Every outer glow was removed from the chrome (see the sweep in
+    // `ui_shell_tests.rs`); a new shadow must not be reintroduced here.
+
+
+    // Hardcoded canvas-surface literal (design-system §1E): node selection blue.
+    // The soft variant only ever fed the selected-node glow, which is gone with
+    // the shadow sweep; selection is the accent stroke now.
+    out property <color> selection-blue: #2f80ff;
+
+    // Shared canvas-surface literals (design-system §1E: checkerboard and
+    // marching ants — the web hardcodes these inside its studio components
+    // rather than the theme tokens).
+    //
+    // The transparency checker is a quiet paper texture, not a chessboard: two
+    // low-saturation warm neutrals at 55% over the canvas surround, so the two
+    // tiles differ by only a few percent in luminance. The painter keeps the
+    // tile at a small, screen-constant 8px (`image/render.rs` `CHECKER_TILE`).
+    out property <color> image-checker-light: rgba(246, 244, 240, 0.55);
+    out property <color> image-checker-dark: rgba(232, 228, 221, 0.55);
+    out property <color> image-ants-dark: #000000;
+    out property <color> image-ants-light: #ffffff;
+
+    // Image Studio canvas-surface literals (design-system §1E: the web
+    // hardcodes these inside ps-overlays.tsx / image-studio.tsx rather than
+    // the theme tokens). Marching ants reuse the image ant pair above.
+    out property <color> image-guide: #3b82f6;
+    out property <color> image-snap-line: #ec4899;
+    out property <color> image-path-line: #2563eb;
+    out property <color> image-draft: rgba(47, 128, 255, 0.9);
+    out property <color> image-transform: #2f80ff;
+    out property <color> image-board-plate: rgba(127, 127, 127, 0.08);
+
+    // Colour-picker surfaces (ps-color-picker.tsx paints the SV square and the
+    // hue strip from inline `linear-gradient`s; the desktop picker shares them
+    // with the Image Studio's picker).
+    out property <brush> image-sv-white: @linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0) 100%);
+    out property <brush> image-sv-black: @linear-gradient(0deg, #000000 0%, rgba(0, 0, 0, 0) 100%);
+    out property <brush> image-hue-strip: @linear-gradient(90deg, #ff0000 0%, #ffff00 16.67%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.67%, #ff00ff 83.33%, #ff0000 100%);
+    out property <color> picker-handle: #ffffff;
+
+    // Video letterbox behind a poster frame (`VideoNodeContent` `bg-black`):
+    // content layered over arbitrary media may use hard black (design-system
+    // §1E), and the desktop has no video decoder — the poster stands in for the
+    // frame.
+    out property <color> media-video-backdrop: #000000;
+
+    // Sticky-note ink: the web note always paints #1c1917 on its pastel surface
+    // regardless of the app theme (sticky-note/index.tsx:145,150), so both
+    // values are theme-independent literals like the other canvas-surface colors.
+    out property <color> plugin-note-ink: #1c1917;
+    out property <color> plugin-note-ink-soft: rgba(28, 25, 23, 0.45);
+
+    // Radii (globals.css: --radius 10px, 3xl = 22px for node cards).
+    out property <length> radius-sm: 6px;
+    out property <length> radius-md: 8px;
+    out property <length> radius-lg: 10px;
+    out property <length> radius-xl: 14px;
+    out property <length> radius-2xl: 18px;
+    out property <length> radius-3xl: 22px;
+    // Frameless window corner radius; DWM rounds the OS window to the same
+    // shape (`glass::round_corners`).
+    out property <length> radius-window: 10px;
+
+    // ------------------------------------------------------------------------
+    // Layout contract (frozen names — a sibling agent consumes these read-only).
+    // One spacing scale, one row/header/control height per surface, so every
+    // panel's padding, gutters and row heights come from here instead of being
+    // hand-placed. All lengths; the values are a 4px base grid.
+    // ------------------------------------------------------------------------
+    out property <length> space-1: 4px;
+    out property <length> space-2: 8px;
+    out property <length> space-3: 12px;
+    out property <length> space-4: 16px;
+    out property <length> space-5: 20px;
+    out property <length> space-6: 24px;
+    out property <length> space-8: 32px;
+    // Panel interior padding and the gutter between sibling panels/rows.
+    out property <length> panel-pad: 12px;
+    out property <length> panel-gap: 8px;
+    // Row heights: a compact list row and the roomier settings row.
+    out property <length> row-h: 28px;
+    out property <length> row-h-lg: 32px;
+    // A panel/section header strip.
+    out property <length> header-h: 30px;
+    // An interactive control (button, input, select).
+    out property <length> control-h: 28px;
+    // The custom title bar (window chrome).
+    out property <length> titlebar-h: 40px;
+
+    // Motion (motion-catalog.md): Tailwind default transition, side-panel tween,
+    // the 150ms drag-ghost entry (ease-out) and the 220ms connection-label pop.
+    out property <duration> motion-fast: 150ms;
+    out property <duration> motion-ghost: 150ms;
+    out property <duration> panel-motion: 500ms;
+    // The sibling app's control scale (asset-library-desktop/ui/components.slint):
+    // press feedback 90ms, hover 110ms, selection 150ms, lift 180ms — all
+    // ease-out. Existing `motion-fast` (150ms) stays as the selection step.
+    out property <duration> motion-press: 90ms;
+    out property <duration> motion-hover: 110ms;
+    out property <duration> motion-select: 150ms;
+    // Popover / menu / modal reveal (`canvas-popover-in`, 160ms ease-out,
+    // 0.98 -> 1 fade + rise).
+    out property <duration> motion-popover: 160ms;
+    // A freshly created node's entrance (`canvas-node-enter`, 420ms total,
+    // motion-catalog.md §2).
+    out property <duration> motion-enter: 420ms;
+    // Card lift on hover (the sibling's 180ms step) and the marching-ants
+    // cadence (ps-overlays ANT_TICK_MS). Both are part of the motion contract
+    // and are asserted by the render tests.
+    out property <duration> motion-lift: 180ms;
+    out property <duration> motion-ants: 120ms;
+    // One full turn of a busy spinner (`animate-spin`, 1s linear).
+    out property <duration> motion-spin: 1000ms;
+    // Marching-ants phase step (`ps-overlays.tsx:21 ANT_TICK_MS = 120`); the
+    // desktop advances the dash phase on this cadence in `image_render.rs`.
+
+    // Studio typography (`studio-chrome.ts` panel titles, `ps-layers-panel.tsx`
+    // rows): panel titles 12px medium, layer names 14px, layer rows 36px tall,
+    // row icons 20px.
+    out property <length> text-panel-title: 12px;
+    out property <length> text-layer-name: 14px;
+    out property <length> row-layer-height: 36px;
+    out property <length> icon-layer: 20px;
+
+    // Modal width tiers (AntD `Modal` `width`): 520 default, 640 the plugin
+    // manager, 880 the texture type browser / samples browser.
+    out property <length> modal-width-default: 520px;
+    out property <length> modal-width-medium: 640px;
+    out property <length> modal-width-wide: 880px;
+
+    // `modal-width(tier)` - the one place a modal's width comes from.
+    public pure function modal-width(tier: string) -> length {
+        return tier == "wide" ? modal-width-wide
+            : tier == "medium" ? modal-width-medium
+            : modal-width-default;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The dock + tooltip runtime state rides on the Theme global (its properties
+// above and the structs at the top of this file).
+//
+// Slint only generates the Rust API for globals the *root* document re-exports
+// (`app.slint` has `export { Theme } from "theme.slint";`), and `app.slint` is
+// not ours to edit, so a dedicated `DockStore`/`TooltipHost` global would not
+// be reachable from Rust today. Moving the state onto its own global is a
+// one-line `export { DockStore, TooltipHost } from "components/dock.slint";`
+// in `app.slint`; the model itself lives in `crates/app/src/dock.rs`.
+// ---------------------------------------------------------------------------

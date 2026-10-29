@@ -1,0 +1,1402 @@
+// Image Studio panels (3/3): channels, paths, actions, resource pool,
+// adjustments grid, gradients, patterns, brushes and the shared per-type
+// editor (adjustment layers + fx styles) — the Slint half of
+// `ps-channels-panel.tsx`, `ps-paths-panel.tsx`, `ps-actions-panel.tsx`,
+// `ps-resource-pool-panel.tsx`, `ps-adjustments-panel.tsx`,
+// `ps-asset-panels.tsx`, `ps-adjustment-editor.tsx` and `ps-param-editors.tsx`.
+import { StudioTheme } from "../studio-theme.slint";
+import { IconButton, Slider } from "widgets.slint";
+import { Icons } from "icons.slint";
+import { ImageActionRow, ImageAdjustmentGroup, ImageAdjustmentRow, ImageAssetRow, ImageBrushRow, ImageChannelRow, ImageCurvePoint, ImageEditorRow, ImageFilterParam, ImageGradientRow, ImageGradientStopRow, ImagePathRow, ImagePatternRow } from "overlay-types.slint";
+import { PanelTitle, StudioCheckbox, StudioChip, StudioField, StudioIconButton, StudioSlider } from "studio-widgets.slint";
+
+// Shared panel header: title left, free-form actions row right.
+component PanelHead inherits Rectangle {
+    in property <string> title: "";
+    height: StudioTheme.header-h;
+    background: transparent;
+
+    HorizontalLayout {
+        padding-left: StudioTheme.panel-pad;
+        padding-right: StudioTheme.panel-pad;
+        spacing: StudioTheme.space-2;
+        cross-axis-alignment: center;
+        PanelTitle {
+            label: root.title;
+        }
+        @children
+    }
+}
+
+component PanelRule inherits Rectangle {
+    height: 1px;
+    background: StudioTheme.border;
+}
+
+component RowShell inherits Rectangle {
+    in property <bool> active: false;
+    callback clicked();
+    callback renamed();
+    height: StudioTheme.row-h;
+    border-radius: StudioTheme.radius-sm;
+    background: active ? StudioTheme.node-accent-soft : ta.has-hover ? StudioTheme.hover : transparent;
+    animate background {
+        duration: active ? StudioTheme.motion-select : StudioTheme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+        double-clicked => {
+            root.renamed();
+        }
+    }
+}
+
+component InlineNameEdit inherits Rectangle {
+    in property <string> initial: "";
+    in-out property <string> draft: initial;
+    callback edited(string);
+    callback save();
+    // Slint 1.18's TextInput exposes no blur/escape event, so Escape-cancel is
+    // handled by the studio root's key hook (`image_cancel_inline_rename_core`).
+    callback cancel();
+
+    height: StudioTheme.control-h;
+    border-radius: StudioTheme.radius-sm;
+    border-width: 1px;
+    border-color: StudioTheme.node-accent;
+    background: StudioTheme.panel-body;
+
+    input := TextInput {
+        x: 4px;
+        width: parent.width - 8px;
+        height: 100%;
+        text <=> root.draft;
+        single-line: true;
+        font-size: 11px;
+        color: StudioTheme.node-text;
+        vertical-alignment: center;
+        edited => {
+            root.edited(root.draft);
+        }
+        accepted => {
+            root.save();
+        }
+    }
+    init => {
+        input.focus();
+        input.select-all();
+    }
+}
+
+// Channels panel (`ps-channels-panel.tsx`): RGB/R/G/B rows with visibility +
+// active view, alpha channel list with load/delete/rename, save-selection.
+export component ImageChannelsPanel inherits Rectangle {
+    in property <[ImageChannelRow]> channels: [];
+    in property <bool> r-visible: true;
+    in property <bool> g-visible: true;
+    in property <bool> b-visible: true;
+    in property <string> view: "rgb";
+    in property <bool> has-selection: false;
+    callback action(string, string);
+    callback name-edited(string);
+
+    VerticalLayout {
+        spacing: 0;
+
+        PanelHead {
+            title: "Channels";
+            StudioIconButton { variant: "studio";
+                icon: Icons.plus;
+                enabled: root.has-selection;
+                clicked => {
+                    root.action("save", "");
+                }
+            }
+        }
+        PanelRule {
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: body.preferred-height;
+            body := VerticalLayout {
+                spacing: 0;
+
+                for channel in root.channels : RowShell {
+                    active: channel.active;
+                    clicked => {
+                        root.action("view", channel.id);
+                    }
+                    renamed => {
+                        root.action("rename", channel.id);
+                    }
+                    HorizontalLayout {
+                        padding-left: StudioTheme.space-1;
+                        padding-right: StudioTheme.space-1;
+                        spacing: StudioTheme.space-1;
+                        cross-axis-alignment: center;
+
+                        if channel.id == "r" || channel.id == "g" || channel.id == "b" : StudioIconButton { variant: "studio";
+                            icon: (channel.id == "r" ? root.r-visible : channel.id == "g" ? root.g-visible : root.b-visible) ? Icons.eye : Icons.eye-off;
+                            clicked => {
+                                root.action("visible", channel.id);
+                            }
+                        }
+                        if !(channel.id == "r" || channel.id == "g" || channel.id == "b") : Rectangle {
+                            width: 18px;
+                            height: 18px;
+                            Image {
+                                width: 100%;
+                                height: 100%;
+                                source: channel.thumb;
+                                image-fit: contain;
+                            }
+                        }
+                        if channel.id == "rgb" : Rectangle {
+                            width: 14px;
+                            height: 14px;
+                            border-radius: 3px;
+                            background: @linear-gradient(135deg, #ff0000 0%, #00ff00 50%, #0000ff 100%);
+                        }
+                        if channel.id == "r" : Rectangle {
+                            width: 14px;
+                            height: 14px;
+                            border-radius: 3px;
+                            background: #ff0000;
+                        }
+                        if channel.id == "g" : Rectangle {
+                            width: 14px;
+                            height: 14px;
+                            border-radius: 3px;
+                            background: #00ff00;
+                        }
+                        if channel.id == "b" : Rectangle {
+                            width: 14px;
+                            height: 14px;
+                            border-radius: 3px;
+                            background: #0000ff;
+                        }
+                        if channel.editing : InlineNameEdit {
+                            horizontal-stretch: 1;
+                            initial: channel.name;
+                            edited(text) => {
+                                root.name-edited(text);
+                            }
+                            save => {
+                                root.action("rename-save", channel.id);
+                            }
+                            cancel => {
+                                root.action("rename-cancel", channel.id);
+                            }
+                        }
+                        if !channel.editing : Text {
+                            horizontal-stretch: 1;
+                            text: channel.name;
+                            font-size: 11px;
+                            color: channel.active ? StudioTheme.node-accent : StudioTheme.node-label;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        if channel.active : Text {
+                            text: "\u{2713}";
+                            font-size: 10px;
+                            color: StudioTheme.node-accent;
+                            vertical-alignment: center;
+                        }
+                        if !channel.editing && !(channel.id == "rgb" || channel.id == "r" || channel.id == "g" || channel.id == "b") : StudioIconButton { variant: "studio";
+                            icon: Icons.folder-input;
+                            clicked => {
+                                root.action("load", channel.id);
+                            }
+                        }
+                        if !channel.editing && !(channel.id == "rgb" || channel.id == "r" || channel.id == "g" || channel.id == "b") : StudioIconButton { variant: "studio";
+                            icon: Icons.trash;
+                            danger: true;
+                            clicked => {
+                                root.action("delete", channel.id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Paths panel (`ps-paths-panel.tsx`): new/duplicate/delete, visibility +
+// rename, make-selection / fill / stroke.
+export component ImagePathsPanel inherits Rectangle {
+    in property <[ImagePathRow]> paths: [];
+    in property <bool> can-paint: false;
+    callback action(string, string);
+    callback name-edited(string);
+
+    VerticalLayout {
+        spacing: 0;
+
+        PanelHead {
+            title: "Paths";
+            StudioIconButton { variant: "studio";
+                icon: Icons.plus;
+                clicked => {
+                    root.action("new", "");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.copy;
+                clicked => {
+                    root.action("duplicate", "");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.trash;
+                danger: true;
+                clicked => {
+                    root.action("delete", "");
+                }
+            }
+        }
+        PanelRule {
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: body.preferred-height;
+            body := VerticalLayout {
+                spacing: 0;
+
+                for path in root.paths : RowShell {
+                    active: path.active;
+                    clicked => {
+                        root.action("active", path.id);
+                    }
+                    renamed => {
+                        root.action("rename", path.id);
+                    }
+                    HorizontalLayout {
+                        padding-left: StudioTheme.space-1;
+                        padding-right: StudioTheme.space-1;
+                        spacing: StudioTheme.space-1;
+                        cross-axis-alignment: center;
+
+                        StudioIconButton { variant: "studio";
+                            icon: path.visible ? Icons.eye : Icons.eye-off;
+                            clicked => {
+                                root.action("visible", path.id);
+                            }
+                        }
+                        // A small preview of the path (`ps-paths-panel.tsx` row).
+                        Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 4px;
+                            border-width: 1px;
+                            border-color: path.active ? StudioTheme.node-accent : StudioTheme.border;
+                            // `StudioTheme.muted` is the recessed well token here
+                            // (`theme.slint` has no `well`).
+                            background: StudioTheme.muted;
+                            clip: true;
+                            Image {
+                                x: 1px;
+                                y: 1px;
+                                width: parent.width - 2px;
+                                height: parent.height - 2px;
+                                source: path.thumb;
+                                image-fit: contain;
+                            }
+                        }
+                        if path.editing : InlineNameEdit {
+                            horizontal-stretch: 1;
+                            initial: path.name;
+                            edited(text) => {
+                                root.name-edited(text);
+                            }
+                            save => {
+                                root.action("rename-save", path.id);
+                            }
+                            cancel => {
+                                root.action("rename-cancel", path.id);
+                            }
+                        }
+                        if !path.editing : Text {
+                            horizontal-stretch: 1;
+                            text: path.name;
+                            font-size: 11px;
+                            color: path.active ? StudioTheme.node-accent : StudioTheme.node-label;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        if path.active : Text {
+                            text: "\u{2713}";
+                            font-size: 10px;
+                            color: StudioTheme.node-accent;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        PanelRule {
+        }
+        HorizontalLayout {
+            padding: StudioTheme.panel-pad;
+            spacing: StudioTheme.space-1;
+            cross-axis-alignment: center;
+            StudioChip {
+                label: "Selection";
+                enabled: root.can-paint;
+                clicked => {
+                    root.action("selection", "");
+                }
+            }
+            StudioChip {
+                label: "Fill";
+                enabled: root.can-paint;
+                clicked => {
+                    root.action("fill", "");
+                }
+            }
+            StudioChip {
+                label: "Stroke";
+                enabled: root.can-paint;
+                clicked => {
+                    root.action("stroke", "");
+                }
+            }
+        }
+    }
+}
+
+// Actions panel (`ps-actions-panel.tsx`): recorder + saved macros.
+export component ImageActionsPanel inherits Rectangle {
+    in property <[ImageActionRow]> actions: [];
+    in property <bool> recording: false;
+    in property <int> recorded: 0;
+    callback action(string, string);
+    callback name-edited(string);
+
+    VerticalLayout {
+        spacing: 0;
+
+        PanelHead {
+            title: "Actions";
+            Text {
+                width: 96px;
+                text: root.recording ? "rec \{root.recorded}" : "idle";
+                font-size: 10px;
+                color: root.recording ? StudioTheme.node-danger : StudioTheme.node-muted;
+                vertical-alignment: center;
+            }
+            StudioIconButton { variant: "studio";
+                icon: root.recording ? Icons.stop-square : Icons.play;
+                active: root.recording;
+                clicked => {
+                    root.action(root.recording ? "stop" : "record", "");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.check;
+                enabled: root.recorded > 0;
+                clicked => {
+                    root.action("save", "");
+                }
+            }
+        }
+        PanelRule {
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: body.preferred-height;
+            body := VerticalLayout {
+                spacing: 0;
+
+                for entry in root.actions : RowShell {
+                    renamed => {
+                        root.action("rename", entry.id);
+                    }
+                    HorizontalLayout {
+                        padding-left: StudioTheme.space-1;
+                        padding-right: StudioTheme.space-1;
+                        spacing: StudioTheme.space-1;
+                        cross-axis-alignment: center;
+
+                        StudioIconButton { variant: "studio";
+                            icon: Icons.play;
+                            clicked => {
+                                root.action("play", entry.id);
+                            }
+                        }
+                        if entry.editing : InlineNameEdit {
+                            horizontal-stretch: 1;
+                            initial: entry.name;
+                            edited(text) => {
+                                root.name-edited(text);
+                            }
+                            save => {
+                                root.action("rename-save", entry.id);
+                            }
+                            cancel => {
+                                root.action("rename-cancel", entry.id);
+                            }
+                        }
+                        if !entry.editing : Text {
+                            horizontal-stretch: 1;
+                            text: entry.name;
+                            font-size: 11px;
+                            color: StudioTheme.node-label;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            width: 22px;
+                            text: "\{entry.steps}";
+                            font-size: 10px;
+                            color: StudioTheme.node-muted;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                        }
+                        StudioIconButton { variant: "studio";
+                            icon: Icons.trash;
+                            danger: true;
+                            clicked => {
+                                root.action("delete", entry.id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Resource pool (`ps-resource-pool-panel.tsx`): search + add-as-layer.
+export component ImageAssetsPanel inherits Rectangle {
+    in property <[ImageAssetRow]> assets: [];
+    in property <string> search: "";
+    callback search-edited(string);
+    callback action(string, string);
+    callback dropped(string, length, length);
+    callback refresh();
+
+    VerticalLayout {
+        spacing: 0;
+
+        PanelHead {
+            title: "Assets";
+            StudioIconButton { variant: "studio";
+                icon: Icons.loader;
+                clicked => {
+                    root.refresh();
+                }
+            }
+        }
+        PanelRule {
+        }
+        Rectangle {
+            height: StudioTheme.header-h;
+            HorizontalLayout {
+                padding-left: StudioTheme.panel-pad;
+                padding-right: StudioTheme.panel-pad;
+                StudioField {
+                    horizontal-stretch: 1;
+                    value: root.search;
+                    edited(value) => {
+                        root.search-edited(value);
+                    }
+                }
+            }
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: body.preferred-height;
+            body := VerticalLayout {
+                spacing: 0;
+
+                for row in root.assets : RowShell {
+                    height: StudioTheme.row-h-lg;
+                    // Drag-to-board: press, move more than 3px, release over the
+                    // canvas (`PsResourcePoolPanel` drag); a click still adds.
+                    drag-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        property <bool> dragging: false;
+                        property <length> press-x: 0px;
+                        property <length> press-y: 0px;
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.down) {
+                                self.dragging = false;
+                                self.press-x = self.mouse-x;
+                                self.press-y = self.mouse-y;
+                            } else if (e.kind == PointerEventKind.move && self.pressed) {
+                                if (Math.abs(self.mouse-x - self.press-x) > 3px || Math.abs(self.mouse-y - self.press-y) > 3px) {
+                                    self.dragging = true;
+                                }
+                            } else if (e.kind == PointerEventKind.up) {
+                                if (self.dragging) {
+                                    root.dropped(row.project-id + "/" + row.layer-id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                } else {
+                                    root.action("add", row.project-id + "/" + row.layer-id);
+                                }
+                                self.dragging = false;
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        padding-left: StudioTheme.space-1;
+                        padding-right: StudioTheme.space-1;
+                        spacing: StudioTheme.space-1;
+                        cross-axis-alignment: center;
+
+                        Rectangle {
+                            width: StudioTheme.space-6;
+                            height: StudioTheme.space-6;
+                            border-radius: 4px;
+                            background: StudioTheme.image-checker-light;
+                            Image {
+                                width: 100%;
+                                height: 100%;
+                                source: row.thumb;
+                                image-fit: contain;
+                            }
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 0;
+                            Text {
+                                text: row.title;
+                                font-size: 11px;
+                                color: StudioTheme.node-label;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: row.sub;
+                                font-size: 10px;
+                                color: StudioTheme.node-muted;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                        StudioIconButton { variant: "studio";
+                            icon: Icons.plus;
+                            clicked => {
+                                root.action("add", row.project-id + "/" + row.layer-id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Adjustments grid (`ps-adjustments-panel.tsx`): one button per type.
+export component ImageAdjustmentsPanel inherits Rectangle {
+    in property <[ImageAdjustmentGroup]> adjustments: [];
+    callback create(string);
+
+    VerticalLayout {
+        spacing: 0;
+
+        PanelHead {
+            title: "Adjustments";
+        }
+        PanelRule {
+        }
+        VerticalLayout {
+            padding: StudioTheme.panel-pad;
+            spacing: StudioTheme.space-1;
+            for group in root.adjustments : HorizontalLayout {
+                spacing: StudioTheme.space-1;
+                cross-axis-alignment: center;
+                for adjustment in group.items : StudioChip {
+                    label: adjustment.label;
+                    clicked => {
+                        root.create(adjustment.id);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Gradients panel (`ps-asset-panels.tsx` PsGradientsPanel): dynamic presets,
+// saved gradients, the editable stop bar and the stop/midpoint rows.
+export component ImageGradientsPanel inherits Rectangle {
+    in property <[ImageGradientRow]> gradients: [];
+    in property <[ImageGradientStopRow]> stops: [];
+    in property <image> edit-strip;
+    in property <string> edit-name: "";
+    in property <int> stop-selected: 0;
+    callback action(string, string);
+    callback name-edited(string);
+
+    VerticalLayout {
+        spacing: 0;
+
+        PanelHead {
+            title: "Gradients";
+            StudioIconButton { variant: "studio";
+                icon: Icons.plus;
+                clicked => {
+                    root.action("stop-add", "0.5");
+                }
+            }
+            StudioIconButton { variant: "studio";
+                icon: Icons.check;
+                clicked => {
+                    root.action("save", "");
+                }
+            }
+        }
+        PanelRule {
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: body.preferred-height;
+            body := VerticalLayout {
+                spacing: 0;
+
+                for preset in root.gradients : RowShell {
+                    active: preset.active;
+                    clicked => {
+                        root.action("pick", preset.id);
+                    }
+                    HorizontalLayout {
+                        padding-left: StudioTheme.space-2;
+                        padding-right: StudioTheme.space-1;
+                        spacing: StudioTheme.space-2;
+                        cross-axis-alignment: center;
+                        Rectangle {
+                            width: 64px;
+                            height: 16px;
+                            border-radius: 4px;
+                            border-width: 1px;
+                            border-color: StudioTheme.border;
+                            Image {
+                                width: 100%;
+                                height: 100%;
+                                source: preset.strip;
+                                image-fit: fill;
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: preset.name;
+                            font-size: 11px;
+                            color: preset.active ? StudioTheme.node-accent : StudioTheme.node-label;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        StudioIconButton { variant: "studio";
+                            icon: Icons.trash;
+                            danger: true;
+                            clicked => {
+                                root.action("delete", preset.id);
+                            }
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    padding: StudioTheme.panel-pad;
+                    spacing: StudioTheme.space-1;
+                    Text {
+                        text: "Edit";
+                        font-size: 10px;
+                        font-weight: 700;
+                        letter-spacing: 0.6px;
+                        color: StudioTheme.node-muted;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        height: 20px;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: StudioTheme.border;
+                        Image {
+                            width: 100%;
+                            height: 100%;
+                            source: root.edit-strip;
+                            image-fit: fill;
+                        }
+                        for stop in root.stops : Rectangle {
+                            x: self.width * (stop.position * 1.0 / 100.0) - 5px;
+                            y: (parent.height - self.height) / 2;
+                            width: 10px;
+                            height: 10px;
+                            border-radius: 5px;
+                            border-width: stop.active ? 2px : 1px;
+                            border-color: stop.active ? StudioTheme.node-accent : StudioTheme.border;
+                            background: stop.color;
+                            stop-ta := TouchArea {
+                                width: 100%;
+                                height: 100%;
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.action("stop-select", "\{stop.index}");
+                                }
+                                double-clicked => {
+                                    root.action("stop-remove", "\{stop.index}");
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: StudioTheme.space-1;
+                        cross-axis-alignment: center;
+                        Text {
+                            width: 44px;
+                            text: "Position";
+                            font-size: 10px;
+                            color: StudioTheme.node-muted;
+                            vertical-alignment: center;
+                        }
+                        StudioSlider {
+                            horizontal-stretch: 1;
+                            minimum: 0;
+                            maximum: 100;
+                            value: root.stops.length > 0 && root.stop-selected < root.stops.length ? root.stops[root.stop-selected].position * 1.0 : 0;
+                            changed(value) => {
+                                root.action("stop-position", "\{round(value)}");
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: StudioTheme.space-1;
+                        cross-axis-alignment: center;
+                        Text {
+                            width: 44px;
+                            text: "Color";
+                            font-size: 10px;
+                            color: StudioTheme.node-muted;
+                            vertical-alignment: center;
+                        }
+                        StudioIconButton { variant: "studio";
+                            icon: Icons.pipette;
+                            clicked => {
+                                root.action("stop-color", "");
+                            }
+                        }
+                        StudioChip {
+                            label: "Stop";
+                            clicked => {
+                                root.action("stop-add", "0.5");
+                            }
+                        }
+                        StudioField {
+                            horizontal-stretch: 1;
+                            value: root.edit-name;
+                            edited(value) => {
+                                root.name-edited(value);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Patterns panel (`ps-asset-panels.tsx` PsPatternsPanel): define + tiles + fill.
+export component ImagePatternsPanel inherits Rectangle {
+    in property <[ImagePatternRow]> patterns: [];
+    in property <bool> can-define: false;
+    callback action(string, string);
+
+    VerticalLayout {
+        spacing: 0;
+
+        PanelHead {
+            title: "Patterns";
+            StudioIconButton { variant: "studio";
+                icon: Icons.plus;
+                enabled: root.can-define;
+                clicked => {
+                    root.action("define", "");
+                }
+            }
+            StudioChip {
+                label: "Fill";
+                enabled: root.patterns.length > 0;
+                clicked => {
+                    root.action("fill", "");
+                }
+            }
+        }
+        PanelRule {
+        }
+        HorizontalLayout {
+            cross-axis-alignment: center;
+            padding: StudioTheme.panel-pad;
+            spacing: StudioTheme.space-1;
+            for pattern in root.patterns : Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: 5px;
+                border-width: pattern.active ? 2px : 1px;
+                border-color: pattern.active ? StudioTheme.node-accent : StudioTheme.border;
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: pattern.thumb;
+                    image-fit: fill;
+                }
+                TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.action("pick", pattern.id);
+                    }
+                    pointer-event(e) => {
+                        if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                            root.action("delete", pattern.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component BrushParamRow inherits HorizontalLayout {
+    in property <string> key: "";
+    in property <string> label: "";
+    in property <float> value: 0;
+    in property <float> min: 0;
+    in property <float> max: 100;
+    callback slider(string, float);
+
+    spacing: StudioTheme.space-1;
+    cross-axis-alignment: center;
+    Text {
+        width: 58px;
+        text: root.label;
+        font-size: 10px;
+        color: StudioTheme.node-muted;
+        vertical-alignment: center;
+    }
+    StudioSlider {
+        horizontal-stretch: 1;
+        minimum: root.min;
+        maximum: root.max;
+        value: root.value;
+        changed(value) => {
+            root.slider(root.key, value);
+        }
+    }
+}
+
+// Brushes panel (`ps-asset-panels.tsx` PsBrushesPanel): preset list with
+// previews, the parameter sliders and save.
+export component ImageBrushesPanel inherits Rectangle {
+    in property <[ImageBrushRow]> brushes: [];
+    in property <image> preview;
+    in property <float> size: 24;
+    in property <float> hardness: 80;
+    in property <float> brush-opacity: 100;
+    in property <float> spacing: 15;
+    in property <float> scatter: 0;
+    in property <float> angle: 0;
+    in property <float> roundness: 100;
+    in property <float> dynamics: 0;
+    in property <float> texture: 0;
+    callback action(string, string);
+    callback slider(string, float);
+
+    VerticalLayout {
+        spacing: 0;
+
+        PanelHead {
+            title: "Brushes";
+            StudioIconButton { variant: "studio";
+                icon: Icons.check;
+                clicked => {
+                    root.action("save", "");
+                }
+            }
+        }
+        PanelRule {
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: body.preferred-height;
+            body := VerticalLayout {
+                spacing: 0;
+
+                for brush in root.brushes : RowShell {
+                    active: brush.active;
+                    clicked => {
+                        root.action("pick", brush.id);
+                    }
+                    HorizontalLayout {
+                        padding-left: StudioTheme.space-2;
+                        padding-right: StudioTheme.space-1;
+                        spacing: StudioTheme.space-2;
+                        cross-axis-alignment: center;
+                        Rectangle {
+                            width: 88px;
+                            height: 18px;
+                            border-radius: 4px;
+                            background: StudioTheme.image-checker-light;
+                            Image {
+                                width: 100%;
+                                height: 100%;
+                                source: brush.thumb;
+                                image-fit: fill;
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: brush.name;
+                            font-size: 11px;
+                            color: brush.active ? StudioTheme.node-accent : StudioTheme.node-label;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        StudioIconButton { variant: "studio";
+                            icon: Icons.trash;
+                            danger: true;
+                            clicked => {
+                                root.action("delete", brush.id);
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 34px;
+                    HorizontalLayout {
+                        cross-axis-alignment: center;
+                        padding-left: StudioTheme.space-2;
+                        padding-right: StudioTheme.space-2;
+                        Image {
+                            horizontal-stretch: 1;
+                            height: 100%;
+                            source: root.preview;
+                            image-fit: contain;
+                        }
+                    }
+                }
+            }
+        }
+
+        PanelRule {
+        }
+        VerticalLayout {
+            padding-left: StudioTheme.space-2;
+            padding-right: StudioTheme.space-2;
+            padding-bottom: StudioTheme.space-2;
+            spacing: StudioTheme.space-1;
+
+            BrushParamRow {
+                key: "size";
+                label: "Size";
+                value: root.size;
+                min: 1;
+                max: 300;
+                slider(key, value) => { root.slider(key, value); }
+            }
+            BrushParamRow {
+                key: "hardness";
+                label: "Hardness";
+                value: root.hardness;
+                min: 0;
+                max: 100;
+                slider(key, value) => { root.slider(key, value); }
+            }
+            BrushParamRow {
+                key: "opacity";
+                label: "Opacity";
+                value: root.brush-opacity;
+                min: 0;
+                max: 100;
+                slider(key, value) => { root.slider(key, value); }
+            }
+            BrushParamRow {
+                key: "spacing";
+                label: "Spacing";
+                value: root.spacing;
+                min: 1;
+                max: 200;
+                slider(key, value) => { root.slider(key, value); }
+            }
+            BrushParamRow {
+                key: "scatter";
+                label: "Scatter";
+                value: root.scatter;
+                min: 0;
+                max: 100;
+                slider(key, value) => { root.slider(key, value); }
+            }
+            BrushParamRow {
+                key: "angle";
+                label: "Angle";
+                value: root.angle;
+                min: -180;
+                max: 180;
+                slider(key, value) => { root.slider(key, value); }
+            }
+            BrushParamRow {
+                key: "roundness";
+                label: "Roundness";
+                value: root.roundness;
+                min: 5;
+                max: 100;
+                slider(key, value) => { root.slider(key, value); }
+            }
+            BrushParamRow {
+                key: "dynamics";
+                label: "Dynamics";
+                value: root.dynamics;
+                min: 0;
+                max: 100;
+                slider(key, value) => { root.slider(key, value); }
+            }
+            BrushParamRow {
+                key: "texture";
+                label: "Texture";
+                value: root.texture;
+                min: 0;
+                max: 100;
+                slider(key, value) => { root.slider(key, value); }
+            }
+        }
+    }
+}
+
+
+// The row list shared by the per-type editors and the text tool panel
+// (`ps-adjustment-editor.tsx` / `ps-text-panel.tsx`): `kind` picks the widget —
+// number (slider + value), select (chip list), check, color, readout, and
+// choice (a slider whose label is the picked option's name).
+export component ImageEditorRows inherits VerticalLayout {
+    in property <[ImageEditorRow]> rows: [];
+    callback set(string, float);
+    callback text(string, string);
+    callback option(string, string);
+    callback check(string, bool);
+    callback choice(string, int);
+
+    spacing: StudioTheme.space-1;
+
+    for row in root.rows : HorizontalLayout {
+        spacing: StudioTheme.space-1;
+        cross-axis-alignment: center;
+        Text {
+            width: 74px;
+            text: row.label;
+            font-size: 10px;
+            color: StudioTheme.node-muted;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if row.kind == "number" : StudioSlider {
+            horizontal-stretch: 1;
+            minimum: row.min;
+            maximum: row.max;
+            value: row.value;
+            changed(value) => {
+                root.set(row.key, value);
+            }
+        }
+        if row.kind == "number" : Text {
+            width: 34px;
+            text: "\{round(row.value)}";
+            font-size: 10px;
+            color: StudioTheme.node-muted;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+        if row.kind == "select" : HorizontalLayout {
+            horizontal-stretch: 1;
+            spacing: StudioTheme.space-1;
+            for option in row.options : StudioChip {
+                label: option;
+                active: option == row.text;
+                clicked => {
+                    root.option(row.key, option);
+                }
+            }
+        }
+        if row.kind == "check" : StudioCheckbox {
+            horizontal-stretch: 1;
+            label: "";
+            checked: row.checked;
+            toggled => {
+                root.check(row.key, !row.checked);
+            }
+        }
+        if row.kind == "color" : Rectangle {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: StudioTheme.border;
+            background: row.color;
+        }
+        if row.kind == "color" : StudioField {
+            horizontal-stretch: 1;
+            value: row.text;
+            edited(value) => {
+                root.text(row.key, value);
+            }
+        }
+        if row.kind == "readout" : Text {
+            horizontal-stretch: 1;
+            text: row.text;
+            font-size: 10px;
+            color: StudioTheme.node-muted;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if row.kind == "choice" : HorizontalLayout {
+            horizontal-stretch: 1;
+            spacing: StudioTheme.space-1;
+            cross-axis-alignment: center;
+            StudioSlider {
+                horizontal-stretch: 1;
+                minimum: 0;
+                maximum: row.max;
+                value: row.value;
+                changed(value) => {
+                    root.choice(row.key, round(value));
+                }
+            }
+            Text {
+                width: 78px;
+                text: row.text;
+                font-size: 10px;
+                color: StudioTheme.node-muted;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+// The per-type editor (`ps-adjustment-editor.tsx` + `ps-fx-panel.tsx` parameter
+// rows) plus the curve and gradient-stops editors (`ps-param-editors.tsx`).
+// `row.kind` picks the widget; curve rows render the shared curve canvas.
+export component ImageEditorPanel inherits Rectangle {
+    in property <string> title: "Adjustment";
+    in property <[ImageEditorRow]> rows: [];
+    in property <[ImageCurvePoint]> curve-points: [];
+    in property <string> curve-path: "";
+    in property <[ImageGradientStopRow]> stops: [];
+    in property <image> stops-strip;
+    in property <int> stop-selected: 0;
+    callback editor-set(string, float);
+    callback editor-text(string, string);
+    callback editor-option(string, string);
+    callback editor-check(string, bool);
+    callback curve-add(float, float);
+    callback curve-move(int, float, float);
+    callback curve-delete(int);
+    callback stop-add();
+    callback stop-select(int);
+    callback stop-remove(int);
+    callback stop-color(int, string);
+    callback stop-pos(int, float);
+
+    VerticalLayout {
+        spacing: 0;
+
+        PanelHead {
+            title: root.title;
+        }
+        PanelRule {
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: body.preferred-height;
+            body := VerticalLayout {
+                padding: StudioTheme.panel-pad;
+                spacing: StudioTheme.space-1;
+
+                ImageEditorRows {
+                    rows: root.rows;
+                    set(key, value) => {
+                        root.editor-set(key, value);
+                    }
+                    text(key, value) => {
+                        root.editor-text(key, value);
+                    }
+                    option(key, value) => {
+                        root.editor-option(key, value);
+                    }
+                    check(key, value) => {
+                        root.editor-check(key, value);
+                    }
+                    choice(key, index) => {
+                        root.editor-set(key, index);
+                    }
+                }
+
+                if root.curve-points.length > 0 : Rectangle {
+                    height: 150px;
+                    border-radius: 5px;
+                    border-width: 1px;
+                    border-color: StudioTheme.border;
+                    background: StudioTheme.image-checker-light;
+                    clip: true;
+
+                    Rectangle {
+                        x: 12px;
+                        y: 12px;
+                        width: 126px;
+                        height: 126px;
+                        background: StudioTheme.image-checker-dark;
+                    }
+                    Path {
+                        x: 12px;
+                        y: 12px;
+                        width: 126px;
+                        height: 126px;
+                        commands: root.curve-path;
+                        fill: transparent;
+                        stroke: StudioTheme.node-accent;
+                        stroke-width: 1.6px;
+                        stroke-line-cap: round;
+                        stroke-line-join: round;
+                    }
+                    curve-ta := TouchArea {
+                        x: 12px;
+                        y: 12px;
+                        width: 126px;
+                        height: 126px;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.curve-add(
+                                Math.max(0, Math.min(255, (curve-ta.mouse-x / 126px) * 255)),
+                                Math.max(0, Math.min(255, (1 - curve-ta.mouse-y / 126px) * 255))
+                            );
+                        }
+                    }
+                    for point in root.curve-points : Rectangle {
+                        x: 12px + root.curve-x(point.x) * 126px - 4px;
+                        y: 12px + (1 - root.curve-y(point.y)) * 126px - 4px;
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: StudioTheme.node-accent;
+                        background: StudioTheme.panel-body;
+                        point-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            double-clicked => {
+                                root.curve-delete(point.index);
+                            }
+                            moved => {
+                                root.curve-move(
+                                    point.index,
+                                    Math.max(0, Math.min(255, ((point-ta.mouse-x - 12px) / 126px) * 255)),
+                                    Math.max(0, Math.min(255, (1 - (point-ta.mouse-y - 12px) / 126px) * 255))
+                                );
+                            }
+                        }
+                    }
+                }
+
+                if root.stops.length > 0 : Rectangle {
+                    height: 22px;
+                    border-radius: 5px;
+                    border-width: 1px;
+                    border-color: StudioTheme.border;
+                    Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.stops-strip;
+                        image-fit: fill;
+                    }
+                    for stop in root.stops : Rectangle {
+                        x: self.width * (stop.position * 1.0 / 100.0) - 5px;
+                        y: (parent.height - self.height) / 2;
+                        width: 10px;
+                        height: 10px;
+                        border-radius: 5px;
+                        border-width: stop.active ? 2px : 1px;
+                        border-color: stop.active ? StudioTheme.node-accent : StudioTheme.border;
+                        background: stop.color;
+                        stop-row-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.stop-select(stop.index);
+                            }
+                            double-clicked => {
+                                root.stop-remove(stop.index);
+                            }
+                        }
+                    }
+                }
+                if root.stops.length > 0 : HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    cross-axis-alignment: center;
+                    StudioChip {
+                        label: "+ Stop";
+                        clicked => {
+                            root.stop-add();
+                        }
+                    }
+                    StudioIconButton { variant: "studio";
+                        icon: Icons.pipette;
+                        clicked => {
+                            root.stop-color(root.stop-selected, "");
+                        }
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "\{round(root.stops.length > 0 && root.stop-selected < root.stops.length ? root.stops[root.stop-selected].position : 0)}%";
+                        font-size: 10px;
+                        color: StudioTheme.node-muted;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+                if root.stops.length > 0 : StudioSlider {
+                    minimum: 0;
+                    maximum: 100;
+                    value: root.stops.length > 0 && root.stop-selected < root.stops.length ? root.stops[root.stop-selected].position * 1.0 : 0;
+                    changed(value) => {
+                        root.stop-pos(root.stop-selected, value);
+                    }
+                }
+            }
+        }
+    }
+
+    // Curve coordinates are the 0..255 value domain mapped to 0..1.
+    pure public function curve-x(x: float) -> float {
+        return Math.max(0, Math.min(1, x / 255));
+    }
+    pure public function curve-y(y: float) -> float {
+        return Math.max(0, Math.min(1, y / 255));
+    }
+}

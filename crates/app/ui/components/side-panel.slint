@@ -1,0 +1,352 @@
+import { Theme } from "../theme.slint";
+import { PointerIds } from "pointer-ids.slint";
+import { SidePanelRow } from "overlay-types.slint";
+import { IconButton } from "widgets.slint";
+import { Icons } from "icons.slint";
+
+// One project row: a 40px line with the project glyph, its title, the canvas
+// node count and — on hover or while armed — the reorder/delete cluster. Every
+// child shares one centre line; the row is the only hit area for "open", and
+// the trailing buttons sit above it in draw order so they win the click.
+component ProjectRow inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> active: false;
+    in property <int> node-count: 0;
+    in property <bool> can-up: false;
+    in property <bool> can-down: false;
+    in property <bool> armed: false;
+    callback clicked();
+    callback action(string);
+    callback reorder(string);
+
+    height: 40px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: root.armed ? Theme.node-danger
+                : root.active ? Theme.brand
+                : ta.has-hover ? Theme.border-strong
+                : transparent;
+    background: root.active ? Theme.node-accent.with-alpha(0.13)
+              : root.armed ? Theme.node-danger.with-alpha(0.12)
+              : ta.has-hover ? Theme.hover
+              : transparent;
+    transform-scale-x: ta.pressed ? 0.97 : 1.0;
+    transform-scale-y: ta.pressed ? 0.97 : 1.0;
+    animate background {
+        duration: root.active || root.armed ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate border-color {
+        duration: root.active || root.armed ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate transform-scale-x {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+    animate transform-scale-y {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            if (!root.armed) {
+                root.clicked();
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-2;
+        padding-right: Theme.space-1;
+        spacing: Theme.space-2;
+        cross-axis-alignment: center;
+
+        Rectangle {
+            width: 24px;
+            height: 24px;
+            border-radius: Theme.radius-sm;
+            background: Theme.glass-panel-strong;
+            border-width: 1px;
+            border-color: Theme.node-stroke;
+
+            Path {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 13px;
+                height: 13px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.grid;
+                fill: transparent;
+                stroke-width: 1.8px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                stroke: root.active ? Theme.node-accent : Theme.node-muted;
+            }
+        }
+        Text {
+            text: root.label;
+            font-size: 13px;
+            font-weight: root.active ? 600 : 500;
+            color: root.active ? Theme.node-accent : Theme.node-label;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        // Node count of the canvas project ("0" is hidden: other kinds have no
+        // node graph and an empty canvas reads cleaner without the chip).
+        Text {
+            visible: root.node-count > 0;
+            width: 30px;
+            text: "\{root.node-count}";
+            font-size: 10px;
+            color: Theme.node-faint;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+        if root.armed : Rectangle {
+            width: 74px;
+            height: 24px;
+            border-radius: Theme.radius-sm;
+            border-width: 1px;
+            border-color: Theme.node-danger;
+            background: Theme.node-danger.with-alpha(0.12);
+
+            Text {
+                width: 100%;
+                height: 100%;
+                text: "Delete?";
+                font-size: 11px;
+                font-weight: 600;
+                color: Theme.node-danger;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            confirm-ta := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.action("delete");
+                }
+            }
+        }
+        if !root.armed && ta.has-hover : HorizontalLayout {
+            spacing: 0px;
+            cross-axis-alignment: center;
+
+            IconButton {
+                icon: Icons.chevron-up;
+                size: 24px;
+                enabled: root.can-up;
+                clicked => {
+                    root.reorder("up");
+                }
+            }
+            IconButton {
+                icon: Icons.chevron-down;
+                size: 24px;
+                enabled: root.can-down;
+                clicked => {
+                    root.reorder("down");
+                }
+            }
+            IconButton {
+                icon: Icons.trash;
+                size: 24px;
+                danger: true;
+                clicked => {
+                    root.action("delete");
+                }
+            }
+        }
+    }
+}
+
+// CanvasSidePanel (ui-inventory §1.2): left column, glass-surface, border-r.
+// The header names the project group and carries the one creation entry (new
+// canvas project; the import archive action is not offered here); the list is
+// the real library (Rust-owned `rows`), each row opens, reorders or deletes
+// (one extra click confirms).
+//
+// Motion (motion-catalog §3): 500ms cubic-bezier(0.22,1,0.36,1);
+// width 0 <-> `panel-width` (drag-resizable, 220..480, zero while resizing),
+// opacity 0 <-> 1, inner slide x -28px <-> 0. The 16px handle on the right
+// edge mirrors the web's `w-4 translate-x-1/2 cursor-col-resize` affordance.
+export component SidePanel inherits Rectangle {
+    in property <bool> open: true;
+    in property <length> panel-width: 280px;
+    in property <bool> resizing: false;
+    in property <[SidePanelRow]> rows: [];
+    in property <string> group-title: "";
+    callback open-project(string);
+    callback resize(string, length);
+    callback create-project();
+    callback go-home();
+    /// A short right-click on empty panel space closes the rail.
+    callback right-click();
+    callback project-action(string, string);
+    callback reorder(string, string);
+    // Window move from the panel background: a left-button drag on any empty
+    // part of the panel feeds the same manual move as the canvas background
+    // (begin on down, tick on move, end on up/cancel). Rows and the resize
+    // handle sit above the background layer and keep their own clicks.
+    callback drag-begin();
+    callback drag-tick();
+    callback drag-end();
+
+    // True between a left-button press on the panel background and its
+    // release.
+    property <bool> window-dragging: false;
+
+    width: open ? root.panel-width : 0px;
+    height: 100%;
+    clip: true;
+    background: Theme.glass-panel;
+    animate width {
+        duration: root.resizing ? 0ms : Theme.panel-motion;
+        easing: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    // Layered glass: the resting tint above, a 1px top highlight and a right
+    // hairline so the panel keeps an edge over the translucent canvas field.
+    Rectangle {
+        y: 0px;
+        width: 100%;
+        height: 1px;
+        background: Theme.glass-panel-border;
+    }
+
+    // Background interaction layer: a left-button drag on empty panel space
+    // moves the window exactly like the canvas background does. It is declared
+    // before `inner`, so the rows, the header's buttons and the resize handle
+    // are drawn (and hit-tested) above it and keep their own left clicks.
+    panel-bg-hit := TouchArea {
+        width: 100%;
+        height: 100%;
+        pointer-event(e) => {
+            let kind = PointerIds.kind-id(e.kind);
+            if (e.button == PointerEventButton.left && kind == "down") {
+                root.window-dragging = true;
+                root.drag-begin();
+            } else if (e.button == PointerEventButton.left && root.window-dragging && kind == "move") {
+                root.drag-tick();
+            } else if ((kind == "up" || kind == "cancel") && root.window-dragging) {
+                root.window-dragging = false;
+                root.drag-end();
+            } else if (e.button == PointerEventButton.right && kind == "up") {
+                root.right-click();
+            }
+        }
+    }
+
+    inner := Rectangle {
+        x: open ? 0px : -28px;
+        width: root.panel-width;
+        height: 100%;
+        background: transparent;
+        opacity: open ? 1 : 0;
+        animate x, opacity {
+            duration: root.resizing ? 0ms : Theme.panel-motion;
+            easing: cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        Rectangle {
+            x: parent.width - 1px;
+            width: 1px;
+            height: 100%;
+            background: Theme.glass-panel-border;
+        }
+
+        VerticalLayout {
+            padding: Theme.panel-pad;
+            spacing: Theme.space-1;
+
+            // Header: Home then the single create action (`+`). No PROJECTS
+            // wordmark and no project name left of the plus: the rows below
+            // already name the projects.
+            HorizontalLayout {
+                height: Theme.header-h;
+                spacing: Theme.space-1;
+                cross-axis-alignment: center;
+
+                IconButton {
+                    icon: Icons.home;
+                    size: 24px;
+                    tooltip-enabled: true;
+                    tip: "Home";
+                    tip-description: "Save the open project and return to the library";
+                    clicked => {
+                        root.go-home();
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 100%;
+                    background: transparent;
+                }
+                IconButton {
+                    icon: Icons.plus;
+                    size: 24px;
+                    clicked => {
+                        root.create-project();
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 1px;
+                background: Theme.glass-panel-border;
+            }
+
+            // The rows are the current workspace's kind inside the selected
+            // folder, so an empty list is empty for every folder/kind pair; the
+            // copy stays kind-neutral ("no canvases" was wrong on the Image
+            // workspace).
+            if root.rows.length == 0 : Text {
+                text: "No projects yet";
+                height: Theme.row-h-lg;
+                font-size: 12px;
+                color: Theme.node-placeholder;
+                vertical-alignment: center;
+            }
+            for row in root.rows : ProjectRow {
+                label: row.title;
+                active: row.active;
+                node-count: row.node-count;
+                can-up: row.can-up;
+                can-down: row.can-down;
+                armed: row.armed;
+                clicked => {
+                    root.open-project(row.id);
+                }
+                action(action) => {
+                    root.project-action(row.id, action);
+                }
+                reorder(direction) => {
+                    root.reorder(row.id, direction);
+                }
+            }
+        }
+    }
+
+    // Drag-to-resize handle (canvas-side-panel.tsx:69): the touch area reports
+    // its window x so Rust can track the pointer 1:1.
+    Rectangle {
+        x: parent.width - 8px;
+        width: 16px;
+        height: 100%;
+        background: transparent;
+        z: 40;
+
+        TouchArea {
+            mouse-cursor: col-resize;
+            pointer-event(e) => {
+                root.resize(PointerIds.kind-id(e.kind), self.absolute-position.x + self.mouse-x);
+            }
+        }
+    }
+}

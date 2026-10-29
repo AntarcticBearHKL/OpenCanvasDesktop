@@ -1,0 +1,102 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/app",
+    # The Slint-free half of `crates/app`: app state, document, gestures,
+    # persistence helpers. A separate crate so it compiles in parallel with the
+    # Slint codegen unit and is untouched by `.slint`-only edits.
+    "crates/app-core",
+    "crates/ai",
+    # Vendored imaging foundation + filter engine (see "Third-party code" in README.md).
+    "crates/geom",
+    "crates/cms",
+    "crates/color",
+    "crates/raster",
+    "crates/algo",
+    "crates/ps",
+    "crates/psd",
+    "crates/plugins",
+    "crates/cli",
+]
+resolver = "2"
+
+# Compile speed first: the dev profile exists for the edit/verify loop, not for
+# shipping. Workspace crates are unoptimized -- they are what gets rebuilt on
+# every edit -- while dependencies stay optimized (2), because they are compiled
+# once and own the runtime-heavy code (Slint, tokio, image, ...).
+[profile.dev]
+opt-level = 0
+# No debug info in dev. The Slint-generated module is ~392k lines in ONE crate:
+# full debug info for it left 8 GB of PDBs and dominated link time, and even
+# line-tables-only (debug = 1) is a large share of the remaining ~35 s rebuild.
+# Trade-off: panics and backtraces carry no file:line. Set this back to 1 when a
+# run actually needs to be debugged; `cargo check` is unaffected either way.
+debug = 0
+# Incremental compilation stays ON for this workspace's own crates only -- the
+# `"*"` override below keeps dependencies out of it. If
+# `target/debug/incremental` ever balloons, run `cargo clean -p <crate>`;
+# do not disable incremental.
+incremental = true
+
+# Dependencies: optimized, but no incremental state (they never change).
+[profile.dev.package."*"]
+opt-level = 2
+debug = 0
+incremental = false
+
+# Measured, rejected (docs/PROJECT_AUDIT.md §6.1 "Profile tuning"): capping the
+# app crate at 16 codegen units made the app's own rebuild SLOWER (main.rs touch
+# 29 s -> 66-97 s, `app.slint` touch 33 s -> 50-61 s) -- the 392k-line generated
+# module wants the dev default (256 units) for rustc's codegen threads. Left at
+# the default on purpose; do not "optimize" this without re-measuring.
+
+# The vendored imaging crates are numerically heavy and are workspace members,
+# not `"*"` dependencies, so they would otherwise be unoptimized: the algo unit
+# suite takes ~12 minutes at opt-level 0 versus a couple at 2. They change
+# rarely, so optimize them like dependencies and keep our edit-loop crates at 0.
+[profile.dev.package.open-canvas-algo]
+opt-level = 2
+[profile.dev.package.open-canvas-raster]
+opt-level = 2
+[profile.dev.package.open-canvas-color]
+opt-level = 2
+[profile.dev.package.open-canvas-cms]
+opt-level = 2
+[profile.dev.package.open-canvas-geom]
+opt-level = 1
+
+# The app crate is one 341k-line Slint-generated module plus ~65k lines of
+# wiring. Measured 2026-10-27 (deps cached): opt-level 2 +
+# 256 codegen units = 9m49s, versus 11m00s at the release default (opt-level 3,
+# 16 units). The generated module still partitions into 16 CGUs -- it stays one
+# giant unit -- so the gain is mostly opt-level 2. Splitting the Slint roots is
+# the structural fix; see docs/BUILD_PERF.md.
+[profile.release.package.open-canvas-app]
+opt-level = 2
+codegen-units = 256
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+# PSD deflate streams (`open-canvas-psd`). `rust_backend` is the pure-Rust
+# miniz_oxide backend: no C compiler, nothing to build for the wasm target.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
+# Vendored imaging crates (crates/geom, cms, color, raster, algo). Pure Rust
+# throughout: rayon, rustfft and moxcms have no C or C++ dependency.
+open-canvas-geom = { path = "crates/geom" }
+open-canvas-cms = { path = "crates/cms" }
+open-canvas-color = { path = "crates/color" }
+open-canvas-raster = { path = "crates/raster" }
+open-canvas-algo = { path = "crates/algo" }
+rayon = "1"
+rustfft = "6"
+moxcms = "0.8"
+proptest = "1"
+

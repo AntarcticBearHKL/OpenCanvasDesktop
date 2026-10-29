@@ -1,0 +1,509 @@
+// Model row types shared between `app.slint` and the overlay components. Kept in
+// their own file so the components can import the types without importing the
+// window (which imports the components).
+export struct RulerTick {
+    pos: length,
+    label: string,
+}
+
+// One vertical ruler label, pre-rotated in Rust (`ruler_text.rs`): the bitmap
+// already reads bottom-to-top, so Slint draws it unrotated and can never
+// resample (and soften) the glyphs. `label-width`/`label-height` are the
+// logical size of `image`.
+export struct RulerTickImage {
+    pos: length,
+    image: image,
+    label-width: length,
+    label-height: length,
+    // Whole-pixel vertical placement (the bitmap's bottom end sits on the tick).
+    label-y: length,
+}
+
+// One tool of the Image Studio rail (`TOOLS`, image-studio.tsx:99-116).
+export struct ImageToolRow {
+    id: string,
+    label: string,
+    hotkey: string,
+    active: bool,
+}
+
+// One layer row of the Image Studio layers panel (top layer first). `child`
+// rows render indented under their group; `thumb`/`mask-thumb` are the 28px
+// previews (`ps-layers-panel.tsx`).
+export struct ImageLayerRow {
+    id: string,
+    name: string,
+    kind: string,
+    visible: bool,
+    locked: bool,
+    active: bool,
+    has-fx: bool,
+    editing: bool,
+    child: bool,
+    group: bool,
+    collapsed: bool,
+    thumb: image,
+    mask-thumb: image,
+    has-mask: bool,
+    mask-target: bool,
+}
+
+// One history entry (`usePsHistory` snapshot).
+export struct ImageHistoryRow {
+    index: int,
+    label: string,
+    active: bool,
+    future: bool,
+}
+
+// One colour swatch of the picker strip.
+export struct ImageSwatch {
+    index: int,
+    color: color,
+    active: bool,
+}
+
+// One 6-swatch row of the picker grid.
+export struct ImageSwatchGroup {
+    items: [ImageSwatch],
+}
+
+// One numeric adjustment parameter (the P5c-3 editors replace this hook).
+export struct ImageParamRow {
+    key: string,
+    label: string,
+    value: float,
+    min: float,
+    max: float,
+}
+
+// One layer-style (fx) entry of the active layer (`CanvasPsLayerStyle`).
+export struct ImageStyleRow {
+    id: string,
+    name: string,
+    enabled: bool,
+}
+
+// Image Studio dock-panel visibility flags (`PS_DOCK_PANELS`).
+export struct ImagePanels {
+    layers: bool,
+    fx: bool,
+    history: bool,
+    properties: bool,
+    color: bool,
+    channels: bool,
+    paths: bool,
+    actions: bool,
+    assets: bool,
+    adjustments: bool,
+    gradients: bool,
+    patterns: bool,
+    brushes: bool,
+}
+
+// One composite/alpha channel row (`ps-channels-panel.tsx`).
+export struct ImageChannelRow {
+    id: string,
+    name: string,
+    thumb: image,
+    active: bool,
+    editing: bool,
+}
+
+// One path row (`ps-paths-panel.tsx`).
+export struct ImagePathRow {
+    id: string,
+    name: string,
+    visible: bool,
+    active: bool,
+    editing: bool,
+    // Small SVG-style preview of the path (`ps-paths-panel.tsx` row thumbnail).
+    thumb: image,
+}
+
+// One recorded action row (`ps-actions-panel.tsx`).
+export struct ImageActionRow {
+    id: string,
+    name: string,
+    steps: int,
+    editing: bool,
+}
+
+// One resource-pool row (image layer of another image project).
+export struct ImageAssetRow {
+    project-id: string,
+    layer-id: string,
+    title: string,
+    sub: string,
+    thumb: image,
+}
+
+// One adjustment-grid button (`ps-adjustments-panel.tsx` ICONS).
+export struct ImageAdjustmentRow {
+    id: string,
+    label: string,
+}
+
+// One 8-column grid row of adjustment chips (`ps-adjustments-panel.tsx`).
+export struct ImageAdjustmentGroup {
+    items: [ImageAdjustmentRow],
+}
+
+// One saved gradient row (`ps-asset-panels.tsx` PsGradientsPanel).
+export struct ImageGradientRow {
+    id: string,
+    name: string,
+    strip: image,
+    active: bool,
+}
+
+// One editable gradient stop.
+export struct ImageGradientStopRow {
+    index: int,
+    color: color,
+    position: int,
+    active: bool,
+}
+
+// One pattern tile row.
+export struct ImagePatternRow {
+    id: string,
+    name: string,
+    thumb: image,
+    active: bool,
+}
+
+// One brush preset row (with its stroke preview).
+export struct ImageBrushRow {
+    id: string,
+    name: string,
+    thumb: image,
+    active: bool,
+}
+
+// One row of the per-type adjustment / layer-style editor
+// (`ps-adjustment-editor.tsx` + `ps-fx-panel.tsx`). `kind` picks the widget:
+// number | select | check | color | curve | stops | readout.
+export struct ImageEditorRow {
+    key: string,
+    label: string,
+    kind: string,
+    value: float,
+    min: float,
+    max: float,
+    text: string,
+    options: [string],
+    checked: bool,
+    // Swatch colour for `kind == "color"` rows (parsed from the hex `text`).
+    color: color,
+}
+
+// One draggable curve control point (`PsCurveEditor`); `index` is its position
+// in the point list (x order, `psSortPairs`).
+export struct ImageCurvePoint {
+    index: int,
+    x: float,
+    y: float,
+}
+
+// One filter menu entry / dialog header (`PS_FILTERS`).
+export struct ImageFilterRow {
+    id: string,
+    label: string,
+    group: string,
+}
+
+// One filter parameter control (`PS_FILTERS[].controls`).
+export struct ImageFilterParam {
+    key: string,
+    label: string,
+    kind: string,
+    value: float,
+    text: string,
+    min: float,
+    max: float,
+    options: [string],
+}
+
+// One row of the data-driven Filter menu (`filter_menu_rows` in Rust): the
+// repeat entry, a Photoshop group header, a gallery sub-header, or a filter.
+// One row of the Filter menu's nested menus. `kind` is `"repeat"` (the repeat
+// entry), `"item"` (one filter) or `"group"` (a row that opens a flyout).
+// `parent` names the flyout the row is drawn in ("" = the top level) and
+// `group` names the flyout a group row opens. Every filter row keeps its action
+// id, its enabled state and, when disabled, the reason it cannot run.
+export struct FilterMenuRow {
+    kind: string,
+    label: string,
+    id: string,
+    enabled: bool,
+    note: string,
+    parent: string,
+    group: string,
+}
+
+export struct HoverAction {
+    id: string,
+    danger: bool,
+    active: bool,
+}
+
+// One row of the image-stack gallery (`image-stack-preview.tsx`): the decoded
+// bitmap, the cover mark, the status tag and the error line of a failed entry.
+export struct StackGalleryRow {
+    id: string,
+    thumb: image,
+    cover: bool,
+    status: string,
+    error: string,
+}
+
+// One plugin row of the manager modal (official registry entry or installed
+// record). `badge` is "official" | "local" | "third-party"; `installed` marks
+// whether an installed record backs the row.
+export struct PluginManagerRow {
+    id: string,
+    name: string,
+    version: string,
+    description: string,
+    url: string,
+    source: string,
+    badge: string,
+    enabled: bool,
+    installed: bool,
+    upgradable: bool,
+    update-version: string,
+}
+
+export struct InfoRow {
+    label: string,
+    value: string,
+}
+
+// Live state of the open image quick-tool dialog (`image_tools::ImageTool`):
+// one flat row so the window surface stays small. Declared after `InfoRow`
+// (Slint resolves types in file order).
+export struct ImageToolState {
+    kind: string,
+    title: string,
+    node: string,
+    image: image,
+    source: string,
+    readout: string,
+    message: string,
+    error: bool,
+    ratio: string,
+    rect-x: float,
+    rect-y: float,
+    rect-width: float,
+    rect-height: float,
+    mask-shape: string,
+    mask-feather: float,
+    mask-invert: bool,
+    rows: int,
+    columns: int,
+    horizontal-lines: [float],
+    vertical-lines: [float],
+    target: int,
+    algorithm: string,
+    palette: [brush],
+    palette-labels: [string],
+    meta-rows: [InfoRow],
+    hash: string,
+    suggestion: string,
+    apply-label: string,
+}
+
+// One row of the home screen's project sidebar (Rust-owned; `editing` swaps the
+// row for its inline rename input, `armed` is the web's click-again-to-delete
+// state). A project is level 1 of the home model and holds canvases; project
+// rows carry no canvas count.
+export struct LibraryGroupRow {
+    id: string,
+    name: string,
+    active: bool,
+    editing: bool,
+    armed: bool,
+}
+
+// One alternative of a batch text node (`metadata.texts`): the id the take-out
+// and set-primary actions report, the content and whether it is the primary.
+export struct TextOptionRow {
+    id: string,
+    content: string,
+    primary: bool,
+    can-take-out: bool,
+}
+
+// One row of the editor's left project panel (web `canvas-switcher.tsx`): the
+// library's projects, with the open one marked active, its canvas node count,
+// its reorder bounds and the delete-confirmation arm state.
+export struct SidePanelRow {
+    id: string,
+    title: string,
+    active: bool,
+    node-count: int,
+    can-up: bool,
+    can-down: bool,
+    armed: bool,
+}
+
+// One row of the home screen's canvas table: the canvas title, the last-edited
+// label, the inline-rename draft state, the delete-confirmation arm state and
+// the selected-row highlight. Canvases are level 2 of the home model (inside the
+// selected project). Image projects are never listed here (Smart Canvas still
+// stores them, it just does not surface them as library rows).
+export struct ProjectListRow {
+    id: string,
+    title: string,
+    updated: string,
+    editing: bool,
+    armed: bool,
+    selected: bool,
+    // Set by Rust for the one rebuild in which the visible canvas set changed
+    // (project switch, canvas added/removed): the row replays its enter fade.
+    fade: bool,
+}
+
+// One visible row of the composer's `@` mention menu (web `MentionMenu`):
+// `index` is the candidate index Rust assigns the pick, `sub` the muted second
+// line (`reference.text || reference.title`).
+export struct MentionRow {
+    index: int,
+    label: string,
+    sub: string,
+    kind: string,
+    active: bool,
+}
+
+// One decoded bitmap of an image-stack contact sheet
+// (`ImageStackNodeContent`): the cover first, then the backing cards. `dx`/`dy`/
+// `angle` are the web's heap offsets `(i+1)*7*(±1)px, (i+1)*5px, (2+i*1.4)*(±1)deg`
+// precomputed by Rust; the card multiplies them by its visual scale.
+export struct StackImage {
+    id: string,
+    thumb: image,
+    dx: length,
+    dy: length,
+    angle: float,
+}
+
+// One row of the assets node list (`assets-node-content.tsx:231-255`): a
+// decoded thumbnail when the asset has one, its name, the muted second line
+// and the kind tag driving the row icon.
+export struct AssetItem {
+    id: string,
+    label: string,
+    sub: string,
+    kind: string,
+    thumb: image,
+    ready: bool,
+}
+
+// One row of the assets node's bound-folder tree (`assets-node-content.tsx`
+// folder source): `path` is relative to the bound root (slash-separated), never
+// absolute; `depth` indents the row; `kind` is "folder" | "image" | "video".
+export struct AssetTreeRow {
+    path: string,
+    label: string,
+    depth: int,
+    kind: string,
+    expanded: bool,
+}
+
+// One reference thumbnail of a prompt card's strip: the connected image node's
+// decoded bitmap, its title and node id (the strip's remove control).
+export struct RefImage {
+    id: string,
+    title: string,
+    thumb: image,
+}
+
+// Values of a generation card's settings popovers (moved out of the deleted
+// floating panel; the card owns the popover state now).
+export struct GenerationSettings {
+    quality: string,
+    size-scale: string,
+    size-ratio: string,
+    count: int,
+    seconds: int,
+    resolution: string,
+    audio: bool,
+    watermark: bool,
+    reasoning: string,
+    text-count: int,
+}
+
+// One model line of a provider card in the config modal (Providers tab).
+export struct ConfigModelRow {
+    name: string,
+    capability: string,
+    capability-label: string,
+}
+
+// One provider (channel) card: a text-editable name/base-url/api-key plus its
+// model list and count (`config-providers.tsx`). `model-count-label` is the
+// localized `"{n} models"` the provider header renders.
+export struct ConfigChannelRow {
+    id: string,
+    name: string,
+    base-url: string,
+    api-key: string,
+    model-count: int,
+    model-count-label: string,
+    models: [ConfigModelRow],
+}
+
+// One selectable option of the appearance tab's theme/background single-select
+// groups.
+export struct ConfigOptionRow {
+    value: string,
+    label: string,
+    selected: bool,
+}
+
+// One local-model manager row (`config-local-models.tsx`): the descriptor text
+// plus the real file state the models-folder scan found.
+export struct LocalModelRow {
+    id: string,
+    name: string,
+    description: string,
+    size: string,
+    status: string,
+    installed: bool,
+}
+
+// One storage-kind row of the Local storage tab (`config-local-storage.tsx`).
+export struct StorageKindRow {
+    id: string,
+    label: string,
+    files: int,
+    detail: string,
+    size: string,
+    // `files / max(files)` over the scanned kinds, clamped to 0..1: the bar's
+    // share so the largest kind is 1.0 and an empty scan stays at 0.
+    share: float,
+}
+
+// One cost record row (`config-generation-cost.tsx`).
+export struct CostRecordRow {
+    model: string,
+    detail: string,
+    amount: string,
+    source: string,
+    unpriced: bool,
+    // A per-model group header (bold, no source cell); the shop rows follow.
+    heading: bool,
+}
+
+// One runtime-log row (`config-runtime-logs.tsx`).
+export struct LogRow {
+    key: string,
+    level: string,
+    scope: string,
+    message: string,
+    time: string,
+    detail: string,
+    expanded: bool,
+}
+

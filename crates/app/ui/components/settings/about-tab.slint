@@ -1,0 +1,54 @@
+// About tab: the app version and the plugin-manager entry. The keyboard
+// shortcuts reference is a standalone modal, not part of Settings.
+
+import { Theme } from "../../theme.slint";
+import { I18n } from "../i18n.slint";
+import { Button } from "../widgets.slint";
+import { SectionCard } from "settings-widgets.slint";
+
+export component AboutTab inherits VerticalLayout {
+    in property <string> app-version: "";
+    callback open-plugins();
+
+    spacing: 14px;
+    SectionCard {
+        heading: I18n.config-plugins-title;
+        hint: I18n.config-plugins-hint;
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Button {
+                variant: "ghost";
+                height: 28px;
+                radius: Theme.radius-sm;
+                font-size: 12px;
+                font-weight: 600;
+                pad: 10px;
+                label: I18n.config-plugins-open;
+                clicked => {
+                    root.open-plugins();
+                }
+            }
+        }
+    }
+    SectionCard {
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: I18n.config-about-version;
+                font-size: 13px;
+                color: Theme.muted-foreground;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: root.app-version;
+                font-size: 13px;
+                font-weight: 600;
+                color: Theme.node-text;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

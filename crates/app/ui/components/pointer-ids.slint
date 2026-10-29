@@ -1,0 +1,18 @@
+// Slint enums have no string conversion; every layer that forwards pointer
+// events to Rust funnels them through these id maps so the Rust side parses a
+// closed set of strings.
+export global PointerIds {
+    public pure function kind-id(kind: PointerEventKind) -> string {
+        return kind == PointerEventKind.down ? "down"
+            : kind == PointerEventKind.up ? "up"
+            : kind == PointerEventKind.cancel ? "cancel"
+            : "move";
+    }
+
+    public pure function button-id(button: PointerEventButton) -> string {
+        return button == PointerEventButton.left ? "left"
+            : button == PointerEventButton.middle ? "middle"
+            : button == PointerEventButton.right ? "right"
+            : "other";
+    }
+}

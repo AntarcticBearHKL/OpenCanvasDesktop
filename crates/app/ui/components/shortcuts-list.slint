@@ -1,0 +1,88 @@
+import { Theme } from "../theme.slint";
+import { I18n } from "i18n.slint";
+
+// `kbd` chip of the shortcuts list (AntD About tab `Shortcut`, app-config-modal).
+component Kbd inherits Rectangle {
+    in property <string> text: "";
+
+    height: 22px;
+    width: max(24px, kbd-text.preferred-width + 14px);
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.muted;
+
+    kbd-text := Text {
+        text: root.text;
+        font-size: 11px;
+        font-weight: 500;
+        color: Theme.foreground;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// One `label -> description` row (`preferences.shortcuts` block of the About
+// tab plus the app's own key handlers from `shortcuts.rs`/`project.tsx`).
+component ShortcutRow inherits Rectangle {
+    in property <string> keys: "";
+    in property <string> value: "";
+
+    height: 32px;
+    border-radius: Theme.radius-sm;
+    background: row-ta.has-hover ? Theme.hover : transparent;
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    row-ta := TouchArea {
+    }
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 10px;
+        cross-axis-alignment: center;
+
+        Kbd {
+            text: root.keys;
+        }
+        Text {
+            text: root.value;
+            font-size: 13px;
+            color: Theme.node-muted;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+    }
+}
+
+// Canvas shortcuts reference rows, shared by the shortcuts modal and the About
+// tab's inline list (canvas-toolbar.tsx:369-380 modal + the web About tab). The
+// key column stays literal; the descriptions come from the I18n global. Source
+// of truth for the desktop: this file's rows must match the handlers in
+// `shortcuts.rs` and the pointer tools in `handlers.rs`.
+export component ShortcutRows inherits VerticalLayout {
+    width: 100%;
+    spacing: 0px;
+
+    ShortcutRow { keys: "Ctrl / Space + Drag"; value: I18n.shortcut-toggle-tool; }
+    ShortcutRow { keys: "Mouse wheel"; value: I18n.shortcut-wheel; }
+    ShortcutRow { keys: "Zoom slider"; value: I18n.shortcut-zoom-slider; }
+    ShortcutRow { keys: "Drag"; value: I18n.shortcut-box-select; }
+    ShortcutRow { keys: "Shift / Ctrl + Click"; value: I18n.shortcut-add-selection; }
+    ShortcutRow { keys: "Ctrl + A"; value: I18n.shortcut-select-all; }
+    ShortcutRow { keys: "Ctrl + C"; value: I18n.shortcut-copy; }
+    ShortcutRow { keys: "Ctrl + X"; value: I18n.shortcut-cut; }
+    ShortcutRow { keys: "Ctrl + V"; value: I18n.shortcut-paste; }
+    ShortcutRow { keys: "Ctrl + Z"; value: I18n.shortcut-undo; }
+    ShortcutRow { keys: "Ctrl + Shift + Z"; value: I18n.shortcut-redo; }
+    ShortcutRow { keys: "Ctrl + Y"; value: I18n.shortcut-redo; }
+    ShortcutRow { keys: "Delete / Backspace"; value: I18n.shortcut-delete; }
+    ShortcutRow { keys: "Ctrl + Right-drag"; value: I18n.shortcut-cut-wires; }
+    ShortcutRow { keys: "Ctrl + 0"; value: I18n.shortcut-reset-view; }
+    ShortcutRow { keys: "Ctrl + 1"; value: I18n.shortcut-fit; }
+    ShortcutRow { keys: "Esc"; value: I18n.shortcut-escape; }
+}

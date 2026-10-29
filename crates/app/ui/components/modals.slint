@@ -1,0 +1,1559 @@
+import { Theme } from "../theme.slint";
+import { Button } from "widgets.slint";
+import { Icons } from "icons.slint";
+import { PointerIds } from "pointer-ids.slint";
+import { InfoRow, ImageToolState, StackGalleryRow } from "overlay-types.slint";
+
+// Segmented control in the info-modal header (AntD Segmented, small).
+component Segmented inherits Rectangle {
+    in property <bool> json: false;
+    callback set-json(bool);
+
+    width: 132px;
+    height: 26px;
+    border-radius: Theme.radius-sm;
+    background: Theme.muted;
+
+    HorizontalLayout {
+        padding: 2px;
+        spacing: 2px;
+
+        info-seg := Rectangle {
+            horizontal-stretch: 1;
+            border-radius: 4px;
+            background: !root.json ? Theme.card : transparent;
+
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.set-json(false);
+                }
+            }
+            Text {
+                text: "Info";
+                font-size: 12px;
+                color: Theme.node-text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        json-seg := Rectangle {
+            horizontal-stretch: 1;
+            border-radius: 4px;
+            background: root.json ? Theme.card : transparent;
+
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.set-json(true);
+                }
+            }
+            Text {
+                text: "JSON";
+                font-size: 12px;
+                color: Theme.node-text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// AntD v6 modal chrome: mask, centered glass-strong panel (radius 12) with a
+// 160ms ease-out zoom-in enter.
+//
+// Width comes from the shared tiers (`Theme.modal-width`): "default" 520 (the
+// AntD default), "medium" 640 (the plugin manager), "wide" 880 (the texture
+// type browser / samples browser). `panel-width` stays as an explicit override
+// for the dialogs whose web width is not on the tier scale.
+export component ModalShell inherits Rectangle {
+    in property <string> title: "";
+    in property <string> tier: "default";
+    in property <length> panel-width: Theme.modal-width(root.tier);
+    // Default is the shared glass surface; the Image Attempt workbench sets an
+    // opaque surface because long prompt/config content must stay legible.
+    in property <brush> panel-background: Theme.glass-panel;
+    in property <length> body-height: 360px;
+    in property <bool> view-toggle: false;
+    in property <bool> json-view: false;
+    // A real entrance, but the first rendered frame is already 90% opaque so
+    // headless snapshots still see the panel (the remaining 10% fades in).
+    in-out property <float> reveal: 0.9;
+    animate reveal {
+        // The OS reduced-motion setting shortens the zoom-in to nothing
+        // (motion-catalog.md §2 "Reduced motion: disabled").
+        duration: Theme.reduced-motion ? 0ms : Theme.motion-popover;
+        easing: ease-out;
+    }
+    init => {
+        root.reveal = 1;
+    }
+    callback close();
+    callback set-json(bool);
+
+    width: 100%;
+    height: 100%;
+    background: Theme.overlay;
+    z: 120;
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => {
+            root.close();
+        }
+        // Right-click is the universal "back" gesture for every modal shell.
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.up && e.button == PointerEventButton.right) {
+                root.close();
+            }
+        }
+    }
+
+    panel := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: root.panel-width;
+        height: title.height + root.body-height + 56px;
+        background: root.panel-background;
+        border-width: 1px;
+        border-color: Theme.glass-panel-border;
+        border-radius: Theme.radius-lg;
+        opacity: root.reveal;
+        transform-scale-x: 98% + 2% * root.reveal;
+        transform-scale-y: 98% + 2% * root.reveal;
+        transform-origin: {
+            x: self.width / 2,
+            y: self.height / 2,
+        };
+
+        // A plain Rectangle does not consume pointer events in Slint, so a click
+        // on the panel's padding/text would fall through to the scrim below and
+        // close the modal. This transparent TouchArea sits between the scrim and
+        // the content: real controls are later siblings and still win, everything
+        // else is absorbed.
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            // Right-click inside the panel also dismisses the modal.
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.up && e.button == PointerEventButton.right) {
+                    root.close();
+                }
+            }
+        }
+
+        // 1px inner highlight along the top edge: the raised glass edge.
+        Rectangle {
+            y: 0px;
+            width: 100%;
+            height: 1px;
+            background: Theme.glass-panel-border;
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+
+            title := HorizontalLayout {
+                height: 28px;
+                spacing: 12px;
+
+                Text {
+                    text: root.title;
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: Theme.node-text;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                if root.view-toggle : Segmented {
+                    json: root.json-view;
+                    set-json(value) => {
+                        root.set-json(value);
+                    }
+                }
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: Theme.radius-sm;
+                    border-width: 1px;
+                    border-color: close-ta.has-hover ? Theme.border-strong : transparent;
+                    background: close-ta.has-hover ? Theme.hover : transparent;
+                    animate background {
+                        duration: Theme.motion-hover;
+                        easing: ease-out;
+                    }
+                    animate border-color {
+                        duration: Theme.motion-hover;
+                        easing: ease-out;
+                    }
+
+                    close-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.close();
+                        }
+                    }
+                    Path {
+                        x: 6px;
+                        y: 6px;
+                        width: 16px;
+                        height: 16px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: Icons.close;
+                        fill: transparent;
+                        stroke-width: 2px;
+                        stroke-line-cap: round;
+                        stroke: Theme.node-muted;
+                    }
+                }
+            }
+
+            body := Rectangle {
+                height: root.body-height;
+                background: transparent;
+                @children
+            }
+        }
+    }
+}
+
+// ---- Local media pipeline widgets (`image_tools.rs`) ----------------------
+
+
+
+// One selectable chip (crop ratio / mask shape / algorithm / analysis ratio
+// rows): the shared selected-state ink (`toolbar.accent-*`).
+component ToolChip inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 26px;
+    width: self.preferred-width;
+    border-radius: Theme.radius-sm;
+    background: root.active ? Theme.toolbar-accent-bg : chip-ta.has-hover ? Theme.hover : transparent;
+    animate background {
+        duration: root.active ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    chip-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+
+        Text {
+            text: root.label;
+            font-size: 12px;
+            font-weight: 500;
+            color: root.active ? Theme.toolbar-accent-text : Theme.node-muted;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// A horizontal row of chips; `options` are ids, `labels` their display text.
+component ToolChipRow inherits Rectangle {
+    in property <[string]> options: [];
+    in property <[string]> labels: [];
+    in property <string> active: "";
+    callback pick(string);
+
+    height: 26px;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 4px;
+
+        for option[index] in root.options : ToolChip {
+            label: index < root.labels.length ? root.labels[index] : option;
+            active: option == root.active;
+            clicked => {
+                root.pick(option);
+            }
+        }
+    }
+}
+
+// Number field with -/+ steppers (the split rows/columns).
+component ToolStepper inherits Rectangle {
+    in property <string> label: "";
+    in property <int> value: 1;
+    in property <int> minimum: 1;
+    in property <int> maximum: 12;
+    callback changed(int);
+
+    height: 32px;
+    width: 100%;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        Text {
+            text: root.label;
+            font-size: 12px;
+            font-weight: 500;
+            color: Theme.node-label;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        Text {
+            text: "\{root.value}";
+            font-size: 12px;
+            font-weight: 600;
+            color: Theme.node-text;
+            vertical-alignment: center;
+        }
+        Button { variant: "ghost"; spacing: 6px;
+            label: "-";
+            enabled: root.value > root.minimum;
+            clicked => {
+                root.changed(root.value - 1);
+            }
+        }
+        Button { variant: "ghost"; spacing: 6px;
+            label: "+";
+            enabled: root.value < root.maximum;
+            clicked => {
+                root.changed(root.value + 1);
+            }
+        }
+    }
+}
+
+// One 26px action of the gallery card's hover bar (`bg-white/15` over media).
+component GalleryAction inherits Rectangle {
+    in property <string> icon: "";
+    callback clicked();
+
+    width: 26px;
+    height: 26px;
+    border-radius: Theme.radius-sm;
+    background: ga.has-hover ? Theme.picker-handle.with-alpha(0.15) : transparent;
+
+    ga := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    Path {
+        x: 6px;
+        y: 6px;
+        width: 14px;
+        height: 14px;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: root.icon;
+        fill: transparent;
+        stroke-width: 2px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+        stroke: Theme.picker-handle;
+    }
+}
+
+// One gallery card (`image-stack-preview.tsx:36-85`): the bitmap with a hover
+// action bar (set cover / take out / download / copy / remove), the cover badge
+// or the error/loading state.
+component StackGalleryCard inherits Rectangle {
+    in property <StackGalleryRow> entry;
+    in property <float> vs: 1;
+    callback set-cover();
+    callback take-out();
+    callback remove();
+    callback retry();
+    callback download();
+    callback copy();
+
+    horizontal-stretch: 1;
+    height: 150px * root.vs;
+    border-radius: Theme.radius-xl * root.vs;
+    border-width: 1px * root.vs;
+    border-color: root.entry.cover || card-ta.has-hover ? Theme.node-accent : Theme.node-stroke;
+    background: Theme.node-fill;
+    clip: true;
+    animate border-color {
+        duration: root.entry.cover ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    card-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    if root.entry.thumb.width > 0 : Image {
+        width: 100%;
+        height: 100%;
+        source: root.entry.thumb;
+        image-fit: cover;
+    }
+    if root.entry.cover : Rectangle {
+        x: 8px * root.vs;
+        y: 8px * root.vs;
+        height: 20px * root.vs;
+        width: self.preferred-width;
+        border-radius: Theme.radius-sm * root.vs;
+        background: Theme.node-accent-soft;
+
+        Text {
+            x: 6px * root.vs;
+            text: "Cover";
+            font-size: 11px * root.vs;
+            font-weight: 500;
+            color: Theme.node-accent-text;
+            vertical-alignment: center;
+        }
+    }
+    if root.entry.status == "error" : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Theme.node-fill;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 6px;
+
+            Text {
+                vertical-alignment: center;
+                width: parent.width - 16px * root.vs;
+                text: root.entry.error != "" ? root.entry.error : "Generation failed";
+                font-size: 11px * root.vs;
+                color: Theme.node-muted;
+                wrap: word-wrap;
+                horizontal-alignment: center;
+            }
+            HorizontalLayout {
+                alignment: center;
+                spacing: 6px;
+
+                Button { variant: "ghost"; spacing: 6px;
+                    label: "Retry";
+                    icon: Icons.refresh;
+                    clicked => {
+                        root.retry();
+                    }
+                }
+                Button { variant: "ghost"; spacing: 6px;
+                    label: "";
+                    icon: Icons.trash;
+                    danger: true;
+                    clicked => {
+                        root.remove();
+                    }
+                }
+            }
+        }
+    }
+    if root.entry.status == "loading" : Rectangle {
+        width: 100%;
+        height: 100%;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 6px;
+
+            spinner := Rectangle {
+                width: 18px * root.vs;
+                height: 18px * root.vs;
+                background: transparent;
+                property <angle> turn: 0deg;
+                animate turn {
+                    duration: Theme.motion-spin;
+                    iteration-count: -1;
+                    easing: linear;
+                }
+                init => {
+                    self.turn = 360deg;
+                }
+
+                Path {
+                    width: 100%;
+                    height: 100%;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: Icons.loader;
+                    fill: transparent;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                    stroke: Theme.node-muted;
+                    transform-origin: {
+                        x: self.width / 2,
+                        y: self.height / 2,
+                    };
+                    transform-rotation: spinner.turn;
+                }
+            }
+            Text {
+                vertical-alignment: center;
+                text: "Loading…";
+                font-size: 11px * root.vs;
+                color: Theme.node-muted;
+                horizontal-alignment: center;
+            }
+        }
+    }
+    // Hover action bar (`bg-black/55` over arbitrary media is a design-system
+    // §1E canvas-surface literal, matching the web's overlay).
+    if card-ta.has-hover && root.entry.thumb.width > 0 : Rectangle {
+        x: parent.width - self.width - 8px * root.vs;
+        y: 8px * root.vs;
+        height: 30px * root.vs;
+        width: self.preferred-width;
+        border-radius: Theme.radius-md * root.vs;
+        background: Theme.media-video-backdrop.with-alpha(0.55);
+
+        HorizontalLayout {
+            padding-left: 2px * root.vs;
+            padding-right: 2px * root.vs;
+            spacing: 2px * root.vs;
+
+            if !root.entry.cover : GalleryAction {
+                icon: Icons.sparkles;
+                clicked => {
+                    root.set-cover();
+                }
+            }
+            GalleryAction {
+                icon: Icons.upload;
+                clicked => {
+                    root.take-out();
+                }
+            }
+            GalleryAction {
+                icon: Icons.download;
+                clicked => {
+                    root.download();
+                }
+            }
+            GalleryAction {
+                icon: Icons.copy;
+                clicked => {
+                    root.copy();
+                }
+            }
+            GalleryAction {
+                icon: Icons.trash;
+                clicked => {
+                    root.remove();
+                }
+            }
+        }
+    }
+}
+
+// The crop stage: the source bitmap with the dark surround, the rule-of-thirds
+// frame and its eight handles; the pointer arrives normalized so Rust owns the
+// rect math (`moveCrop` / `resizeCrop`).
+component CropStage inherits Rectangle {
+    in property <image> source;
+    in property <float> rx: 0;
+    in property <float> ry: 0;
+    in property <float> rw: 1;
+    in property <float> rh: 1;
+    callback stage-pointer(string, float, float);
+
+    vertical-stretch: 1;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.node-stroke;
+    background: Theme.media-video-backdrop;
+    clip: true;
+
+    // The nearest of the eight handles decides the cursor; the frame's inside
+    // moves the crop (`ps-crop`).
+    pure function handle-at(x: length, y: length) -> string {
+        let fx = root.rx * root.width;
+        let fy = root.ry * root.height;
+        let fw = root.rw * root.width;
+        let fh = root.rh * root.height;
+        let edge-x = x < fx + 12px ? -1 : x > fx + fw - 12px ? 1 : 0;
+        let edge-y = y < fy + 12px ? -1 : y > fy + fh - 12px ? 1 : 0;
+        return edge-x == -1 && edge-y == -1 ? "nw"
+            : edge-x == 1 && edge-y == -1 ? "ne"
+            : edge-x == -1 && edge-y == 1 ? "sw"
+            : edge-x == 1 && edge-y == 1 ? "se"
+            : edge-x == -1 ? "w"
+            : edge-x == 1 ? "e"
+            : edge-y == -1 ? "n"
+            : edge-y == 1 ? "s"
+            : "move";
+    }
+    property <string> handle: root.handle-at(stage.mouse-x, stage.mouse-y);
+
+    stage := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: root.handle == "nw" || root.handle == "se" ? nwse-resize
+            : root.handle == "ne" || root.handle == "sw" ? nesw-resize
+            : root.handle == "n" || root.handle == "s" ? ns-resize
+            : root.handle == "w" || root.handle == "e" ? ew-resize
+            : move;
+        pointer-event(e) => {
+            root.stage-pointer(PointerIds.kind-id(e.kind), self.mouse-x / self.width, self.mouse-y / self.height);
+        }
+    }
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.source;
+        image-fit: contain;
+    }
+    // Surround shading (the web's four `bg-black/55` bands).
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: root.ry * parent.height;
+        background: Theme.media-video-backdrop.with-alpha(0.55);
+    }
+    Rectangle {
+        x: 0px;
+        y: (root.ry + root.rh) * parent.height;
+        width: parent.width;
+        height: parent.height - self.y;
+        background: Theme.media-video-backdrop.with-alpha(0.55);
+    }
+    Rectangle {
+        x: 0px;
+        y: root.ry * parent.height;
+        width: root.rx * parent.width;
+        height: root.rh * parent.height;
+        background: Theme.media-video-backdrop.with-alpha(0.55);
+    }
+    Rectangle {
+        x: (root.rx + root.rw) * parent.width;
+        y: root.ry * parent.height;
+        width: parent.width - self.x;
+        height: root.rh * parent.height;
+        background: Theme.media-video-backdrop.with-alpha(0.55);
+    }
+    // Frame + thirds.
+    crop-frame := Rectangle {
+        x: root.rx * parent.width;
+        y: root.ry * parent.height;
+        width: root.rw * parent.width;
+        height: root.rh * parent.height;
+        border-width: 2px;
+        border-color: Theme.picker-handle;
+        background: transparent;
+
+        Rectangle {
+            x: 0px;
+            y: parent.height / 3;
+            width: parent.width;
+            height: 1px;
+            background: Theme.picker-handle.with-alpha(0.5);
+        }
+        Rectangle {
+            x: 0px;
+            y: parent.height * 2 / 3;
+            width: parent.width;
+            height: 1px;
+            background: Theme.picker-handle.with-alpha(0.5);
+        }
+        Rectangle {
+            x: parent.width / 3;
+            y: 0px;
+            width: 1px;
+            height: parent.height;
+            background: Theme.picker-handle.with-alpha(0.5);
+        }
+        Rectangle {
+            x: parent.width * 2 / 3;
+            y: 0px;
+            width: 1px;
+            height: parent.height;
+            background: Theme.picker-handle.with-alpha(0.5);
+        }
+        // Eight handles (visual only; the stage's pointer handler picks the
+        // nearest edge from the press position).
+        for index in 8 : Rectangle {
+            width: 12px;
+            height: 12px;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.media-video-backdrop;
+            background: Theme.card;
+            x: Math.mod(index, 3) * parent.width / 2 - self.width / 2;
+            y: floor(index / 3) * parent.height / 2 - self.height / 2;
+        }
+    }
+}
+
+// Mask stage: the source with the shape overlay (rect / ellipse + feather).
+component MaskStage inherits Rectangle {
+    in property <image> source;
+    in property <bool> ellipse: false;
+    in property <bool> invert: false;
+
+    vertical-stretch: 1;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.node-stroke;
+    background: Theme.media-video-backdrop;
+    clip: true;
+
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.source;
+        image-fit: contain;
+        opacity: 0.65;
+    }
+    // The kept region (the mask's white area): rounded when elliptical.
+    Rectangle {
+        x: parent.width * 0.06;
+        y: parent.height * 0.06;
+        width: parent.width * 0.88;
+        height: parent.height * 0.88;
+        border-radius: root.ellipse ? min(self.width, self.height) / 2 : Theme.radius-md;
+        border-width: 2px;
+        border-color: root.invert ? Theme.node-danger : Theme.picker-handle;
+        background: transparent;
+    }
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        background: root.invert ? Theme.node-danger.with-alpha(0.18) : transparent;
+        border-radius: root.ellipse ? min(self.width, self.height) / 2 : Theme.radius-md;
+    }
+}
+
+// Split preview: the source with the cut lines (`SplitGrid`).
+component SplitStage inherits Rectangle {
+    in property <image> source;
+    in property <[float]> horizontal-lines: [];
+    in property <[float]> vertical-lines: [];
+
+    vertical-stretch: 1;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.node-stroke;
+    background: Theme.media-video-backdrop;
+    clip: true;
+
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.source;
+        image-fit: contain;
+    }
+    for line in root.vertical-lines : Rectangle {
+        x: line * parent.width - 1px;
+        y: 0px;
+        width: 2px;
+        height: 100%;
+        background: Theme.picker-handle;
+        opacity: 0.9;
+    }
+    for line in root.horizontal-lines : Rectangle {
+        x: 0px;
+        y: line * parent.height - 1px;
+        width: 100%;
+        height: 2px;
+        background: Theme.picker-handle;
+        opacity: 0.9;
+    }
+}
+
+// Heading of the open quick-tool dialog (the modal title line).
+global ImageToolLabels {
+    public pure function heading(kind: string) -> string {
+        return kind == "crop" ? "Crop image"
+            : kind == "mask" ? "Mask image"
+            : kind == "split" ? "Split image"
+            : kind == "resolution" ? "Image resolution"
+            : kind == "analysis" ? "Image analysis"
+            : "Image tools";
+    }
+}
+
+// Node info modal (canvas-node-hover-toolbar.tsx:213-270): Info rows or the
+// pretty JSON (data URLs redacted in Rust).
+export component NodeInfoModal inherits ModalShell {
+    in property <[InfoRow]> rows: [];
+    in property <string> error: "";
+    in property <bool> json: false;
+    in property <string> json-text: "";
+
+    body-height: 420px;
+    view-toggle: true;
+    json-view: root.json;
+    set-json(value) => {
+        root.set-json(value);
+    }
+
+    if !root.json : Flickable {
+        width: 100%;
+        height: 100%;
+
+        VerticalLayout {
+            width: 100%;
+            padding-right: 4px;
+            spacing: 12px;
+
+            for row in root.rows : HorizontalLayout {
+                height: 20px;
+                spacing: 12px;
+
+                Text {
+                    width: 72px;
+                    text: row.label;
+                    font-size: 13px;
+                    font-weight: 500;
+                    color: Theme.node-label;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    text: row.value;
+                    font-size: 13px;
+                    color: Theme.node-text;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+    if root.json : Flickable {
+        width: 100%;
+        height: 100%;
+
+        Rectangle {
+            width: 100%;
+            height: parent.height;
+            background: Theme.toolbar-panel;
+            border-width: 1px;
+            border-color: Theme.node-stroke;
+            border-radius: Theme.radius-sm;
+
+            Text {
+                vertical-alignment: center;
+                x: 12px;
+                y: 12px;
+                width: parent.width - 24px;
+                text: root.json-text;
+                font-size: 13px;
+                color: Theme.node-text;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+// Image preview modal (project.tsx:2102-2130): the real bitmap with the node's
+// media info line, or the stack gallery (`image-stack-preview.tsx`).
+export component ImagePreviewModal inherits ModalShell {
+    in property <bool> stack: false;
+    in property <image> image;
+    in property <string> info: "";
+    in property <[StackGalleryRow]> rows: [];
+    in property <int> count: 0;
+    callback download(string);
+    callback copy(string);
+    callback stack-action(string, string);
+
+    tier: root.stack ? "wide" : "medium";
+    body-height: root.stack ? 460px : 380px;
+
+    if !root.stack : VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 12px;
+
+        Rectangle {
+            vertical-stretch: 1;
+            border-radius: Theme.radius-xl;
+            border-width: 1px;
+            border-color: Theme.node-stroke;
+            background: Theme.media-video-backdrop;
+
+            if root.image.width > 0 : Image {
+                width: 100%;
+                height: 100%;
+                source: root.image;
+                image-fit: contain;
+            }
+            if root.image.width == 0 : VerticalLayout {
+                alignment: center;
+                spacing: 10px;
+
+                Path {
+                    width: 44px;
+                    height: 34px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: Icons.image;
+                    fill: transparent;
+                    stroke-width: 1.5px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                    stroke: Theme.node-placeholder;
+                }
+                Text {
+                    vertical-alignment: center;
+                    text: "Preview unavailable";
+                    font-size: 13px;
+                    color: Theme.node-placeholder;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        HorizontalLayout {
+            height: 34px;
+            spacing: 8px;
+
+            Text {
+                text: root.info;
+                font-size: 12px;
+                color: Theme.node-muted;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Download";
+                icon: Icons.download;
+                enabled: root.image.width > 0;
+                clicked => {
+                    root.download("");
+                }
+            }
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Copy";
+                icon: Icons.copy;
+                enabled: root.image.width > 0;
+                clicked => {
+                    root.copy("");
+                }
+            }
+        }
+    }
+
+    if root.stack : VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 10px;
+
+        if root.rows.length > 1 : HorizontalLayout {
+            height: 28px;
+            alignment: end;
+
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Split all";
+                icon: Icons.grid;
+                clicked => {
+                    root.stack-action("", "split-all");
+                }
+            }
+        }
+        Flickable {
+            vertical-stretch: 1;
+            width: 100%;
+            content-width: self.width;
+            content-height: self.height;
+
+            // Gallery grid: three columns of cover-cropped cards, cover first in
+            // stack order (`columns-2 sm:columns-3 xl:columns-4`). The grid is
+            // capped by the flickable's own height, so a large stack scrolls.
+            GridLayout {
+                width: 100%;
+                padding: 0px;
+                spacing: 10px;
+                for row[index] in root.rows : StackGalleryCard {
+                    entry: row;
+                    vs: 1;
+                    set-cover => {
+                        root.stack-action(row.id, "set-cover");
+                    }
+                    take-out => {
+                        root.stack-action(row.id, "take-out");
+                    }
+                    remove => {
+                        root.stack-action(row.id, "remove");
+                    }
+                    retry => {
+                        root.stack-action(row.id, "retry");
+                    }
+                    download => {
+                        root.stack-action(row.id, "download");
+                    }
+                    copy => {
+                        root.stack-action(row.id, "copy");
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Image quick-tool dialog (`image_tools::ImageTool`): crop, mask, split,
+// resolution and local analysis bodies, dispatched by `state.kind`.
+export component ImageToolModal inherits ModalShell {
+    in property <ImageToolState> state;
+    callback pick(string, string);
+    callback field(string, string);
+    callback pointer(string, float, float);
+    callback suggest();
+    callback reset();
+    callback apply();
+
+    title: ImageToolLabels.heading(root.state.kind) + (root.state.title != "" ? " · " + root.state.title : "");
+    // The web gives the tool stages 780-980px (`canvas-node-*-dialog.tsx`); the
+    // wide tier is the scale's home for them.
+    tier: "wide";
+    body-height: 460px;
+
+    // ---- Crop --------------------------------------------------------------
+    if root.state.kind == "crop" : VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 10px;
+
+        CropStage {
+            source: root.state.image;
+            rx: root.state.rect-x;
+            ry: root.state.rect-y;
+            rw: root.state.rect-width;
+            rh: root.state.rect-height;
+            stage-pointer(kind, x, y) => {
+                root.pointer(kind, x, y);
+            }
+        }
+        Text {
+            text: root.state.readout;
+            font-size: 12px;
+            color: Theme.node-muted;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        ToolChipRow {
+            options: ["free", "fixed", "original", "1:1", "4:3", "16:9", "9:16"];
+            labels: ["Free", "Fixed", "Original", "1:1", "4:3", "16:9", "9:16"];
+            active: root.state.ratio;
+            pick(option) => {
+                root.pick("ratio", option);
+            }
+        }
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Reset";
+                clicked => {
+                    root.reset();
+                }
+            }
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Suggest";
+                icon: Icons.sparkles;
+                clicked => {
+                    root.suggest();
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Cancel";
+                clicked => {
+                    root.close();
+                }
+            }
+            Button { variant: "primary"; pad: 14px;
+                label: root.state.apply-label;
+                clicked => {
+                    root.apply();
+                }
+            }
+        }
+    }
+
+    // ---- Mask --------------------------------------------------------------
+    if root.state.kind == "mask" : VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 10px;
+
+        MaskStage {
+            source: root.state.image;
+            ellipse: root.state.mask-shape == "ellipse";
+            invert: root.state.mask-invert;
+        }
+        Text {
+            text: root.state.readout;
+            font-size: 12px;
+            color: Theme.node-muted;
+            overflow: elide;
+        }
+        HorizontalLayout {
+            height: 26px;
+            spacing: 8px;
+
+            Text {
+                text: "Shape";
+                font-size: 12px;
+                font-weight: 500;
+                color: Theme.node-label;
+                vertical-alignment: center;
+            }
+            ToolChipRow {
+                options: ["rect", "ellipse"];
+                labels: ["Rectangle", "Ellipse"];
+                active: root.state.mask-shape;
+                pick(option) => {
+                    root.pick("shape", option);
+                }
+            }
+        }
+        HorizontalLayout {
+            height: 30px;
+            spacing: 8px;
+
+            Text {
+                text: "Feather";
+                font-size: 12px;
+                font-weight: 500;
+                color: Theme.node-label;
+                vertical-alignment: center;
+            }
+            ToolChipRow {
+                options: ["0", "8", "24", "64"];
+                labels: ["None", "8 px", "24 px", "64 px"];
+                active: "\{round(root.state.mask-feather)}";
+                pick(option) => {
+                    root.field("feather", option);
+                }
+            }
+            Text {
+                text: "\{round(root.state.mask-feather)} px";
+                font-size: 12px;
+                color: Theme.node-muted;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                horizontal-alignment: right;
+            }
+        }
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+
+            Button { variant: "ghost"; spacing: 6px;
+                label: root.state.mask-invert ? "Invert: on" : "Invert: off";
+                icon: Icons.swap;
+                clicked => {
+                    root.field("invert", root.state.mask-invert ? "false" : "true");
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Cancel";
+                clicked => {
+                    root.close();
+                }
+            }
+            Button { variant: "primary"; pad: 14px;
+                label: root.state.apply-label;
+                clicked => {
+                    root.apply();
+                }
+            }
+        }
+    }
+
+    // ---- Split -------------------------------------------------------------
+    if root.state.kind == "split" : VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 10px;
+
+        SplitStage {
+            source: root.state.image;
+            horizontal-lines: root.state.horizontal-lines;
+            vertical-lines: root.state.vertical-lines;
+        }
+        ToolStepper {
+            label: "Rows";
+            value: root.state.rows;
+            minimum: 1;
+            maximum: 12;
+            changed(value) => {
+                root.field("rows", "\{value}");
+            }
+        }
+        ToolStepper {
+            label: "Columns";
+            value: root.state.columns;
+            minimum: 1;
+            maximum: 12;
+            changed(value) => {
+                root.field("columns", "\{value}");
+            }
+        }
+        HorizontalLayout {
+            height: 30px;
+            spacing: 8px;
+
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Horizontal line";
+                icon: Icons.minus;
+                clicked => {
+                    root.field("add-horizontal", "");
+                }
+            }
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Vertical line";
+                icon: Icons.plus;
+                clicked => {
+                    root.field("add-vertical", "");
+                }
+            }
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Delete line";
+                icon: Icons.trash;
+                clicked => {
+                    root.field("remove-line", "");
+                }
+            }
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Reset lines";
+                icon: Icons.refresh;
+                clicked => {
+                    root.field("reset-lines", "");
+                }
+            }
+        }
+        Text {
+            vertical-alignment: center;
+            text: root.state.readout;
+            font-size: 12px;
+            color: Theme.node-muted;
+            overflow: elide;
+        }
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Cancel";
+                clicked => {
+                    root.close();
+                }
+            }
+            Button { variant: "primary"; pad: 14px;
+                label: root.state.apply-label;
+                clicked => {
+                    root.apply();
+                }
+            }
+        }
+    }
+
+    // ---- Resolution --------------------------------------------------------
+    if root.state.kind == "resolution" : VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 10px;
+
+        Rectangle {
+            vertical-stretch: 1;
+            border-radius: Theme.radius-md;
+            border-width: 1px;
+            border-color: Theme.node-stroke;
+            background: Theme.media-video-backdrop;
+
+            Image {
+                width: 100%;
+                height: 100%;
+                source: root.state.image;
+                image-fit: contain;
+            }
+        }
+        HorizontalLayout {
+            height: 26px;
+            spacing: 8px;
+
+            Text {
+                text: "Source";
+                font-size: 12px;
+                font-weight: 500;
+                color: Theme.node-label;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.state.source;
+                font-size: 12px;
+                color: Theme.node-muted;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: root.state.readout;
+                font-size: 12px;
+                font-weight: 600;
+                color: Theme.node-text;
+                vertical-alignment: center;
+            }
+        }
+        HorizontalLayout {
+            height: 26px;
+            spacing: 8px;
+
+            Text {
+                text: "Long edge";
+                font-size: 12px;
+                font-weight: 500;
+                color: Theme.node-label;
+                vertical-alignment: center;
+            }
+            ToolChipRow {
+                options: ["1024", "2048", "3072", "4096"];
+                labels: ["1024", "2048", "3072", "4096"];
+                active: "\{root.state.target}";
+                pick(option) => {
+                    root.field("target", option);
+                }
+            }
+        }
+        HorizontalLayout {
+            height: 26px;
+            spacing: 8px;
+
+            Text {
+                text: "Algorithm";
+                font-size: 12px;
+                font-weight: 500;
+                color: Theme.node-label;
+                vertical-alignment: center;
+            }
+            ToolChipRow {
+                options: ["nearest", "bilinear", "high"];
+                labels: ["Nearest", "Bilinear", "High quality"];
+                active: root.state.algorithm;
+                pick(option) => {
+                    root.pick("algorithm", option);
+                }
+            }
+        }
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+            Button { variant: "ghost"; spacing: 6px;
+                label: "Cancel";
+                clicked => {
+                    root.close();
+                }
+            }
+            Button { variant: "primary"; pad: 14px;
+                label: root.state.apply-label;
+                clicked => {
+                    root.apply();
+                }
+            }
+        }
+    }
+
+    // ---- Analysis ----------------------------------------------------------
+    if root.state.kind == "analysis" : HorizontalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 14px;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 8px;
+
+            Rectangle {
+                height: 190px;
+                border-radius: Theme.radius-md;
+                border-width: 1px;
+                border-color: Theme.node-stroke;
+                background: Theme.media-video-backdrop;
+
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.state.image;
+                    image-fit: contain;
+                }
+            }
+            Text {
+                vertical-alignment: center;
+                text: "Palette";
+                font-size: 12px;
+                font-weight: 500;
+                color: Theme.node-label;
+            }
+            if root.state.palette.length == 0 : Text {
+                vertical-alignment: center;
+                text: "No opaque pixels";
+                font-size: 12px;
+                color: Theme.node-muted;
+            }
+            HorizontalLayout {
+                cross-axis-alignment: center;
+                height: 26px;
+                spacing: 8px;
+
+                for swatch[index] in root.state.palette : Rectangle {
+                    width: 22px;
+                    height: 22px;
+                    border-radius: Theme.radius-sm;
+                    border-width: 1px;
+                    border-color: Theme.node-stroke;
+                    background: swatch;
+                }
+            }
+            for hex in root.state.palette-labels : Text {
+                vertical-alignment: center;
+                text: hex;
+                font-size: 11px;
+                font-family: "monospace";
+                color: Theme.node-text;
+            }
+        }
+        VerticalLayout {
+            width: 300px;
+            spacing: 8px;
+
+            Text {
+                text: "Metadata";
+                font-size: 12px;
+                font-weight: 500;
+                color: Theme.node-label;
+            }
+            Flickable {
+                height: 132px;
+                width: 100%;
+                content-width: self.width;
+                content-height: self.height;
+
+                VerticalLayout {
+                    width: 100%;
+                    spacing: 4px;
+
+                    for row in root.state.meta-rows : HorizontalLayout {
+                        height: 18px;
+                        spacing: 8px;
+
+                        Text {
+                            width: 108px;
+                            text: row.label;
+                            font-size: 11px;
+                            color: Theme.node-label;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: row.value;
+                            font-size: 11px;
+                            color: Theme.node-text;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+            Text {
+                text: "Perceptual hash";
+                font-size: 12px;
+                font-weight: 500;
+                color: Theme.node-label;
+            }
+            Rectangle {
+                height: 30px;
+                width: 100%;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: Theme.node-stroke;
+                background: Theme.card;
+
+                Text {
+                    x: 8px;
+                    text: root.state.hash;
+                    font-size: 12px;
+                    font-family: "monospace";
+                    color: Theme.node-text;
+                    vertical-alignment: center;
+                }
+            }
+            Text {
+                vertical-alignment: center;
+                text: "Smart-crop ratio";
+                font-size: 12px;
+                font-weight: 500;
+                color: Theme.node-label;
+            }
+            ToolChipRow {
+                options: ["1:1", "4:3", "3:4", "16:9", "9:16"];
+                labels: ["1:1", "4:3", "3:4", "16:9", "9:16"];
+                active: root.state.ratio;
+                pick(option) => {
+                    root.pick("ratio", option);
+                }
+            }
+            Text {
+                vertical-alignment: center;
+                text: "Suggestion: \{root.state.suggestion} px";
+                font-size: 11px;
+                color: Theme.node-muted;
+                overflow: elide;
+            }
+            Rectangle {
+                vertical-stretch: 1;
+                background: transparent;
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+
+                Button { variant: "ghost"; spacing: 6px;
+                    label: "Close";
+                    clicked => {
+                        root.close();
+                    }
+                }
+                Button { variant: "primary"; pad: 14px;
+                    label: root.state.apply-label;
+                    clicked => {
+                        root.apply();
+                    }
+                }
+            }
+        }
+    }
+}

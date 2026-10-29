@@ -1,0 +1,450 @@
+// The shared studio dock chrome: the arrangeable left/right/bottom dock areas
+// of the Image Studio, drawn as Photoshop panel groups.
+//
+//   * `DockSplitter`   - the 6px resize grab strip (`SPLITTER_CLASS`), 1:1 with
+//                        the pointer while dragging (no easing, per
+//                        motion-catalog.md §5 "Dock panel resize 0ms").
+//   * `DockTabStrip`   - the 30px PS tab row of a group: light active tab on a
+//                        dark strip, the active tab's close ×, and the group's
+//                        collapse chevron. A single-panel group shows its one
+//                        named tab instead of the old anonymous grip bar, so
+//                        every panel carries its name and stays draggable.
+//   * `DockDropOverlay`- the drop zones + floating label while a panel is
+//                        dragged to another edge.
+//   * `TooltipLayer`   - the tooltip surface `Theme.tooltip` drives.
+//
+// `Theme.dock-*` is the Rust <-> Slint boundary: Rust owns the layout model
+// (`crates/app/src/image/dock_engine.rs`) and pushes a `DockLayoutState` per
+// studio; every gesture is reported back through `Theme.dock-request`, which
+// Rust clamps, persists and re-pushes. The `-preview` ops only repaint the
+// dragged edge, so the drag stays 1:1 with the pointer without rebuilding the
+// tab models per frame. The collapse chevron is pure chrome: it is a local
+// `DockTabStrip` state reported to the studio, never a layout change.
+
+import { Theme } from "../theme.slint";
+import { StudioTheme } from "../studio-theme.slint";
+import { Icons } from "icons.slint";
+
+// The resize / split grab strip. `vertical` splits a side column's width;
+// `kind` picks the request pair ("size" resizes the edge, "split" moves the
+// ratio between two stacked groups).
+export component DockSplitter inherits Rectangle {
+    in property <bool> vertical: true;
+    in property <string> studio: "";
+    in property <string> edge: "right";
+    in property <string> kind: "size";
+    // The layout value when the drag starts (`sizes[edge]` / `split[edge]`).
+    in property <float> value: 0;
+    // The stacked height a split ratio is relative to.
+    in property <length> reference: 1px;
+
+    // The grab strip's own size comes from the usage site (`width`/`height` are
+    // inherited properties here) so the vertical and horizontal cases never mix
+    // `px` with `%` in one expression.
+    property <bool> dragging: false;
+    property <float> press-value: 0;
+    property <length> press-x: 0px;
+    property <length> press-y: 0px;
+
+    background: splitter-ta.has-hover || root.dragging ? StudioTheme.hover : transparent;
+    animate background {
+        duration: StudioTheme.motion-hover;
+        easing: ease-out;
+    }
+
+    // The 1px divider the web paints inside the 6px grab strip.
+    Rectangle {
+        width: root.vertical ? 1px : root.width;
+        height: root.vertical ? root.height : 1px;
+        x: root.vertical ? (root.width - self.width) / 2 : 0px;
+        y: root.vertical ? 0px : (root.height - self.height) / 2;
+        background: StudioTheme.hairline;
+    }
+
+    // The pointer position is `absolute-position + mouse-x/y`: that window
+    // coordinate stays stable while the strip itself moves under the pointer
+    // (the web uses `clientX/clientY`), and Slint keeps updating the grabbed
+    // area's `mouse-x/y` even outside its bounds.
+    pure function pointer-position() -> float {
+        return root.vertical
+            ? (splitter-ta.absolute-position.x + splitter-ta.mouse-x) / 1px
+            : (splitter-ta.absolute-position.y + splitter-ta.mouse-y) / 1px;
+    }
+
+    function drag-value() -> float {
+        let origin = (root.vertical ? root.press-x : root.press-y) / 1px;
+        let delta = root.pointer-position() - origin;
+        return root.kind == "split"
+            ? root.press-value + delta / (root.reference / 1px)
+            : root.press-value + delta * (root.edge == "left" ? 1.0 : -1.0);
+    }
+
+    splitter-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: root.vertical ? col-resize : row-resize;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.dragging = true;
+                root.press-value = root.value;
+                root.press-x = splitter-ta.absolute-position.x + splitter-ta.mouse-x;
+                root.press-y = splitter-ta.absolute-position.y + splitter-ta.mouse-y;
+            }
+            if ((e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) && root.dragging) {
+                root.dragging = false;
+                let next = root.drag-value();
+                if (root.kind == "split") {
+                    Theme.dock-request(root.studio, "split", root.edge, "", next, 0);
+                } else {
+                    Theme.dock-request(root.studio, "resize", root.edge, "", next, 0);
+                }
+            }
+        }
+        moved => {
+            if (root.dragging) {
+                let next = root.drag-value();
+                if (root.kind == "split") {
+                    Theme.dock-request(root.studio, "split-preview", root.edge, "", next, 0);
+                } else {
+                    Theme.dock-request(root.studio, "resize-preview", root.edge, "", next, 0);
+                }
+            }
+        }
+    }
+}
+
+// The tab row of one group. Photoshop's panel header: a 30px dark strip, the
+// group's tabs side by side, the light active tab carrying the name and its ×,
+// and a chevron at the right that folds the group down to this strip.
+export component DockTabStrip inherits Rectangle {
+    in property <string> studio: "";
+    in property <string> edge: "right";
+    in property <int> group-index: 0;
+    in property <[string]> panels: [];
+    in property <[string]> labels: [];
+    in property <string> active: "";
+    // Folded to the header (pure chrome; the studio owns the flag).
+    in property <bool> collapsed: false;
+    callback collapse();
+
+    // Local drag state (`dragRef`: which tab, where the press started, whether
+    // the 6px threshold was passed).
+    property <string> tab-press-id: "";
+    property <length> tab-press-x: 0px;
+    property <length> tab-press-y: 0px;
+    property <bool> tab-dragging: false;
+
+    height: StudioTheme.tab-strip-h;
+    background: StudioTheme.panel-header;
+
+    // The 1px rule between the header and its panel body.
+    Rectangle {
+        y: parent.height - 1px;
+        width: 100%;
+        height: 1px;
+        background: StudioTheme.hairline;
+    }
+
+    HorizontalLayout {
+        padding-left: 2px;
+        padding-right: 20px;
+        spacing: 1px;
+
+        for id[index] in root.panels : Rectangle {
+            width: self.preferred-width;
+            height: root.height - 1px;
+            background: id == root.active ? StudioTheme.panel-tab : (tab-ta.has-hover ? StudioTheme.panel-tab : StudioTheme.panel-header);
+            animate background {
+                duration: id == root.active ? StudioTheme.motion-select : StudioTheme.motion-hover;
+                easing: ease-out;
+            }
+
+            // The tab's hit area first: the label and the × below paint on top
+            // of it, and the × (its own TouchArea) takes the click in its box.
+            // The window coordinate comes from `absolute-position + mouse-x/y`,
+            // which Slint keeps updating while the tab holds the grab outside
+            // its own bounds.
+            tab-ta := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                changed has-hover => {
+                    if (self.has-hover) {
+                        Theme.dock-request(root.studio, "tip.show", index < root.labels.length ? root.labels[index] : id, "", self.absolute-position.x / 1px, (self.absolute-position.y + self.height) / 1px);
+                    } else {
+                        Theme.dock-request(root.studio, "tip.hide", "", "", 0, 0);
+                    }
+                }
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        root.tab-press-id = id;
+                        root.tab-press-x = self.absolute-position.x + self.mouse-x;
+                        root.tab-press-y = self.absolute-position.y + self.mouse-y;
+                        root.tab-dragging = false;
+                    }
+                    if ((e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) && root.tab-press-id == id) {
+                        let dragging = root.tab-dragging;
+                        let x = (self.absolute-position.x + self.mouse-x) / 1px;
+                        let y = (self.absolute-position.y + self.mouse-y) / 1px;
+                        root.tab-press-id = "";
+                        root.tab-dragging = false;
+                        Theme.dock-request(root.studio, "tip.hide", "", "", 0, 0);
+                        if (dragging) {
+                            Theme.dock-request(root.studio, "drag-end", id, "", x, y);
+                        } else {
+                            Theme.dock-request(root.studio, "activate", "\{root.edge}|\{root.group-index}|\{id}", "", 0, 0);
+                        }
+                    }
+                }
+                moved => {
+                    if (root.tab-press-id != id) {
+                        return;
+                    }
+                    let x = (self.absolute-position.x + self.mouse-x) / 1px;
+                    let y = (self.absolute-position.y + self.mouse-y) / 1px;
+                    if (!root.tab-dragging) {
+                        let dx = Math.abs(x - root.tab-press-x / 1px);
+                        let dy = Math.abs(y - root.tab-press-y / 1px);
+                        if (dx + dy > 6.0) {
+                            root.tab-dragging = true;
+                            Theme.dock-request(root.studio, "drag-start", id, "", x, y);
+                        }
+                    }
+                    if (root.tab-dragging) {
+                        Theme.dock-request(root.studio, "drag-move", id, "", x, y);
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: id == root.active ? 4px : 8px;
+                spacing: 4px;
+                cross-axis-alignment: center;
+
+                Text {
+                    text: index < root.labels.length ? root.labels[index] : id;
+                    font-size: 11px;
+                    font-weight: id == root.active ? 600 : 400;
+                    color: id == root.active ? StudioTheme.text-strong : StudioTheme.text-muted;
+                    animate color {
+                        duration: StudioTheme.motion-select;
+                        easing: ease-out;
+                    }
+                    vertical-alignment: center;
+                    overflow: elide;
+                    max-width: 120px;
+                }
+
+                // The active tab's ×: closes that panel (the rest of the group
+                // stays, the vacated group collapses if it was the last tab).
+                if id == root.active : Rectangle {
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 2px;
+                    background: close-ta.has-hover ? StudioTheme.danger-soft : transparent;
+                    transform-scale-x: close-ta.pressed ? 0.97 : 1.0;
+                    transform-scale-y: close-ta.pressed ? 0.97 : 1.0;
+                    animate background {
+                        duration: StudioTheme.motion-hover;
+                        easing: ease-out;
+                    }
+                    animate transform-scale-x {
+                        duration: StudioTheme.motion-press;
+                        easing: ease-out;
+                    }
+                    animate transform-scale-y {
+                        duration: StudioTheme.motion-press;
+                        easing: ease-out;
+                    }
+
+                    Path {
+                        x: (parent.width - 7px) / 2;
+                        y: (parent.height - 7px) / 2;
+                        width: 7px;
+                        height: 7px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: Icons.close;
+                        fill: transparent;
+                        stroke-width: 1.2px;
+                        stroke-line-cap: round;
+                        stroke: close-ta.has-hover ? StudioTheme.text-strong : StudioTheme.text-muted;
+                        animate stroke {
+                            duration: StudioTheme.motion-hover;
+                            easing: ease-out;
+                        }
+                    }
+
+                    close-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            Theme.dock-request(root.studio, "close", id, "", 0, 0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // The group's collapse chevron: folds the panel body away and leaves the
+    // tab strip (its own state, restored by the same chevron).
+    chevron := Rectangle {
+        x: root.width - 18px;
+        y: 0px;
+        width: 18px;
+        height: root.height - 1px;
+        background: chevron-ta.has-hover ? StudioTheme.hover : transparent;
+        transform-scale-x: chevron-ta.pressed ? 0.94 : 1.0;
+        transform-scale-y: chevron-ta.pressed ? 0.94 : 1.0;
+        animate background {
+            duration: StudioTheme.motion-hover;
+            easing: ease-out;
+        }
+        animate transform-scale-x {
+            duration: StudioTheme.motion-press;
+            easing: ease-out;
+        }
+        animate transform-scale-y {
+            duration: StudioTheme.motion-press;
+            easing: ease-out;
+        }
+
+        Path {
+            x: (parent.width - 9px) / 2;
+            y: (parent.height - 9px) / 2;
+            width: 9px;
+            height: 9px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.collapsed ? Icons.chevron-right : Icons.chevron-down;
+            fill: transparent;
+            stroke-width: 1.6px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: chevron-ta.has-hover ? StudioTheme.text-strong : StudioTheme.text-muted;
+            animate stroke {
+                duration: StudioTheme.motion-hover;
+                easing: ease-out;
+            }
+        }
+
+        chevron-ta := TouchArea {
+            width: 100%;
+            height: 100%;
+            mouse-cursor: pointer;
+            clicked => {
+                root.collapse();
+            }
+        }
+    }
+}
+
+// The drop zones + floating label of an in-flight panel drag
+// (`dock-panel.tsx:261-284`): left/right quarters in two vertical halves and a
+// bottom quarter strip.
+export component DockDropOverlay inherits Rectangle {
+    in property <string> studio: "";
+
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    z: 300;
+    visible: Theme.dock-drag-studio == root.studio && Theme.dock-drag-panel != "";
+
+    for zone in ["left|0", "left|1", "right|0", "right|1", "bottom|0"] : Rectangle {
+        width: zone == "bottom|0" ? parent.width : parent.width * 0.25;
+        height: zone == "bottom|0" ? parent.height * 0.25 : parent.height * 0.5;
+        x: zone == "left|0" || zone == "left|1" ? 0px
+            : zone == "right|0" || zone == "right|1" ? parent.width * 0.75
+            : 0px;
+        y: zone == "left|1" || zone == "right|1" ? parent.height * 0.5
+            : zone == "bottom|0" ? parent.height * 0.75
+            : 0px;
+        background: Theme.dock-drag-target == zone ? StudioTheme.selection-soft : transparent;
+        border-width: 1px;
+        border-color: StudioTheme.selection;
+        opacity: Theme.dock-drag-target == zone ? 1.0 : 0.5;
+    }
+
+    if Theme.dock-drag-panel != "" : Rectangle {
+        x: Theme.dock-drag-x + 12px;
+        y: Theme.dock-drag-y + 12px;
+        width: self.preferred-width;
+        height: 24px;
+        z: 10;
+        border-radius: StudioTheme.radius-sm;
+        border-width: 1px;
+        border-color: StudioTheme.hairline;
+        background: StudioTheme.menu-surface;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+
+            Text {
+                text: Theme.dock-drag-label;
+                font-size: 12px;
+                color: StudioTheme.text;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// The tooltip surface: reads `Theme.tooltip` (Rust owns the 200ms hover delay
+// and the 800ms description delay) and paints a small elevated label at the
+// anchor the target reported. The first stage shows the action's name; if the
+// pointer stays, the same surface gains one descriptive line beneath it.
+export component TooltipLayer inherits Rectangle {
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    z: 400;
+
+    // Always mounted, faded by `opacity` so the surface can animate both in
+    // and out (the web's tooltip fade); the text simply empties on hide.
+    tip := Rectangle {
+        x: min(max(Theme.tooltip.x, 4px), parent.width - self.width - 4px);
+        y: min(max(Theme.tooltip.y, 4px), parent.height - self.height - 4px);
+        width: min(self.preferred-width, 280px);
+        height: self.preferred-height;
+        border-radius: StudioTheme.radius-sm;
+        border-width: 1px;
+        border-color: StudioTheme.hairline;
+        background: StudioTheme.menu-surface;
+        opacity: Theme.tooltip.visible && Theme.tooltip.text != "" ? 1 : 0;
+        animate opacity {
+            duration: StudioTheme.motion-hover;
+            easing: ease-out;
+        }
+
+        VerticalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            padding-top: 4px;
+            padding-bottom: 4px;
+            spacing: 1px;
+
+            Text {
+                text: Theme.tooltip.text;
+                font-size: 12px;
+                color: StudioTheme.text-strong;
+                vertical-alignment: center;
+            }
+            if Theme.tooltip.description != "" : Text {
+                text: Theme.tooltip.description;
+                font-size: 11px;
+                color: StudioTheme.text-muted;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

@@ -1,0 +1,429 @@
+import { Theme } from "../theme.slint";
+import { Icons } from "icons.slint";
+import { ModalShell } from "modals.slint";
+
+// A compact, opaque field row. TextInput itself has no background/border in
+// Slint, so the shell rectangle is what makes the config read as a form instead
+// of loose text.
+component FieldRow inherits Rectangle {
+    in property <string> label: "";
+    in property <string> value: "";
+    in property <bool> read-only: false;
+    callback edited(string);
+
+    height: 36px;
+
+    Text {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 13px;
+        text: root.label;
+        font-size: 10px;
+        color: Theme.node-muted;
+        horizontal-alignment: left;
+        vertical-alignment: center;
+    }
+
+    Rectangle {
+        x: 0px;
+        y: 15px;
+        width: 100%;
+        height: 21px;
+        border-radius: Theme.radius-sm;
+        border-width: 1px;
+        border-color: Theme.node-stroke;
+        background: root.read-only ? Theme.muted : Theme.card;
+
+        TextInput {
+            x: 8px;
+            y: 0px;
+            width: parent.width - 16px;
+            height: 100%;
+            text: root.value;
+            read-only: root.read-only;
+            single-line: true;
+            font-size: 12px;
+            color: root.read-only ? Theme.node-muted : Theme.node-text;
+            vertical-alignment: center;
+            edited => {
+                root.edited(self.text);
+            }
+        }
+    }
+}
+
+// Centered workbench for one Image Attempt. The card outside is read-only;
+// this is the only place prompt/config are edited. Drafts are editable; a
+// frozen attempt shows the same fields read-only and offers "Run again".
+export component AttemptWorkbench inherits ModalShell {
+    in property <string> node-id: "";
+    in-out property <string> prompt: "";
+    in property <string> model: "";
+    in property <string> size: "";
+    in property <string> quality: "";
+    in property <int> count: 1;
+    in property <int> version: 1;
+    in property <string> intent: "";
+    in property <bool> frozen: false;
+    in property <int> run-count: 0;
+    in property <int> image-count: 0;
+    in property <image> image;
+    in property <bool> has-image: false;
+    in property <string> trace: "";
+
+    callback prompt-edited(string);
+    callback config-edited(string, string);
+    callback run();
+    callback duplicate();
+    callback extract();
+
+    title: "Image Attempt · v" + root.version + (root.intent != "" ? " · " + root.intent : "");
+    tier: "wide";
+    panel-width: Math.min(1000px, root.width - 24px);
+    body-height: Math.min(560px, root.height - 110px);
+    panel-background: Theme.background;
+    reveal: 1;
+
+    HorizontalLayout {
+        spacing: 20px;
+
+        // ---- compose ----------------------------------------------------
+        Rectangle {
+            width: 460px;
+            background: transparent;
+
+            VerticalLayout {
+                spacing: 10px;
+
+                HorizontalLayout {
+                    height: 24px;
+                    spacing: 8px;
+                    Text {
+                        text: "Prompt";
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: Theme.node-text;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: root.frozen ? "frozen · duplicate to change" : "draft · editable";
+                        font-size: 11px;
+                        color: root.frozen ? Theme.node-muted : Theme.node-accent;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // The prompt is the one field that can be arbitrarily long.
+                // Keep it in a clipped, scrollable card so its text can never
+                // paint over Config or the action row.
+                Rectangle {
+                    height: 190px;
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.node-stroke;
+                    background: Theme.card;
+                    clip: true;
+
+                    Flickable {
+                        x: 10px;
+                        y: 8px;
+                        width: parent.width - 20px;
+                        height: parent.height - 16px;
+                        content-width: self.width;
+                        content-height: 340px;
+                        interactive: true;
+
+                        prompt-input := TextInput {
+                            width: parent.width;
+                            height: 320px;
+                            text: root.prompt;
+                            read-only: root.frozen;
+                            wrap: word-wrap;
+                            font-size: 13px;
+                            color: Theme.node-text;
+                            vertical-alignment: top;
+                            edited => {
+                                root.prompt-edited(self.text);
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    height: 20px;
+                    Text {
+                        text: "Config";
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: Theme.node-text;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: root.model;
+                        font-size: 10px;
+                        color: Theme.node-muted;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+
+                Rectangle {
+                    height: 180px;
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.node-stroke;
+                    background: Theme.card;
+
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 4px;
+
+                        FieldRow {
+                            label: "Model";
+                            value: root.model;
+                            read-only: root.frozen;
+                            edited(value) => {
+                                root.config-edited("model", value);
+                            }
+                        }
+                        FieldRow {
+                            label: "Size";
+                            value: root.size;
+                            read-only: root.frozen;
+                            edited(value) => {
+                                root.config-edited("size", value);
+                            }
+                        }
+                        FieldRow {
+                            label: "Quality";
+                            value: root.quality;
+                            read-only: root.frozen;
+                            edited(value) => {
+                                root.config-edited("quality", value);
+                            }
+                        }
+                        FieldRow {
+                            label: "Count";
+                            value: "" + root.count;
+                            read-only: root.frozen;
+                            edited(value) => {
+                                root.config-edited("count", value);
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    text: root.run-count + " runs · " + root.image-count + " images";
+                    font-size: 11px;
+                    color: Theme.node-muted;
+                    height: 18px;
+                    vertical-alignment: center;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    height: 38px;
+
+                    action := Rectangle {
+                        width: 158px;
+                        height: 38px;
+                        border-radius: Theme.radius-md;
+                        background: action-ta.has-hover ? Theme.node-accent : Theme.brand;
+                        animate background {
+                            duration: Theme.motion-hover;
+                            easing: ease-out;
+                        }
+
+                        action-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.run();
+                            }
+                        }
+                        HorizontalLayout {
+                            width: 100%;
+                            height: 100%;
+                            alignment: center;
+                            spacing: 6px;
+                            Rectangle {
+                                width: 14px;
+                                height: 100%;
+                                Path {
+                                    x: 0px;
+                                    y: (parent.height - self.height) / 2;
+                                    width: 14px;
+                                    height: 14px;
+                                    viewbox-width: 24;
+                                    viewbox-height: 24;
+                                    commands: Icons.play;
+                                    fill: transparent;
+                                    stroke-width: 2px;
+                                    stroke-line-cap: round;
+                                    stroke: Theme.brand-foreground;
+                                }
+                            }
+                            Text {
+                                text: root.frozen ? "Run again" : "Run with agent";
+                                font-size: 12px;
+                                font-weight: 600;
+                                color: Theme.brand-foreground;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 112px;
+                        height: 38px;
+                        border-radius: Theme.radius-md;
+                        border-width: 1px;
+                        border-color: Theme.node-stroke;
+                        background: duplicate-ta.has-hover ? Theme.hover : Theme.card;
+                        animate background {
+                            duration: Theme.motion-hover;
+                            easing: ease-out;
+                        }
+                        duplicate-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.duplicate();
+                            }
+                        }
+                        Text {
+                            text: "Duplicate";
+                            font-size: 12px;
+                            color: Theme.node-text;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        width: 112px;
+                        height: 38px;
+                        border-radius: Theme.radius-md;
+                        border-width: 1px;
+                        border-color: Theme.node-stroke;
+                        background: extract-ta.has-hover ? Theme.hover : Theme.card;
+                        animate background {
+                            duration: Theme.motion-hover;
+                            easing: ease-out;
+                        }
+                        extract-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.extract();
+                            }
+                        }
+                        Text {
+                            text: "Extract image";
+                            font-size: 12px;
+                            color: Theme.node-text;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- result + trace ---------------------------------------------
+        Rectangle {
+            horizontal-stretch: 1;
+            background: transparent;
+
+            VerticalLayout {
+                spacing: 10px;
+
+                HorizontalLayout {
+                    height: 24px;
+                    Text {
+                        text: "Output";
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: Theme.node-text;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: root.image-count + " images";
+                        font-size: 11px;
+                        color: Theme.node-muted;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Rectangle {
+                    height: 300px;
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.node-stroke;
+                    background: Theme.muted;
+                    clip: true;
+
+                    if root.has-image : Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.image;
+                        image-fit: contain;
+                    }
+                    if !root.has-image : Text {
+                        width: 100%;
+                        height: 100%;
+                        text: "No output yet";
+                        font-size: 13px;
+                        color: Theme.node-muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Text {
+                    text: "Agent trace";
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: Theme.node-text;
+                    height: 20px;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.node-stroke;
+                    background: Theme.card;
+                    clip: true;
+
+                    Flickable {
+                        width: 100%;
+                        height: 100%;
+                        content-width: self.width;
+                        content-height: Math.max(self.height, trace-text.preferred-height + 20px);
+                        interactive: true;
+
+                        trace-text := Text {
+                            x: 12px;
+                            y: 10px;
+                            width: parent.width - 24px;
+                            text: root.trace != "" ? root.trace : "No trace recorded for this attempt yet.";
+                            font-size: 11px;
+                            color: Theme.node-muted;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

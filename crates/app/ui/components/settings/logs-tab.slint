@@ -1,0 +1,456 @@
+// Runtime logs tab: the level and category filters with the export actions,
+// then the newest-first stream of expandable rows. Presentation only — every
+// value and callback is owned by Rust.
+
+import { Theme } from "../../theme.slint";
+import { I18n } from "../i18n.slint";
+import { Icons } from "../icons.slint";
+import { Button } from "../widgets.slint";
+import { LogRow } from "../overlay-types.slint";
+import {
+    SettingsCard, SettingsChip, SettingsDivider, SettingsEmptyState, SettingsPageHeader,
+} from "settings-widgets.slint";
+
+// One segment of the level filter. The selected segment is the raised plate of
+// the track; the rest only reveal the hover wash.
+component LevelSegment inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> selected: false;
+    callback pick();
+
+    height: 24px;
+    width: self.preferred-width;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.selected ? Theme.toolbar-border : transparent;
+    background: root.selected ? Theme.card : (seg-ta.has-hover ? Theme.hover : transparent);
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    seg-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.pick();
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        alignment: center;
+        Text {
+            text: root.label;
+            font-size: 12px;
+            font-weight: root.selected ? 600 : 500;
+            color: root.selected ? Theme.node-text : Theme.muted-foreground;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// One row of the category menu.
+component CategoryOption inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> selected: false;
+    callback pick();
+
+    height: 28px;
+    border-radius: 4px;
+    background: option-ta.has-hover ? Theme.hover : (root.selected ? Theme.node-accent-soft : transparent);
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    option-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.pick();
+        }
+    }
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 6px;
+        cross-axis-alignment: center;
+        Text {
+            text: root.label;
+            font-size: 12px;
+            color: root.selected ? Theme.node-accent : Theme.node-text;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if root.selected : Path {
+            width: 12px;
+            height: 12px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: Icons.check;
+            fill: transparent;
+            stroke-width: 2px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: Theme.node-accent;
+        }
+    }
+}
+
+// The category filter as one compact select: the current scope on a 28px
+// field, the distinct scopes in a menu under it.
+component CategorySelect inherits Rectangle {
+    in property <[string]> categories: [];
+    in property <string> value: "all";
+    in property <bool> open: false;
+    callback toggle();
+    callback pick(string);
+
+    height: 28px;
+    width: 168px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: root.open ? Theme.node-accent
+        : select-ta.has-hover ? Theme.border-strong : Theme.node-stroke;
+    background: Theme.card;
+    animate border-color {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    select-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.toggle();
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 8px;
+        spacing: 6px;
+        cross-axis-alignment: center;
+        Text {
+            text: I18n.config-logs-category;
+            font-size: 11px;
+            color: Theme.muted-foreground;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.value == "all" ? I18n.config-logs-all-categories : root.value;
+            font-size: 12px;
+            font-weight: 500;
+            color: Theme.node-text;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Path {
+            width: 12px;
+            height: 12px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.open ? Icons.chevron-up : Icons.chevron-down;
+            fill: transparent;
+            stroke-width: 2px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: Theme.node-muted;
+        }
+    }
+
+    if root.open : Rectangle {
+        y: root.height + 4px;
+        width: 100%;
+        height: menu.preferred-height + 8px;
+        border-radius: Theme.radius-sm;
+        border-width: 1px;
+        border-color: Theme.node-stroke;
+        background: Theme.card;
+        z: 40;
+
+        menu := VerticalLayout {
+            padding: 4px;
+            spacing: 0px;
+            for category in root.categories : CategoryOption {
+                label: category == "all" ? I18n.config-logs-all-categories : category;
+                selected: category == root.value;
+                pick => {
+                    root.pick(category);
+                }
+            }
+        }
+    }
+}
+
+// One expandable log row: time, level chip, scope and the message; the entry's
+// `data` plate opens underneath.
+component LogRowView inherits Rectangle {
+    in property <LogRow> entry;
+    callback toggle();
+
+    background: row-ta.has-hover && root.entry.detail != "" ? Theme.hover : transparent;
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    row-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: root.entry.detail == "" ? default : pointer;
+        clicked => {
+            if (root.entry.detail != "") {
+                root.toggle();
+            }
+        }
+    }
+
+    VerticalLayout {
+        padding-top: 9px;
+        padding-bottom: 9px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            cross-axis-alignment: start;
+
+            // Fixed time column: figures stay tabular and right-aligned.
+            Text {
+                width: 94px;
+                height: 20px;
+                text: root.entry.time;
+                font-size: 11px;
+                font-family: "Cascadia Mono";
+                color: Theme.node-faint;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            SettingsChip {
+                width: 64px;
+                label: root.entry.level == "error" ? I18n.config-logs-error : root.entry.level == "warn" ? I18n.config-logs-warn : I18n.config-logs-info;
+                tone: root.entry.level == "error" ? "danger" : root.entry.level == "warn" ? "warn" : "";
+            }
+
+            Text {
+                width: 86px;
+                height: 20px;
+                text: root.entry.scope.to-uppercase();
+                font-size: 10px;
+                font-family: "Cascadia Mono";
+                letter-spacing: 0.6px;
+                color: Theme.muted-foreground;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 6px;
+                Text {
+                    text: root.entry.message;
+                    font-size: 12.5px;
+                    color: Theme.node-text;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                    max-lines: 2;
+                    overflow: elide;
+                }
+            }
+
+            Rectangle {
+                width: 12px;
+                height: 20px;
+                background: transparent;
+                if root.entry.detail != "" : Path {
+                    y: 4px;
+                    width: 12px;
+                    height: 12px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: root.entry.expanded ? Icons.chevron-up : Icons.chevron-down;
+                    fill: transparent;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                    stroke: Theme.node-muted;
+                }
+            }
+        }
+
+        // The `data` payload, in its own plate under the row.
+        if root.entry.expanded && root.entry.detail != "" : Rectangle {
+            background: Theme.muted;
+            border-radius: Theme.radius-sm;
+            height: detail-text.preferred-height + 12px;
+            detail-text := Text {
+                x: 8px;
+                y: 6px;
+                width: parent.width - 16px;
+                text: root.entry.detail;
+                font-size: 11.5px;
+                font-family: "Cascadia Mono";
+                color: Theme.node-muted;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+export component LogsTab inherits VerticalLayout {
+    in property <[LogRow]> log-rows: [];
+    in property <string> logs-filter: "all";
+    in property <string> logs-category: "all";
+    in property <[string]> logs-categories: [];
+    // The category menu's own disclosure state (presentation only).
+    in-out property <bool> category-open: false;
+    callback log-filter-pick(string);
+    callback log-category-pick(string);
+    callback log-toggle(string);
+    callback logs-copy();
+    callback logs-download();
+    callback logs-clear();
+
+    spacing: 14px;
+
+    SettingsPageHeader {
+        title: I18n.config-logs-title;
+        description: I18n.config-logs-page-hint;
+    }
+
+    // 1. The controls: level, category and the three actions.
+    SettingsCard {
+        eyebrow: I18n.config-logs-eyebrow-controls;
+        title: I18n.config-logs-controls-title;
+        // The category menu opens over the stream card below.
+        z: root.category-open ? 20 : 0;
+
+        HorizontalLayout {
+            spacing: 10px;
+            cross-axis-alignment: center;
+
+            Text {
+                text: I18n.config-logs-level;
+                font-size: 11px;
+                color: Theme.muted-foreground;
+                vertical-alignment: center;
+            }
+
+            // The level filter, as one segmented track.
+            Rectangle {
+                height: 28px;
+                border-radius: Theme.radius-sm;
+                background: Theme.muted;
+                HorizontalLayout {
+                    padding: 2px;
+                    spacing: 2px;
+                    LevelSegment {
+                        label: I18n.config-logs-all;
+                        selected: root.logs-filter == "all";
+                        pick => {
+                            root.category-open = false;
+                            root.log-filter-pick("all");
+                        }
+                    }
+                    LevelSegment {
+                        label: I18n.config-logs-info;
+                        selected: root.logs-filter == "info";
+                        pick => {
+                            root.category-open = false;
+                            root.log-filter-pick("info");
+                        }
+                    }
+                    LevelSegment {
+                        label: I18n.config-logs-warn;
+                        selected: root.logs-filter == "warn";
+                        pick => {
+                            root.category-open = false;
+                            root.log-filter-pick("warn");
+                        }
+                    }
+                    LevelSegment {
+                        label: I18n.config-logs-error;
+                        selected: root.logs-filter == "error";
+                        pick => {
+                            root.category-open = false;
+                            root.log-filter-pick("error");
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+
+            CategorySelect {
+                categories: root.logs-categories;
+                value: root.logs-category;
+                open: root.category-open;
+                toggle => {
+                    root.category-open = !root.category-open;
+                }
+                pick(category) => {
+                    root.category-open = false;
+                    root.log-category-pick(category);
+                }
+            }
+
+            Button { variant: "ghost"; height: 28px; radius: Theme.radius-sm; font-size: 12px; font-weight: 600; pad: 10px; disabled-opacity: 0.5; disabled-bg: transparent;
+                label: I18n.config-logs-copy;
+                enabled: root.log-rows.length > 0;
+                clicked => {
+                    root.category-open = false;
+                    root.logs-copy();
+                }
+            }
+            Button { variant: "ghost"; height: 28px; radius: Theme.radius-sm; font-size: 12px; font-weight: 600; pad: 10px; disabled-opacity: 0.5; disabled-bg: transparent;
+                label: I18n.config-logs-download;
+                enabled: root.log-rows.length > 0;
+                clicked => {
+                    root.category-open = false;
+                    root.logs-download();
+                }
+            }
+            Button { variant: "ghost"; height: 28px; radius: Theme.radius-sm; font-size: 12px; font-weight: 600; pad: 10px; disabled-opacity: 0.5; disabled-bg: transparent;
+                label: I18n.config-logs-clear;
+                danger: true;
+                enabled: root.log-rows.length > 0;
+                clicked => {
+                    root.category-open = false;
+                    root.logs-clear();
+                }
+            }
+        }
+    }
+
+    // 2. The stream, newest first.
+    SettingsCard {
+        eyebrow: I18n.config-logs-eyebrow-stream;
+        title: I18n.config-logs-stream-title;
+
+        if root.log-rows.length == 0 : SettingsEmptyState {
+            title: root.logs-filter != "all" || root.logs-category != "all" ? I18n.config-logs-empty-filtered : I18n.config-logs-empty;
+            hint: root.logs-filter != "all" || root.logs-category != "all" ? I18n.config-logs-empty-filtered-hint : I18n.config-logs-empty-hint;
+        }
+
+        for row[index] in root.log-rows : VerticalLayout {
+            spacing: 0px;
+            if index > 0 : SettingsDivider { }
+            LogRowView {
+                entry: row;
+                toggle => {
+                    root.log-toggle(row.key);
+                }
+            }
+        }
+    }
+}

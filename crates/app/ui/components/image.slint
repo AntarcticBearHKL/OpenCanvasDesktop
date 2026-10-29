@@ -1,0 +1,2608 @@
+// Image Studio workspace: studio menu bar (File/Edit/Image/Layer/Select/
+// Filter/View/Window), the floating tool-options card that rides next to the
+// tool rail, the dock area (left tool rail / center board / right + bottom
+// docks, every edge empty by default) and the board overlays — the Slint half of
+// `web/src/components/canvas/workspace/image-studio.tsx`.
+import { DockTabGroup, Theme } from "../theme.slint";
+import { StudioTheme } from "../studio-theme.slint";
+import { Slider } from "widgets.slint";
+import { Icons } from "icons.slint";
+import { PointerIds } from "pointer-ids.slint";
+import { ExportImportModal } from "library.slint";
+import { ImageChannelRow, ImageCurvePoint, ImageEditorRow, ImageFilterParam, ImageFilterRow, ImageGradientRow, ImageGradientStopRow, ImageHistoryRow, ImageLayerRow, ImagePanels, ImageParamRow, ImagePathRow, ImagePatternRow, ImageActionRow, ImageAdjustmentGroup, ImageAssetRow, ImageBrushRow, ImageStyleRow, ImageSwatchGroup, ImageToolRow, FilterMenuRow, RulerTick, RulerTickImage } from "overlay-types.slint";
+import { StudioField, StudioIconButton, StudioMenu, StudioMenuDivider, StudioMenuItem, StudioRulers } from "studio-widgets.slint";
+import { ImageColorPanel, ImageToolOptions, ImageToolRail } from "image-panels.slint";
+import { ImageAdjustmentsPanel, ImageAssetsPanel, ImageActionsPanel, ImageBrushesPanel, ImageChannelsPanel, ImageEditorPanel, ImageGradientsPanel, ImagePathsPanel, ImagePatternsPanel } from "image-panels-extra.slint";
+import { ImageFilterDialog, ImageTransformModal } from "image-dialogs.slint";
+import { ImageFxPanel, ImageHistoryPanel, ImageLayersPanel, ImagePropertiesPanel } from "image-layers.slint";
+import { DockDropOverlay, DockSplitter, DockTabStrip, TooltipLayer } from "dock.slint";
+
+component SettingsChip inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> active: false;
+    callback picked();
+
+    height: 24px;
+    width: self.preferred-width;
+    border-radius: StudioTheme.radius-sm;
+    // 1px border, border-strong on hover, solid accent block when active.
+    border-width: 1px;
+    border-color: root.active ? StudioTheme.node-accent : (ta.has-hover ? StudioTheme.border-strong : StudioTheme.border);
+    background: root.active ? StudioTheme.node-accent : ta.has-hover ? StudioTheme.hover : transparent;
+    transform-scale-x: ta.pressed ? 0.97 : 1.0;
+    transform-scale-y: ta.pressed ? 0.97 : 1.0;
+    animate background {
+        duration: StudioTheme.motion-hover;
+        easing: ease-out;
+    }
+    animate border-color {
+        duration: StudioTheme.motion-hover;
+        easing: ease-out;
+    }
+    animate transform-scale-x {
+        duration: StudioTheme.motion-press;
+        easing: ease-out;
+    }
+    animate transform-scale-y {
+        duration: StudioTheme.motion-press;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.picked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: StudioTheme.space-3;
+        padding-right: StudioTheme.space-3;
+        Text {
+            text: root.label;
+            font-family: "Cascadia Mono";
+            font-size: 10px;
+            letter-spacing: 0.8px;
+            font-weight: root.active ? 600 : 500;
+            color: root.active ? StudioTheme.brand-foreground : StudioTheme.node-muted;
+            vertical-alignment: center;
+        }
+    }
+}
+
+
+// A menu-bar entry: Photoshop's 12px menu word — flat, no border, a gray
+// highlight on hover and a slightly deeper one while its menu is open. The
+// entry fills the menu bar's height, so the whole band is clickable.
+component StudioMenuTab inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> active: false;
+    callback picked();
+
+    height: StudioTheme.menu-bar-h;
+    width: self.preferred-width;
+    border-radius: 2px;
+    background: root.active ? StudioTheme.toolbar-active-bg : (ta.has-hover ? StudioTheme.toolbar-item-hover : transparent);
+    animate background {
+        duration: StudioTheme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.picked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 9px;
+        padding-right: 9px;
+        cross-axis-alignment: center;
+
+        Text {
+            text: root.label;
+            font-size: 12px;
+            font-weight: root.active ? 600 : 400;
+            color: root.active ? StudioTheme.toolbar-active-text : StudioTheme.toolbar-item;
+            animate color {
+                duration: StudioTheme.motion-select;
+                easing: ease-out;
+            }
+            vertical-alignment: center;
+        }
+    }
+}
+
+// One row of the Filter menu's nested menus. A plain row (the repeat entry or
+// one filter) activates its action; a group row opens the flyout it names. The
+// owner draws every row of a flyout and hides the ones that belong elsewhere
+// (`visible`), so one flat Rust model feeds all three levels.
+component FilterMenuEntry inherits Rectangle {
+    in property <FilterMenuRow> entry;
+    // Whether this row belongs to the flyout being drawn. Hidden rows collapse
+    // to zero height (an invisible element would still hold its slot in a
+    // layout), so every flyout is one popup showing exactly its own rows.
+    in property <bool> shown: true;
+    // The group row whose flyout is currently open (it stays tinted).
+    in property <bool> selected: false;
+    callback activated();
+    // A group row was hovered or clicked; `y` is its top in the menu's space.
+    callback opened(length);
+
+    visible: root.shown;
+    property <length> row-height: !root.shown ? 0px : root.entry.note == "" ? 28px : 38px;
+    min-height: root.row-height;
+    max-height: root.row-height;
+
+    if root.entry.kind == "repeat" || root.entry.kind == "item" : StudioMenuItem {
+        width: root.width;
+        height: root.height;
+        label: root.entry.label;
+        shortcut: root.entry.kind == "repeat" ? "Ctrl+F" : "";
+        note: root.entry.note;
+        enabled: root.entry.enabled;
+        clicked => {
+            root.activated();
+        }
+    }
+    if root.entry.kind == "group" : StudioMenuItem {
+        width: root.width;
+        height: root.height;
+        label: root.entry.label;
+        submenu: true;
+        selected: root.selected;
+        clicked => {
+            root.opened(root.y);
+        }
+        hovered(row-y) => {
+            root.opened(row-y);
+        }
+    }
+}
+
+
+export component ImageStudio inherits Rectangle {
+    in-out property <image> canvas-image;
+    in-out property <string> checker: "";
+    in-out property <length> checker-x: 0px;
+    in-out property <length> checker-y: 0px;
+    in-out property <length> checker-w: 0px;
+    in-out property <length> checker-h: 0px;
+    in-out property <float> doc-w: 640;
+    in-out property <float> doc-h: 360;
+    in-out property <float> view-k: 1;
+    in-out property <length> view-x: 0px;
+    in-out property <length> view-y: 0px;
+    in-out property <string> grid: "";
+    in-out property <string> guides: "";
+    in-out property <string> guide-draft: "";
+    in-out property <string> ants: "";
+    in-out property <string> ants-alt: "";
+    in-out property <string> draft: "";
+    in-out property <string> snap-lines: "";
+    in-out property <string> path-overlay: "";
+    in-out property <string> transform-handles: "";
+    in-out property <[RulerTick]> ruler-x: [];
+    in-out property <[RulerTickImage]> ruler-y: [];
+    // Rulers are a View toggle, not permanent chrome: off by default, so the
+    // board gets the whole canvas area.
+    in-out property <bool> show-rulers: false;
+    in-out property <[ImageToolRow]> tools: [];
+    in-out property <string> active-tool: "hand";
+    // The floating tool-options card (`ImageToolOptions` in the dock area).
+    // `tool-options-dismissed-for` is the tool (plus armed transform) the card's
+    // own close affordance was used on: any other tool — or arming a transform —
+    // opens the card again, so the dismissal is never a dead end.
+    property <string> tool-options-dismissed-for: "";
+    out property <bool> tool-options-shown: root.tool-has-options(root.active-tool, root.transform-mode)
+        && root.tool-options-dismissed-for != root.tool-options-key(root.active-tool, root.transform-mode);
+    in-out property <[ImageLayerRow]> layers: [];
+    in-out property <[ImageHistoryRow]> history: [];
+    in-out property <[ImageSwatchGroup]> swatches: [];
+    in-out property <[ImageParamRow]> params: [];
+    in-out property <[ImageStyleRow]> styles: [];
+    in-out property <[string]> fonts: [];
+    // Channels / paths / actions / assets / adjustments / editor / gradient /
+    // pattern / brush panel state (see `image-panels-extra.slint`).
+    in-out property <[ImageChannelRow]> channels: [];
+    in-out property <bool> channel-r: true;
+    in-out property <bool> channel-g: true;
+    in-out property <bool> channel-b: true;
+    in-out property <string> channel-view: "rgb";
+    in-out property <[ImagePathRow]> paths: [];
+    in-out property <bool> path-can-paint: false;
+    in-out property <[ImageActionRow]> actions: [];
+    in-out property <bool> recording: false;
+    in-out property <int> recorded: 0;
+    in-out property <[ImageAssetRow]> assets: [];
+    in-out property <string> asset-search: "";
+    in-out property <[ImageAdjustmentGroup]> adjustments: [];
+    in-out property <[ImageGradientRow]> gradients: [];
+    in-out property <[ImageGradientStopRow]> gradient-stops: [];
+    in-out property <[ImageGradientStopRow]> editor-stops: [];
+    in-out property <image> gradient-edit-strip;
+    in-out property <string> gradient-name: "";
+    in-out property <int> gradient-stop-selected: 0;
+    in-out property <[ImagePatternRow]> patterns: [];
+    in-out property <bool> pattern-can-define: false;
+    in-out property <[ImageBrushRow]> brushes: [];
+    in-out property <image> brush-preview;
+    in-out property <float> brush-spacing: 15;
+    in-out property <float> brush-scatter: 0;
+    in-out property <float> brush-angle: 0;
+    in-out property <float> brush-roundness: 100;
+    in-out property <float> brush-dynamics: 0;
+    in-out property <float> brush-texture: 0;
+    in-out property <bool> editor-visible: false;
+    in-out property <string> editor-title: "Adjustment";
+    in-out property <[ImageEditorRow]> editor-rows: [];
+    in-out property <[ImageCurvePoint]> curve-points: [];
+    in-out property <string> curve-path: "";
+    in-out property <image> editor-stops-strip;
+    in-out property <int> editor-stop-selected: 0;
+    in-out property <bool> filter-open: false;
+    in-out property <string> filter-label: "";
+    in-out property <[ImageFilterParam]> filter-params: [];
+    in-out property <image> filter-preview;
+    in-out property <string> filter-warning: "";
+    in-out property <bool> filter-liquify: false;
+    // The data-driven Filter menu (built once per session by Rust): the top
+    // level, every flyout's rows and the gallery's folders in one flat model.
+    in-out property <[FilterMenuRow]> filter-menu-rows: [];
+    // Which flyouts are open (group and gallery-folder keys) and where they are
+    // anchored: the row's top inside the menu that opened it.
+    property <string> filter-open-group: "";
+    property <string> filter-open-sub: "";
+    property <length> filter-open-y: 0px;
+    property <length> filter-sub-y: 0px;
+    in-out property <bool> modal-open: false;
+    in-out property <string> modal-mode: "image-size";
+    in-out property <string> modal-a: "";
+    in-out property <string> modal-b: "";
+    in-out property <bool> modal-constrain: true;
+    in-out property <string> modal-anchor: "middle-center";
+    in-out property <string> modal-angle: "0";
+    in-out property <string> modal-dx: "0";
+    in-out property <string> modal-dy: "0";
+    in-out property <string> modal-scale-x: "100";
+    in-out property <string> modal-scale-y: "100";
+    in-out property <string> modal-rotation: "0";
+    in-out property <string> modal-skew-x: "0";
+    in-out property <string> modal-skew-y: "0";
+    in-out property <string> modal-message: "";
+    in-out property <bool> can-undo: false;
+    in-out property <bool> can-redo: false;
+    in-out property <bool> has-selection: false;
+    in-out property <bool> pan-cursor: false;
+    in-out property <string> menu: "";
+    in-out property <string> transform-mode: "";
+    in-out property <bool> mask-view: false;
+    in-out property <bool> layer-has-mask: false;
+    in-out property <bool> layer-can-add-mask: false;
+    in-out property <bool> layer-can-apply-mask: false;
+    in-out property <bool> layer-mask-target: false;
+    in-out property <[ImageEditorRow]> text-rows: [];
+    // In-canvas text editor overlay (double-click on a text layer).
+    in-out property <bool> text-edit-on: false;
+    in-out property <string> text-edit-draft: "";
+    in-out property <length> text-edit-x: 0px;
+    in-out property <length> text-edit-y: 0px;
+    in-out property <length> text-edit-w: 0px;
+    in-out property <length> text-edit-h: 0px;
+    in-out property <bool> import-open: false;
+    in-out property <string> import-path: "";
+    in-out property <string> import-message: "";
+    in-out property <bool> import-error: false;
+    // File > Export PSD... (the vendored PSD codec).
+    in-out property <bool> psd-export-open: false;
+    in-out property <string> psd-export-path: "";
+    in-out property <string> psd-export-message: "";
+    in-out property <bool> psd-export-error: false;
+    in-out property <ImagePanels> panels: {
+        layers: true,
+        fx: true,
+        history: true,
+        properties: true,
+        color: true,
+    };
+    in-out property <bool> settings-open: false;
+    // Local draft of the custom board background hex (`bgCustom`), seeded from
+    // the applied background each time the settings popover opens.
+    in-out property <string> custom-background: "";
+    in-out property <bool> show-grid: false;
+    in-out property <bool> show-guides: true;
+    in-out property <bool> snap: true;
+    // Tool options.
+    in-out property <float> brush: 24;
+    in-out property <float> hardness: 80;
+    in-out property <float> brush-opacity: 100;
+    in-out property <float> tolerance: 32;
+    in-out property <float> feather: 0;
+    in-out property <bool> contiguous: true;
+    in-out property <bool> sample-all: true;
+    in-out property <bool> antialias: true;
+    in-out property <bool> gradient-radial: false;
+    in-out property <bool> gradient-reverse: false;
+    in-out property <string> shape-kind: "rectangle";
+    in-out property <bool> shape-fill: true;
+    in-out property <float> stroke-width: 2;
+    // Colour picker.
+    in-out property <color> fg-color: #000000;
+    in-out property <color> bg-color: #ffffff;
+    in-out property <string> fg-hex: "#000000";
+    in-out property <string> bg-hex: "#ffffff";
+    in-out property <string> slot: "fg";
+    in-out property <float> hue: 0;
+    in-out property <float> sat: 0;
+    in-out property <float> val: 0;
+    in-out property <float> red: 0;
+    in-out property <float> green: 0;
+    in-out property <float> blue: 0;
+    // Properties fields.
+    in-out property <string> active-kind: "";
+    in-out property <string> layer-name: "";
+    in-out property <string> layer-x: "0";
+    in-out property <string> layer-y: "0";
+    in-out property <string> layer-w: "0";
+    in-out property <string> layer-h: "0";
+    in-out property <string> layer-rotation: "0";
+    in-out property <float> layer-opacity: 100;
+    in-out property <string> layer-blend: "normal";
+    in-out property <string> adjustment: "";
+    in-out property <string> text-content: "";
+    in-out property <string> text-family: "sans-serif";
+    in-out property <string> board-w: "640";
+    in-out property <string> board-h: "360";
+    in-out property <string> ratio: "16:9";
+    in-out property <string> resolution: "2k";
+    in-out property <string> board-background: "transparent";
+    in-out property <float> background-opacity: 100;
+    // Export flow.
+    in-out property <bool> export-open: false;
+    in-out property <string> export-path: "";
+    in-out property <string> export-message: "";
+    in-out property <bool> export-error: false;
+
+    callback home();
+    // The manual window move (right-drag over the board), forwarded to the
+    // app's title-bar drag so the studio needs no title strip.
+    callback drag-begin();
+    callback drag-tick();
+    callback drag-end();
+    callback action(string);
+    callback tool(string);
+    callback toggle(string);
+    callback slider(string, float);
+    callback layer-pick(string);
+    callback layer-action(string, string);
+    callback layer-opacity-changed(float);
+    callback blend-changed(string);
+    callback layer-name-edited(string);
+    callback history-pick(int);
+    callback color-field(string, string);
+    callback color-pick(string);
+    callback swatch-add();
+    callback swatch-remove(int);
+    callback color-swap();
+    callback color-reset();
+    callback slot-pick(string);
+    callback prop-field(string, string);
+    callback param-set(string, float);
+    callback shape-pick(string);
+    callback font-pick(string);
+    callback settings-pick(string, string);
+    callback board-apply();
+    callback canvas-pointer(string, length, length, string, bool, bool);
+    callback canvas-scroll(length, length, float);
+    callback canvas-double-click(length, length);
+    callback key(string, bool, bool);
+    callback key-up(string);
+    callback export();
+    callback export-path-edited(string);
+    callback export-run();
+    callback export-close();
+    // Guides (ruler drag) and the mask / text-panel / import / output flows.
+    callback guide-drag(string, length, length);
+    callback guide-move(length, length);
+    callback guide-drop(length, length);
+    callback mask-action(string);
+    callback mask-target(string, bool, bool);
+    callback text-set(string, float);
+    callback text-text(string, string);
+    callback text-option(string, string);
+    callback text-choice(string, int);
+    callback text-check(string, bool);
+    callback text-edit-changed(string);
+    callback text-edit-commit(string);
+    callback text-edit-cancel();
+    callback import-path-edited(string);
+    callback import-run();
+    callback import-close();
+    callback psd-export-path-edited(string);
+    callback psd-export-run();
+    callback psd-export-close();
+    // Panel callbacks (channels/paths/actions/assets/adjustments/editor/assets).
+    callback channel-action(string, string);
+    callback path-action(string, string);
+    callback actions-panel(string, string);
+    callback asset-action(string, string);
+    callback asset-drop(string, length, length);
+    callback assets-refresh();
+    callback asset-search-edited(string);
+    callback panel-name-edited(string);
+    callback adjustment-create(string);
+    callback gradient-action(string, string);
+    callback pattern-action(string, string);
+    callback brush-action(string, string);
+    callback brush-slider(string, float);
+    callback editor-set(string, float);
+    callback editor-text(string, string);
+    callback editor-option(string, string);
+    callback editor-check(string, bool);
+    callback curve-add(float, float);
+    callback curve-move(int, float, float);
+    callback curve-delete(int);
+    callback editor-stop-add();
+    callback editor-stop-select(int);
+    callback editor-stop-remove(int);
+    callback editor-stop-color(int, string);
+    callback editor-stop-pos(int, float);
+    callback filter-param(string, float);
+    callback filter-param-text(string, string);
+    callback filter-reset();
+    callback filter-apply();
+    callback filter-cancel();
+    callback filter-push(float, float);
+    callback modal-field(string, string);
+    callback modal-toggle(string);
+    callback modal-run();
+    callback modal-close();
+
+    // No plate of its own: the studio draws on the window's one frosted plate
+    // (`window-tint` over the OS blur) exactly like the canvas and the home
+    // screen. The menu bar, rail, dock panels and the board paint their own
+    // glass tiers above it, so the frost reads through the chrome instead of
+    // being sealed under an opaque studio background.
+    background: transparent;
+
+    // Canvas-area size as an output so Rust can poll it (the hidden workspace
+    // never sees a size-change event before it becomes visible).
+    out property <length> canvas-w: board-area.width;
+    out property <length> canvas-h: board-area.height;
+
+    // The dock engine owns which panel sits where (see `crates/app/src/dock.rs`
+    // and `dock.slint`); the `panels` flags stay derived from it in Rust so the
+    // Dock menu's check marks keep matching. The adjustment editor stays a
+    // separate transient panel below the left dock.
+    property <[DockTabGroup]> dock-left: Theme.dock-image.left;
+    property <[DockTabGroup]> dock-right: Theme.dock-image.right;
+    property <[DockTabGroup]> dock-bottom: Theme.dock-image.bottom;
+    property <bool> right-visible: root.dock-right.length > 0;
+    property <bool> left-visible: root.dock-left.length > 0 || root.editor-visible;
+    property <bool> bottom-visible: root.dock-bottom.length > 0;
+    // `"edge|groupIndex"` of the one dock group folded down to its tab strip
+    // (pure chrome: the layout, its persistence and its drag/close behaviour
+    // are untouched).
+    property <string> collapsed-group: "";
+
+    // Which tools own settings (mirrors `ImageToolOptions::has-options`): those
+    // are exactly the tools the floating card opens for.
+    pure function tool-has-options(tool: string, transform: string) -> bool {
+        return transform != ""
+            || tool == "brush" || tool == "eraser"
+            || tool == "wand" || tool == "bucket" || tool == "quick-select"
+            || tool == "marquee" || tool == "ellipse-marquee" || tool == "lasso" || tool == "polygon-lasso"
+            || tool == "gradient" || tool == "shape";
+    }
+
+    // The open/closed identity of the card: the tool plus the armed transform,
+    // so dismissing on Brush keeps it closed for Brush but never for another
+    // tool a transform arms.
+    pure function tool-options-key(tool: string, transform: string) -> string {
+        return tool + "|" + transform;
+    }
+
+    // The card's close affordance: hide it without touching any setting.
+    public function dismiss-tool-options() {
+        root.tool-options-dismissed-for = root.tool-options-key(root.active-tool, root.transform-mode);
+    }
+
+    // ---- Filter menu geometry ------------------------------------------------
+    // Menu width shared by the three levels (all rows are short labels).
+    property <length> filter-menu-width: 208px;
+    // The top-level popup hangs under Filter and is kept on screen.
+    property <length> filter-popup-x: Math.max(6px, Math.min(filter-btn.x + 7px, root.width - root.filter-menu-width - 6px));
+    property <length> filter-popup-y: Math.max(4px, Math.min(StudioTheme.menu-bar-h, root.height - 328px));
+
+    // A flyout prefers the right of its parent menu and flips to the left when
+    // that would leave the window.
+    pure function filter-flyout-x(anchor-x: length, anchor-w: length) -> length {
+        return anchor-x + anchor-w + root.filter-menu-width <= root.width - 6px
+            ? anchor-x + anchor-w - 1px
+            : Math.max(6px, anchor-x - root.filter-menu-width + 1px);
+    }
+
+    // Opens one group's flyout, anchored at the row that opened it.
+    function open-filter-group(key: string, row-y: length) {
+        root.filter-open-group = key;
+        root.filter-open-sub = "";
+        root.filter-open-y = root.filter-popup-y + row-y;
+    }
+
+    // Opens one gallery folder's flyout, anchored at the folder row.
+    function open-filter-sub(key: string, row-y: length) {
+        root.filter-open-sub = key;
+        root.filter-sub-y = root.filter-open-y + row-y;
+    }
+
+    // A closed or switched menu drops every flyout: no stale second level.
+    changed menu => {
+        root.filter-open-group = "";
+        root.filter-open-sub = "";
+    }
+
+    // Folds/unfolds one group. A layout push (tab activate, close, resize)
+    // clears the fold below, so a stale index can never fold an unrelated
+    // group.
+    function toggle-collapsed(edge: string, index: int) {
+        let key = edge + "|\{index}";
+        root.collapsed-group = root.collapsed-group == key ? "" : key;
+    }
+    changed dock-left => {
+        root.collapsed-group = "";
+    }
+    changed dock-right => {
+        root.collapsed-group = "";
+    }
+    changed dock-bottom => {
+        root.collapsed-group = "";
+    }
+
+    // The studio owns its keyboard shortcuts while it is the visible
+    // workspace: `image-focus` cannot grab the focus when it is created
+    // hidden, so hand it the keyboard as soon as the workspace is shown.
+    changed visible => {
+        if (self.visible) {
+            image-focus.focus();
+        }
+    }
+
+    // The custom-background field is a draft: seed it from the applied board
+    // background every time the settings popover opens, so it never starts
+    // blank and never overwrites an in-progress edit while the popover stays up.
+    changed settings-open => {
+        if (root.settings-open && root.board-background != "transparent") {
+            root.custom-background = root.board-background;
+        }
+    }
+
+    VerticalLayout {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        spacing: 0;
+
+        // ---- menu bar (the 40px band, directly above the canvas) --------------
+        top-bar := Rectangle {
+            height: StudioTheme.menu-bar-h;
+            background: StudioTheme.menu-bar;
+
+            Rectangle {
+                y: parent.height - 1px;
+                width: 100%;
+                height: 1px;
+                background: StudioTheme.hairline;
+            }
+
+            HorizontalLayout {
+                padding-left: StudioTheme.space-1;
+                padding-right: StudioTheme.space-2;
+                spacing: 0;
+                cross-axis-alignment: center;
+
+                // A professional editor's menu bar: left-aligned, conventional
+                // order. The window has no app title bar in the studio, so the
+                // first control is the way back to the canvas (the same Home
+                // destination as the app bar), immediately left of File. The
+                // Home button shares the menu bar's height with the labels.
+                home-btn := StudioIconButton {
+                    icon: Icons.home;
+                    size: StudioTheme.menu-bar-h;
+                    icon-size: 15px;
+                    bordered: false;
+                    tooltip-enabled: true;
+                    tip: "Back to canvas";
+                    tip-studio: "image";
+                    clicked => {
+                        root.home();
+                    }
+                }
+
+                file-btn := StudioMenuTab {
+                    label: "File";
+                    active: root.menu == "file";
+                    picked => {
+                        root.action("file");
+                    }
+                }
+                edit-btn := StudioMenuTab {
+                    label: "Edit";
+                    active: root.menu == "edit";
+                    picked => {
+                        root.action("edit");
+                    }
+                }
+                image-btn := StudioMenuTab {
+                    label: "Image";
+                    active: root.menu == "image";
+                    picked => {
+                        root.action("image");
+                    }
+                }
+                layer-btn := StudioMenuTab {
+                    label: "Layer";
+                    active: root.menu == "layer";
+                    picked => {
+                        root.action("layer");
+                    }
+                }
+                select-btn := StudioMenuTab {
+                    label: "Select";
+                    active: root.menu == "select";
+                    picked => {
+                        root.action("select");
+                    }
+                }
+                filter-btn := StudioMenuTab {
+                    label: "Filter";
+                    active: root.menu == "filter";
+                    picked => {
+                        root.action("filter");
+                    }
+                }
+                view-btn := StudioMenuTab {
+                    label: "View";
+                    active: root.menu == "view";
+                    picked => {
+                        root.action("view");
+                    }
+                }
+                // The dock menu is Photoshop's Window menu: the same panel list,
+                // under the name the platform expects.
+                dock-btn := StudioMenuTab {
+                    label: "Window";
+                    active: root.menu == "dock";
+                    picked => {
+                        root.action("dock");
+                    }
+                }
+            }
+        }
+
+        // ---- dock area ---------------------------------------------------------
+        dock-area := Rectangle {
+            vertical-stretch: 1;
+
+            dock-row := HorizontalLayout {
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 100%;
+                spacing: 0;
+
+                ImageToolRail {
+                    tools: root.tools;
+                    active-tool: root.active-tool;
+                    fg: root.fg-color;
+                    bg: root.bg-color;
+                    slot: root.slot;
+                    tool-pick(id) => {
+                        root.tool(id);
+                    }
+                    zoom(dir) => {
+                        root.action(dir == "in" ? "view.zoom-in" : "view.zoom-out");
+                    }
+                    color-slot(id) => {
+                        root.slot-pick(id);
+                    }
+                    color-swap() => {
+                        root.color-swap();
+                    }
+                    color-reset() => {
+                        root.color-reset();
+                    }
+                }
+
+                // The centre column: the board, directly under the menu bar.
+                // Its width is what the two dock columns leave over, stated
+                // explicitly: a nested layout's own maximum width is derived
+                // from its children, so leaving the split to the stretch
+                // factors would let a narrow bottom panel cap the whole board.
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    width: dock-row.width - 40px
+                        - (root.right-visible ? Theme.dock-image.right-size : 0px)
+                        - (root.left-visible ? Theme.dock-image.left-size : 0px);
+                    spacing: 0;
+
+                    board-area := Rectangle {
+                        vertical-stretch: 1;
+                        background: StudioTheme.canvas-surround;
+                        clip: true;
+                        // Right-drag moves the window through the app's manual
+                        // move (the same begin/tick/end the canvas background
+                        // runs), so the studio has no title strip of its own.
+                        property <bool> window-dragging: false;
+
+                        board-hit := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: root.pan-cursor ? grab : crosshair;
+                            pointer-event(e) => {
+                                let kind = PointerIds.kind-id(e.kind);
+                                if (kind == "down") {
+                                    image-focus.focus();
+                                }
+                                if (e.button == PointerEventButton.right && !e.modifiers.control && kind == "down") {
+                                    board-area.window-dragging = true;
+                                    root.drag-begin();
+                                } else if (e.button == PointerEventButton.right && board-area.window-dragging && kind == "move") {
+                                    root.drag-tick();
+                                } else if ((kind == "up" || kind == "cancel") && board-area.window-dragging) {
+                                    board-area.window-dragging = false;
+                                    root.drag-end();
+                                }
+                                root.canvas-pointer(kind, self.mouse-x, self.mouse-y, PointerIds.button-id(e.button), e.modifiers.shift, e.modifiers.alt);
+                            }
+                            double-clicked => {
+                                root.canvas-double-click(self.mouse-x, self.mouse-y);
+                            }
+                            scroll-event(e) => {
+                                root.canvas-scroll(self.mouse-x, self.mouse-y, e.delta-y / 1px);
+                                accept
+                            }
+                        }
+
+                        // The transparency checker is the document and nothing
+                        // more: one frame laid on the document rectangle (the
+                        // checker-x/y/w/h the view model derives from view-x/y
+                        // and the scaled document size) owns both the light plate
+                        // and the dark tiles, and clips them. The frame is
+                        // rounded to device pixels exactly like the board image
+                        // inside it, so no checker pixel can land on the
+                        // surround — not even an antialiased edge one.
+                        checker-frame := Rectangle {
+                            x: root.checker-x;
+                            y: root.checker-y;
+                            width: root.checker-w;
+                            height: root.checker-h;
+                            clip: true;
+                            background: StudioTheme.image-checker-light;
+
+                            // Document-local screen-space quads; `fit: preserve`
+                            // renders the 8px tiles 1:1 (never rescaled by the
+                            // element's geometry).
+                            Path {
+                                commands: root.checker;
+                                fill: StudioTheme.image-checker-dark;
+                                stroke: transparent;
+                                fit: preserve;
+                            }
+                        }
+                        Image {
+                            x: root.view-x;
+                            y: root.view-y;
+                            width: root.doc-w * root.view-k * 1px;
+                            height: root.doc-h * root.view-k * 1px;
+                            source: root.canvas-image;
+                            image-fit: fill;
+                        }
+
+                        // Overlay stack (ps-overlays.tsx order). Every path here
+                        // carries screen-space commands in board coordinates, so
+                        // each one must render 1:1 (`fit: preserve`) instead of
+                        // being fitted into the element box.
+                        Path {
+                            visible: root.show-grid;
+                            commands: root.grid;
+                            fill: transparent;
+                            stroke: StudioTheme.border;
+                            stroke-width: 1px;
+                            fit: preserve;
+                        }
+                        Path {
+                            visible: root.show-guides;
+                            commands: root.guides;
+                            fill: transparent;
+                            stroke: StudioTheme.image-guide;
+                            stroke-width: 1px;
+                            fit: preserve;
+                        }
+                        Path {
+                            commands: root.snap-lines;
+                            fill: transparent;
+                            stroke: StudioTheme.image-snap-line;
+                            stroke-width: 1px;
+                            fit: preserve;
+                        }
+                        Path {
+                            commands: root.draft;
+                            fill: transparent;
+                            stroke: StudioTheme.image-draft;
+                            stroke-width: 1px;
+                            fit: preserve;
+                        }
+                        Path {
+                            commands: root.path-overlay;
+                            fill: transparent;
+                            stroke: StudioTheme.image-path-line;
+                            stroke-width: 1.5px;
+                            fit: preserve;
+                        }
+
+                        // The selection and the transform belong to the document:
+                        // their frame is the same document rectangle as the
+                        // checker, so neither can paint outside it. The paths stay
+                        // in board coordinates (the negative offset cancels the
+                        // frame origin) and span the whole board so the clip never
+                        // also cuts the path itself.
+                        doc-overlays := Rectangle {
+                            x: root.checker-x;
+                            y: root.checker-y;
+                            width: root.checker-w;
+                            height: root.checker-h;
+                            clip: true;
+                            background: transparent;
+
+                            Path {
+                                x: 0px - root.checker-x;
+                                y: 0px - root.checker-y;
+                                width: board-area.width;
+                                height: board-area.height;
+                                commands: root.ants;
+                                fill: transparent;
+                                stroke: StudioTheme.image-ants-dark;
+                                stroke-width: 1px;
+                                fit: preserve;
+                            }
+                            Path {
+                                x: 0px - root.checker-x;
+                                y: 0px - root.checker-y;
+                                width: board-area.width;
+                                height: board-area.height;
+                                commands: root.ants-alt;
+                                fill: transparent;
+                                stroke: StudioTheme.image-ants-light;
+                                stroke-width: 1px;
+                                fit: preserve;
+                            }
+                            Path {
+                                x: 0px - root.checker-x;
+                                y: 0px - root.checker-y;
+                                width: board-area.width;
+                                height: board-area.height;
+                                commands: root.transform-handles;
+                                fill: transparent;
+                                stroke: StudioTheme.image-transform;
+                                stroke-width: 1px;
+                                fit: preserve;
+                            }
+                        }
+
+                        StudioRulers {
+                            visible: root.show-rulers;
+                            ticks-x: root.ruler-x;
+                            labels-y: root.ruler-y;
+                        }
+
+                        // Drag a guide off either ruler (`PsRulers`
+                        // onGuidePointerDown; the top ruler makes horizontal
+                        // guides, the left ruler vertical ones).
+                        if root.show-rulers : Rectangle {
+                            x: 20px;
+                            y: 0px;
+                            width: parent.width - 20px;
+                            height: 20px;
+                            z: 76;
+                            background: transparent;
+
+                            top-ruler-ta := TouchArea {
+                                width: 100%;
+                                height: 100%;
+                                mouse-cursor: ns-resize;
+                                pointer-event(e) => {
+                                    if (e.kind == PointerEventKind.down) {
+                                        root.guide-drag("y", self.mouse-x + 20px, self.mouse-y);
+                                    }
+                                    if (e.kind == PointerEventKind.up) {
+                                        root.guide-drop(self.mouse-x + 20px, self.mouse-y);
+                                    }
+                                }
+                                moved => {
+                                    if (self.pressed) {
+                                        root.guide-move(self.mouse-x + 20px, self.mouse-y);
+                                    }
+                                }
+                            }
+                        }
+                        if root.show-rulers : Rectangle {
+                            x: 0px;
+                            y: 20px;
+                            width: 20px;
+                            height: parent.height - 20px;
+                            z: 76;
+                            background: transparent;
+
+                            left-ruler-ta := TouchArea {
+                                width: 100%;
+                                height: 100%;
+                                mouse-cursor: ew-resize;
+                                pointer-event(e) => {
+                                    if (e.kind == PointerEventKind.down) {
+                                        root.guide-drag("x", self.mouse-x, self.mouse-y + 20px);
+                                    }
+                                    if (e.kind == PointerEventKind.up) {
+                                        root.guide-drop(self.mouse-x, self.mouse-y + 20px);
+                                    }
+                                }
+                                moved => {
+                                    if (self.pressed) {
+                                        root.guide-move(self.mouse-x, self.mouse-y + 20px);
+                                    }
+                                }
+                            }
+                        }
+
+                        // The live guide draft (the committed list renders in
+                        // the overlay stack above).
+                        Path {
+                            visible: root.show-guides;
+                            commands: root.guide-draft;
+                            fill: transparent;
+                            stroke: StudioTheme.image-guide;
+                            stroke-width: 1px;
+                        }
+
+                        // In-canvas text editor: a textarea over the layer box
+                        // (`ps-canvas.tsx` inline text editing). Enter commits,
+                        // Shift+Enter inserts a newline, Escape cancels.
+                        if root.text-edit-on : Rectangle {
+                            x: root.text-edit-x;
+                            y: root.text-edit-y;
+                            width: max(120px, root.text-edit-w);
+                            height: max(32px, root.text-edit-h);
+                            z: 90;
+                            border-radius: StudioTheme.radius-sm;
+                            border-width: 1px;
+                            border-color: StudioTheme.node-accent;
+                            background: StudioTheme.panel-body;
+                            clip: true;
+
+                            // Keeps clicks inside the editor from reaching the
+                            // board (and committing the draft on the way).
+                            editor-ta := TouchArea {
+                                width: 100%;
+                                height: 100%;
+                            }
+
+                            text-edit-input := TextInput {
+                                x: 4px;
+                                y: 2px;
+                                width: parent.width - 8px;
+                                height: parent.height - 4px;
+                                text: root.text-edit-draft;
+                                single-line: false;
+                                wrap: word-wrap;
+                                font-size: 14px;
+                                color: StudioTheme.node-text;
+                                selection-background-color: StudioTheme.node-accent-soft;
+                                init => {
+                                    self.focus();
+                                    self.select-all();
+                                }
+                                edited => {
+                                    root.text-edit-changed(self.text);
+                                }
+                                key-pressed(e) => {
+                                    if (e.text == Key.Escape) {
+                                        root.text-edit-cancel();
+                                        return accept;
+                                    }
+                                    if (e.text == "\n" && !e.modifiers.shift) {
+                                        root.text-edit-commit(self.text);
+                                        return accept;
+                                    }
+                                    return reject;
+                                }
+                                accepted => {
+                                    root.text-edit-commit(self.text);
+                                }
+                            }
+                        }
+                    }
+
+                    if root.bottom-visible : Rectangle {
+                        height: Theme.dock-image.bottom-size;
+                        background: StudioTheme.panel-body;
+
+                        HorizontalLayout {
+                            // Inset by the 6px grab strip along the top edge.
+                            padding-top: StudioTheme.space-2;
+                            spacing: 0;
+
+                                for group[index] in root.dock-bottom : Rectangle {
+                                    property <bool> collapsed: root.collapsed-group == "bottom|\{index}";
+                                    horizontal-stretch: collapsed ? 0.0 : 1.0;
+
+                                    VerticalLayout {
+                                        spacing: 0;
+
+                                        DockTabStrip {
+                                            studio: "image";
+                                            edge: "bottom";
+                                            group-index: index;
+                                            panels: group.panels;
+                                            labels: group.labels;
+                                            active: group.active;
+                                            collapsed: collapsed;
+                                            collapse => {
+                                                root.toggle-collapsed("bottom", index);
+                                            }
+                                        }
+                                        if !collapsed && group.active == "color" : ImageColorPanel {
+                                            vertical-stretch: 1;
+                                            fg: root.fg-color;
+                                            bg: root.bg-color;
+                                            fg-hex: root.fg-hex;
+                                            bg-hex: root.bg-hex;
+                                            slot: root.slot;
+                                            hue-deg: root.hue;
+                                            sat: root.sat;
+                                            val: root.val;
+                                            red: "\{round(root.red)}";
+                                            green: "\{round(root.green)}";
+                                            blue: "\{round(root.blue)}";
+                                            swatch-groups: root.swatches;
+                                            slot-pick(id) => {
+                                                root.slot-pick(id);
+                                            }
+                                            swap => {
+                                                root.color-swap();
+                                            }
+                                            reset => {
+                                                root.color-reset();
+                                            }
+                                            field(key, value) => {
+                                                root.color-field(key, value);
+                                            }
+                                            sv(sat, val) => {
+                                                root.color-field("sv", "\{sat},\{val}");
+                                            }
+                                            hue-pick(hue) => {
+                                                root.color-field("h", "\{hue}");
+                                            }
+                                            pick(hex) => {
+                                                root.color-pick(hex);
+                                            }
+                                            add => {
+                                                root.swatch-add();
+                                            }
+                                            remove(index) => {
+                                                root.swatch-remove(index);
+                                            }
+                                        }
+                                        if !collapsed && group.active == "gradients" : ImageGradientsPanel {
+                                            vertical-stretch: 1;
+                                            gradients: root.gradients;
+                                            stops: root.gradient-stops;
+                                            edit-strip: root.gradient-edit-strip;
+                                            edit-name: root.gradient-name;
+                                            stop-selected: root.gradient-stop-selected;
+                                            action(action, id) => {
+                                                root.gradient-action(action, id);
+                                            }
+                                            name-edited(text) => {
+                                                root.panel-name-edited(text);
+                                            }
+                                        }
+                                        if !collapsed && group.active == "patterns" : ImagePatternsPanel {
+                                            vertical-stretch: 1;
+                                            patterns: root.patterns;
+                                            can-define: root.pattern-can-define;
+                                            action(action, id) => {
+                                                root.pattern-action(action, id);
+                                            }
+                                        }
+                                        if !collapsed && group.active == "brushes" : ImageBrushesPanel {
+                                            vertical-stretch: 1;
+                                            brushes: root.brushes;
+                                            preview: root.brush-preview;
+                                            size: root.brush;
+                                            hardness: root.hardness;
+                                            brush-opacity: root.brush-opacity;
+                                            spacing: root.brush-spacing;
+                                            scatter: root.brush-scatter;
+                                            angle: root.brush-angle;
+                                            roundness: root.brush-roundness;
+                                            dynamics: root.brush-dynamics;
+                                            texture: root.brush-texture;
+                                            action(action, id) => {
+                                                root.brush-action(action, id);
+                                            }
+                                            slider(key, value) => {
+                                                root.brush-slider(key, value);
+                                            }
+                                        }
+                                    }
+                                }
+                        }
+
+                        DockSplitter {
+                            x: 0px;
+                            y: 0px;
+                            width: parent.width;
+                            height: 6px;
+                            vertical: false;
+                            studio: "image";
+                            edge: "bottom";
+                            kind: "size";
+                            value: Theme.dock-image.bottom-size / 1px;
+                        }
+                    }
+                }
+
+                if root.right-visible : Rectangle {
+                    width: Theme.dock-image.right-size;
+                    // Opaque content surface (the window plate is the only
+                    // window/chrome-level fill).
+                    background: StudioTheme.panel-body;
+
+                    // The 6px grab strip (`dock-panel.tsx` `SPLITTER_CLASS`) sits
+                    // on the column's inner edge; the content is inset by it.
+                    image-right-groups := VerticalLayout {
+                        padding-left: StudioTheme.space-2;
+                        spacing: 0;
+
+                            for group[index] in root.dock-right : Rectangle {
+                                property <bool> collapsed: root.collapsed-group == "right|\{index}";
+                                // The split ratio only governs a two-group edge
+                                // (the web's `DOCK_MAX_GROUPS` ceiling); every
+                                // other count shares the height evenly, which is
+                                // what the pre-dock studio did.
+                                vertical-stretch: collapsed ? 0.0 : root.dock-right.length == 2 ? (index == 0 ? Theme.dock-image.right-split : 1.0 - Theme.dock-image.right-split) : 1.0;
+
+                                if index > 0 && root.dock-right.length == 2 && !collapsed : DockSplitter {
+                                    y: -3px;
+                                    vertical: false;
+                                    studio: "image";
+                                    edge: "right";
+                                    kind: "split";
+                                    value: Theme.dock-image.right-split;
+                                    reference: image-right-groups.height;
+                                }
+
+                                VerticalLayout {
+                                    spacing: 0;
+
+                                    DockTabStrip {
+                                        studio: "image";
+                                        edge: "right";
+                                        group-index: index;
+                                        panels: group.panels;
+                                        labels: group.labels;
+                                        active: group.active;
+                                        collapsed: collapsed;
+                                        collapse => {
+                                            root.toggle-collapsed("right", index);
+                                        }
+                                    }
+                                    if !collapsed && group.active == "layers" : ImageLayersPanel {
+                                        vertical-stretch: 1;
+                                        layers: root.layers;
+                                        layer-opacity: root.layer-opacity;
+                                        blend: root.layer-blend;
+                                        pick(id) => {
+                                            root.layer-pick(id);
+                                        }
+                                        action(action, id) => {
+                                            root.layer-action(action, id);
+                                        }
+                                        opacity-changed(value) => {
+                                            root.layer-opacity-changed(value);
+                                        }
+                                        blend-changed(id) => {
+                                            root.blend-changed(id);
+                                        }
+                                        name-edited(text) => {
+                                            root.layer-name-edited(text);
+                                        }
+                                    }
+                                    if !collapsed && group.active == "channels" : ImageChannelsPanel {
+                                        vertical-stretch: 1;
+                                        channels: root.channels;
+                                        r-visible: root.channel-r;
+                                        g-visible: root.channel-g;
+                                        b-visible: root.channel-b;
+                                        view: root.channel-view;
+                                        has-selection: root.has-selection;
+                                        action(action, id) => {
+                                            root.channel-action(action, id);
+                                        }
+                                        name-edited(text) => {
+                                            root.panel-name-edited(text);
+                                        }
+                                    }
+                                    if !collapsed && group.active == "paths" : ImagePathsPanel {
+                                        vertical-stretch: 1;
+                                        paths: root.paths;
+                                        can-paint: root.path-can-paint;
+                                        action(action, id) => {
+                                            root.path-action(action, id);
+                                        }
+                                        name-edited(text) => {
+                                            root.panel-name-edited(text);
+                                        }
+                                    }
+                                    if !collapsed && group.active == "fx" : ImageFxPanel {
+                                        vertical-stretch: 1;
+                                        styles: root.styles;
+                                        action(action, id) => {
+                                            root.layer-action(action, id);
+                                        }
+                                        add(kind) => {
+                                            root.layer-action("fx-add", kind);
+                                        }
+                                    }
+                                    if !collapsed && group.active == "history" : ImageHistoryPanel {
+                                        vertical-stretch: 1;
+                                        entries: root.history;
+                                        pick(index) => {
+                                            root.history-pick(index);
+                                        }
+                                    }
+                                    if !collapsed && group.active == "actions" : ImageActionsPanel {
+                                        vertical-stretch: 1;
+                                        actions: root.actions;
+                                        recording: root.recording;
+                                        recorded: root.recorded;
+                                        action(action, id) => {
+                                            root.actions-panel(action, id);
+                                        }
+                                        name-edited(text) => {
+                                            root.panel-name-edited(text);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        DockSplitter {
+                            x: 0px;
+                            y: 0px;
+                            width: 6px;
+                            height: parent.height;
+                            vertical: true;
+                            studio: "image";
+                            edge: "right";
+                            kind: "size";
+                            value: Theme.dock-image.right-size / 1px;
+                        }
+                }
+
+                if root.left-visible : Rectangle {
+                    width: Theme.dock-image.left-size;
+                    // Opaque content surface (glass stays on the window chrome).
+                    background: StudioTheme.panel-body;
+
+                    image-left-groups := VerticalLayout {
+                        // Inset by the 6px grab strip on the inner edge.
+                        padding-right: StudioTheme.space-2;
+                        spacing: 0;
+
+                            for group[index] in root.dock-left : Rectangle {
+                                property <bool> collapsed: root.collapsed-group == "left|\{index}";
+                                vertical-stretch: collapsed ? 0.0 : root.dock-left.length == 2 ? (index == 0 ? Theme.dock-image.left-split : 1.0 - Theme.dock-image.left-split) : 1.0;
+
+                                if index > 0 && root.dock-left.length == 2 && !collapsed : DockSplitter {
+                                    y: -3px;
+                                    vertical: false;
+                                    studio: "image";
+                                    edge: "left";
+                                    kind: "split";
+                                    value: Theme.dock-image.left-split;
+                                    reference: image-left-groups.height;
+                                }
+
+                                VerticalLayout {
+                                    spacing: 0;
+
+                                    DockTabStrip {
+                                        studio: "image";
+                                        edge: "left";
+                                        group-index: index;
+                                        panels: group.panels;
+                                        labels: group.labels;
+                                        active: group.active;
+                                        collapsed: collapsed;
+                                        collapse => {
+                                            root.toggle-collapsed("left", index);
+                                        }
+                                    }
+                                    if !collapsed && group.active == "properties" : ImagePropertiesPanel {
+                                        vertical-stretch: 1;
+                                        kind: root.active-kind;
+                                layer-name: root.layer-name;
+                                layer-x: root.layer-x;
+                                layer-y: root.layer-y;
+                                layer-w: root.layer-w;
+                                layer-h: root.layer-h;
+                                layer-rotation: root.layer-rotation;
+                                layer-opacity: root.layer-opacity;
+                                blend: root.layer-blend;
+                                adjustment: root.adjustment;
+                                params: root.params;
+                                text-content: root.text-content;
+                                text-family: root.text-family;
+                                fonts: root.fonts;
+                                text-rows: root.text-rows;
+                                has-mask: root.layer-has-mask;
+                                can-add-mask: root.layer-can-add-mask;
+                                can-apply-mask: root.layer-can-apply-mask;
+                                mask-target-on: root.layer-mask-target;
+                                board-w: root.board-w;
+                                board-h: root.board-h;
+                                ratio: root.ratio;
+                                resolution: root.resolution;
+                                board-background: root.board-background;
+                                field(key, value) => {
+                                    root.prop-field(key, value);
+                                }
+                                param-set(key, value) => {
+                                    root.param-set(key, value);
+                                }
+                                font-pick(family) => {
+                                    root.font-pick(family);
+                                }
+                                board-apply => {
+                                    root.board-apply();
+                                }
+                                settings => {
+                                    root.action("settings");
+                                }
+                                mask-action(action) => {
+                                    root.mask-action(action);
+                                }
+                                text-set(key, value) => {
+                                    root.text-set(key, value);
+                                }
+                                text-text(key, value) => {
+                                    root.text-text(key, value);
+                                }
+                                text-option(key, value) => {
+                                    root.text-option(key, value);
+                                }
+                                text-choice(key, index) => {
+                                    root.text-choice(key, index);
+                                }
+                                        text-check(key, value) => {
+                                            root.text-check(key, value);
+                                        }
+                                    }
+                                    if !collapsed && group.active == "adjustments" : ImageAdjustmentsPanel {
+                                        vertical-stretch: 1;
+                                        adjustments: root.adjustments;
+                                        create(id) => {
+                                            root.adjustment-create(id);
+                                        }
+                                    }
+                                    if !collapsed && group.active == "assets" : ImageAssetsPanel {
+                                        vertical-stretch: 1;
+                                        assets: root.assets;
+                                        search: root.asset-search;
+                                        search-edited(text) => {
+                                            root.asset-search-edited(text);
+                                        }
+                                        action(action, id) => {
+                                            root.asset-action(action, id);
+                                        }
+                                        dropped(id, x, y) => {
+                                            root.asset-drop(id, x - board-area.absolute-position.x, y - board-area.absolute-position.y);
+                                        }
+                                        refresh => {
+                                            root.assets-refresh();
+                                        }
+                                    }
+                                }
+                            }
+
+                            // The adjustment editor stays a transient panel under
+                            // the docked groups (it opens from the Adjustments
+                            // panel, not from the Dock menu).
+                            if root.editor-visible : Rectangle {
+                                vertical-stretch: 1;
+                                ImageEditorPanel {
+                                    title: root.editor-title;
+                                    rows: root.editor-rows;
+                                    curve-points: root.curve-points;
+                                    curve-path: root.curve-path;
+                                    stops: root.editor-stops;
+                                    stops-strip: root.editor-stops-strip;
+                                    stop-selected: root.editor-stop-selected;
+                                    editor-set(key, value) => {
+                                        root.editor-set(key, value);
+                                    }
+                                    editor-text(key, value) => {
+                                        root.editor-text(key, value);
+                                    }
+                                    editor-option(key, value) => {
+                                        root.editor-option(key, value);
+                                    }
+                                    editor-check(key, value) => {
+                                        root.editor-check(key, value);
+                                    }
+                                    curve-add(x, y) => {
+                                        root.curve-add(x, y);
+                                    }
+                                    curve-move(index, x, y) => {
+                                        root.curve-move(index, x, y);
+                                    }
+                                    curve-delete(index) => {
+                                        root.curve-delete(index);
+                                    }
+                                    stop-add => {
+                                        root.editor-stop-add();
+                                    }
+                                    stop-select(index) => {
+                                        root.editor-stop-select(index);
+                                    }
+                                    stop-remove(index) => {
+                                        root.editor-stop-remove(index);
+                                    }
+                                    stop-color(index, hex) => {
+                                        root.editor-stop-color(index, hex);
+                                    }
+                                    stop-pos(index, value) => {
+                                        root.editor-stop-pos(index, value);
+                                    }
+                                }
+                            }
+                        }
+
+                    DockSplitter {
+                        x: parent.width - 6px;
+                        y: 0px;
+                        width: 6px;
+                        height: parent.height;
+                        vertical: true;
+                        studio: "image";
+                        edge: "left";
+                        kind: "size";
+                        value: Theme.dock-image.left-size / 1px;
+                    }
+                }
+            }
+
+            // ---- floating tool options ---------------------------------------
+            // The band under the menu bar is gone: the active tool's controls
+            // ride in a compact card just right of the rail, so the canvas owns
+            // the rows the band used to take. A tool without options never shows
+            // it; the card's own close affordance dismisses it until the tool
+            // changes, and the last row of the card is always inside the board.
+            if root.tool-options-shown : ImageToolOptions {
+                x: StudioTheme.rail-w + StudioTheme.space-3;
+                y: 0px;
+                z: 200;
+                tools: root.tools;
+                tool: root.active-tool;
+                brush: root.brush;
+                hardness: root.hardness;
+                brush-opacity: root.brush-opacity;
+                tolerance: root.tolerance;
+                feather: root.feather;
+                contiguous: root.contiguous;
+                sample-all: root.sample-all;
+                antialias: root.antialias;
+                gradient-radial: root.gradient-radial;
+                gradient-reverse: root.gradient-reverse;
+                shape-kind: root.shape-kind;
+                shape-fill: root.shape-fill;
+                stroke-width: root.stroke-width;
+                transform-mode: root.transform-mode;
+                fg: root.fg-color;
+                bg: root.bg-color;
+                slot: root.slot;
+                close => {
+                    root.dismiss-tool-options();
+                }
+                slider(key, value) => {
+                    root.slider(key, value);
+                }
+                toggle(id) => {
+                    root.toggle(id);
+                }
+                shape-pick(id) => {
+                    root.shape-pick(id);
+                }
+                transform-pick(id) => {
+                    root.action(id == "" ? "edit.exit-transform" : "edit.transform." + id);
+                }
+                gradient-pick(id) => {
+                    root.action("gradient.blend." + id);
+                }
+                color-slot(id) => {
+                    root.slot-pick(id);
+                }
+                color-swap() => {
+                    root.color-swap();
+                }
+                color-reset() => {
+                    root.color-reset();
+                }
+            }
+        }
+
+        // ---- status bar (24px) ------------------------------------------------
+        // Zoom, document size, colour mode, the active tool's name, and the
+        // panel control on the right (the Window menu's panel list).
+        Rectangle {
+            height: StudioTheme.status-bar-h;
+            background: StudioTheme.status-bar;
+
+            Rectangle {
+                y: 0px;
+                width: 100%;
+                height: 1px;
+                background: StudioTheme.hairline;
+            }
+
+            HorizontalLayout {
+                padding-left: StudioTheme.space-2;
+                padding-right: StudioTheme.space-2;
+                spacing: StudioTheme.space-2;
+                cross-axis-alignment: center;
+
+                // Zoom read-out: the same zoom actions the View menu offers.
+                status-zoom-out := TouchArea {
+                    width: 16px;
+                    height: 16px;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.action("view.zoom-out");
+                    }
+                }
+                Path {
+                    width: 12px;
+                    height: 12px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: Icons.zoom-out;
+                    fill: transparent;
+                    stroke-width: 1.8px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                    stroke: status-zoom-out.has-hover ? StudioTheme.text-strong : StudioTheme.text-muted;
+                    animate stroke {
+                        duration: StudioTheme.motion-hover;
+                        easing: ease-out;
+                    }
+                }
+                status-zoom-in := TouchArea {
+                    width: 16px;
+                    height: 16px;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.action("view.zoom-in");
+                    }
+                }
+                Path {
+                    width: 12px;
+                    height: 12px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: Icons.zoom-in;
+                    fill: transparent;
+                    stroke-width: 1.8px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                    stroke: status-zoom-in.has-hover ? StudioTheme.text-strong : StudioTheme.text-muted;
+                    animate stroke {
+                        duration: StudioTheme.motion-hover;
+                        easing: ease-out;
+                    }
+                }
+                Text {
+                    width: 44px;
+                    text: "\{round(root.view-k * 100)}%";
+                    font-size: 11px;
+                    color: StudioTheme.text;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                status-fit := TouchArea {
+                    width: 16px;
+                    height: 16px;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.action("view.fit");
+                    }
+                }
+                Path {
+                    width: 12px;
+                    height: 12px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: Icons.maximize;
+                    fill: transparent;
+                    stroke-width: 1.8px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                    stroke: status-fit.has-hover ? StudioTheme.text-strong : StudioTheme.text-muted;
+                    animate stroke {
+                        duration: StudioTheme.motion-hover;
+                        easing: ease-out;
+                    }
+                }
+
+                Rectangle {
+                    width: 1px;
+                    height: 12px;
+                    background: StudioTheme.separator;
+                }
+                Text {
+                    text: "\{round(root.doc-w)} × \{round(root.doc-h)} px";
+                    font-size: 11px;
+                    color: StudioTheme.text;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 1px;
+                    height: 12px;
+                    background: StudioTheme.separator;
+                }
+                Text {
+                    text: root.channel-view == "rgb" ? "RGB/8" : root.channel-view == "gray" ? "Grayscale/8" : "CMYK/8";
+                    font-size: 11px;
+                    color: StudioTheme.text;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 1px;
+                    height: 12px;
+                    background: StudioTheme.separator;
+                }
+                // The current tool's hint line: the active tool's own name.
+                for row in root.tools : Text {
+                    visible: row.id == root.active-tool;
+                    text: row.label;
+                    font-size: 11px;
+                    color: StudioTheme.text-muted;
+                    vertical-alignment: center;
+                    width: row.id == root.active-tool ? self.preferred-width : 0px;
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+                }
+
+                // The panel control: opens the Window menu's panel list (the
+                // one place every panel stays reachable from).
+                panel-toggle := Rectangle {
+                    height: 18px;
+                    width: self.preferred-width;
+                    border-radius: 2px;
+                    background: root.menu == "dock" ? StudioTheme.toolbar-active-bg : (panel-toggle-ta.has-hover ? StudioTheme.hover : transparent);
+                    animate background {
+                        duration: StudioTheme.motion-hover;
+                        easing: ease-out;
+                    }
+
+                    panel-toggle-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.action("dock");
+                        }
+                    }
+
+                    HorizontalLayout {
+                        padding-left: 6px;
+                        padding-right: 6px;
+                        spacing: 5px;
+                        cross-axis-alignment: center;
+
+                        Path {
+                            width: 12px;
+                            height: 12px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.panel-left;
+                            fill: transparent;
+                            stroke-width: 1.7px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                            stroke: StudioTheme.text-muted;
+                        }
+                        Text {
+                            text: "Panels";
+                            font-size: 11px;
+                            color: StudioTheme.text;
+                            vertical-alignment: center;
+                        }
+                        Path {
+                            width: 8px;
+                            height: 8px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.chevron-up;
+                            fill: transparent;
+                            stroke-width: 1.8px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                            stroke: StudioTheme.text-muted;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Click-away layer for the open menu (below the menu bar so menu buttons
+    // keep switching between menus). It is declared before the popups so plain
+    // declaration order keeps the popups above it and clickable (a popup is a
+    // conditional component, whose root `z` orders it only inside its repeater).
+    if root.menu != "" : Rectangle {
+        x: 0px;
+        y: StudioTheme.menu-bar-h;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => {
+                root.action("");
+            }
+        }
+    }
+    // Menu popups anchored under their buttons (declared after the click-away
+    // so they sit above it and receive their clicks).
+    // File is export-only: the four composite exports, each opening the shared
+    // path prompt pre-filled in the project's export folder with that format's
+    // extension. Importing a bitmap lives in the Layers panel, and leaving the
+    // studio is the Home button left of File.
+    if root.menu == "file" : StudioMenu {
+        x: file-btn.x + 7px;
+        y: StudioTheme.menu-bar-h;
+        StudioMenuItem {
+            label: "Export as PNG...";
+            clicked => {
+                root.action("file.png");
+            }
+        }
+        StudioMenuItem {
+            label: "Export as JPEG...";
+            clicked => {
+                root.action("file.jpeg");
+            }
+        }
+        StudioMenuItem {
+            label: "Export as BMP...";
+            clicked => {
+                root.action("file.bmp");
+            }
+        }
+        StudioMenuItem {
+            label: "Export as PSD...";
+            clicked => {
+                root.action("file.psd-export");
+            }
+        }
+    }
+    if root.menu == "layer" : StudioMenu {
+        x: layer-btn.x + 7px;
+        y: StudioTheme.menu-bar-h;
+        StudioMenuItem {
+            label: "New Layer";
+            clicked => {
+                root.action("layer.new");
+            }
+        }
+        StudioMenuItem {
+            label: "New Text Layer";
+            clicked => {
+                root.action("layer.new-text");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Duplicate Layer";
+            clicked => {
+                root.action("edit.duplicate");
+            }
+        }
+        StudioMenuItem {
+            label: "Delete Layer";
+            clicked => {
+                root.action("edit.delete");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Group Layer";
+            clicked => {
+                root.action("edit.group");
+            }
+        }
+        StudioMenuItem {
+            label: "Ungroup Layer";
+            clicked => {
+                root.action("edit.ungroup");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Move Layer Up";
+            clicked => {
+                root.action("layer.up");
+            }
+        }
+        StudioMenuItem {
+            label: "Move Layer Down";
+            clicked => {
+                root.action("layer.down");
+            }
+        }
+    }
+    if root.menu == "select" : StudioMenu {
+        x: select-btn.x + 7px;
+        y: StudioTheme.menu-bar-h;
+        StudioMenuItem {
+            label: "Select All";
+            shortcut: "Ctrl+A";
+            clicked => {
+                root.action("select.all");
+            }
+        }
+        StudioMenuItem {
+            label: "Deselect";
+            shortcut: "Ctrl+D";
+            enabled: root.has-selection;
+            clicked => {
+                root.action("select.deselect");
+            }
+        }
+        StudioMenuItem {
+            label: "Inverse";
+            shortcut: "Ctrl+Shift+I";
+            clicked => {
+                root.action("select.inverse");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Feather (tool options)";
+            clicked => {
+                root.action("select.feather");
+            }
+        }
+    }
+    if root.menu == "edit" : StudioMenu {
+        x: edit-btn.x + 7px;
+        y: StudioTheme.menu-bar-h;
+        StudioMenuItem {
+            label: "Undo";
+            shortcut: "Ctrl+Z";
+            enabled: root.can-undo;
+            clicked => {
+                root.action("edit.undo");
+            }
+        }
+        StudioMenuItem {
+            label: "Redo";
+            shortcut: "Ctrl+Shift+Z";
+            enabled: root.can-redo;
+            clicked => {
+                root.action("edit.redo");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Duplicate Layer";
+            clicked => {
+                root.action("edit.duplicate");
+            }
+        }
+        StudioMenuItem {
+            label: "Delete Layer";
+            clicked => {
+                root.action("edit.delete");
+            }
+        }
+        StudioMenuItem {
+            label: "Group Layer";
+            clicked => {
+                root.action("edit.group");
+            }
+        }
+        StudioMenuItem {
+            label: "Ungroup Layer";
+            clicked => {
+                root.action("edit.ungroup");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Free Transform";
+            shortcut: "Ctrl+T";
+            clicked => {
+                root.action("edit.free-transform");
+            }
+        }
+        StudioMenuItem {
+            label: "Skew";
+            clicked => {
+                root.action("edit.skew");
+            }
+        }
+        StudioMenuItem {
+            label: "Distort";
+            clicked => {
+                root.action("edit.distort");
+            }
+        }
+        StudioMenuItem {
+            label: "Perspective";
+            clicked => {
+                root.action("edit.perspective");
+            }
+        }
+        StudioMenuItem {
+            label: "Warp";
+            clicked => {
+                root.action("edit.warp");
+            }
+        }
+        StudioMenuItem {
+            label: "Numeric Transform...";
+            clicked => {
+                root.action("edit.numeric-transform");
+            }
+        }
+        StudioMenuItem {
+            label: "Repeat Transform";
+            shortcut: "Ctrl+Shift+T";
+            clicked => {
+                root.action("edit.repeat-transform");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Clear Transform";
+            clicked => {
+                root.action("edit.clear-transform");
+            }
+        }
+    }
+    if root.menu == "image" : StudioMenu {
+        x: image-btn.x + 7px;
+        y: StudioTheme.menu-bar-h;
+        StudioMenuItem {
+            label: "Export PNG...";
+            clicked => {
+                root.export();
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Image Size...";
+            clicked => {
+                root.action("image.size");
+            }
+        }
+        StudioMenuItem {
+            label: "Canvas Size...";
+            clicked => {
+                root.action("image.canvas-size");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Rotate 90° CW";
+            clicked => {
+                root.action("image.rotate-cw");
+            }
+        }
+        StudioMenuItem {
+            label: "Rotate 90° CCW";
+            clicked => {
+                root.action("image.rotate-ccw");
+            }
+        }
+        StudioMenuItem {
+            label: "Rotate 180°";
+            clicked => {
+                root.action("image.rotate-180");
+            }
+        }
+        StudioMenuItem {
+            label: "Rotate Arbitrary...";
+            clicked => {
+                root.action("image.rotate-arbitrary");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Crop to Selection";
+            enabled: root.has-selection;
+            clicked => {
+                root.action("image.crop");
+            }
+        }
+        StudioMenuItem {
+            label: "Trim";
+            clicked => {
+                root.action("image.trim");
+            }
+        }
+    }
+    // ---- Filter menu: nested flyouts, not one long scrolling list ----------
+    // The top level is Repeat Last Filter plus one row per filter group; each
+    // group row opens its flyout to the right, and Filter Gallery's flyout
+    // opens a third level with one foldout per gallery folder. Every level is
+    // drawn from the same static row model, hidden rows belonging elsewhere.
+    if root.menu == "filter" : StudioMenu {
+        x: root.filter-popup-x;
+        y: root.filter-popup-y;
+        menu-width: root.filter-menu-width;
+        for row in root.filter-menu-rows : FilterMenuEntry {
+            shown: row.parent == "";
+            entry: row;
+            selected: row.kind == "group" && root.filter-open-group == row.group;
+            activated => {
+                root.action(row.kind == "repeat" ? "filter.repeat" : "filter." + row.id);
+            }
+            opened(row-y) => {
+                root.open-filter-group(row.group, row-y);
+            }
+        }
+    }
+    if root.menu == "filter" && root.filter-open-group != "" : StudioMenu {
+        x: root.filter-flyout-x(root.filter-popup-x, root.filter-menu-width);
+        y: Math.max(4px, Math.min(root.filter-open-y, root.height - self.height - 4px));
+        menu-width: root.filter-menu-width;
+        for row in root.filter-menu-rows : FilterMenuEntry {
+            shown: row.parent == root.filter-open-group;
+            entry: row;
+            selected: row.kind == "group" && root.filter-open-sub == row.group;
+            activated => {
+                root.action("filter." + row.id);
+            }
+            opened(row-y) => {
+                root.open-filter-sub(row.group, row-y);
+            }
+        }
+    }
+    if root.menu == "filter" && root.filter-open-sub != "" : StudioMenu {
+        x: root.filter-flyout-x(root.filter-flyout-x(root.filter-popup-x, root.filter-menu-width), root.filter-menu-width);
+        y: Math.max(4px, Math.min(root.filter-sub-y, root.height - self.height - 4px));
+        menu-width: root.filter-menu-width;
+        for row in root.filter-menu-rows : FilterMenuEntry {
+            shown: row.parent == root.filter-open-sub;
+            entry: row;
+            activated => {
+                root.action("filter." + row.id);
+            }
+        }
+    }
+    if root.menu == "view" : StudioMenu {
+        x: view-btn.x + 7px;
+        y: StudioTheme.menu-bar-h;
+        StudioMenuItem {
+            label: "Rulers";
+            check: root.show-rulers ? "\u{2713}" : "";
+            clicked => {
+                root.action("view.rulers");
+            }
+        }
+        StudioMenuItem {
+            label: "Grid";
+            check: root.show-grid ? "\u{2713}" : "";
+            clicked => {
+                root.action("view.grid");
+            }
+        }
+        StudioMenuItem {
+            label: "Guides";
+            check: root.show-guides ? "\u{2713}" : "";
+            clicked => {
+                root.action("view.guides");
+            }
+        }
+        StudioMenuItem {
+            label: "Snap";
+            check: root.snap ? "\u{2713}" : "";
+            clicked => {
+                root.action("view.snap");
+            }
+        }
+        StudioMenuItem {
+            label: "Clear Guides";
+            clicked => {
+                root.action("view.clear-guides");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Zoom In";
+            shortcut: "+";
+            clicked => {
+                root.action("view.zoom-in");
+            }
+        }
+        StudioMenuItem {
+            label: "Zoom Out";
+            shortcut: "-";
+            clicked => {
+                root.action("view.zoom-out");
+            }
+        }
+        StudioMenuItem {
+            label: "Fit on Screen";
+            clicked => {
+                root.action("view.fit");
+            }
+        }
+        StudioMenuItem {
+            label: "Actual Size";
+            shortcut: "1x";
+            clicked => {
+                root.action("view.actual");
+            }
+        }
+    }
+    if root.menu == "dock" : StudioMenu {
+        x: dock-btn.x + 7px;
+        y: StudioTheme.menu-bar-h;
+        menu-width: 176px;
+        StudioMenuItem {
+            label: "Layers";
+            check: root.panels.layers ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.layers");
+            }
+        }
+        StudioMenuItem {
+            label: "Layer Effects";
+            check: root.panels.fx ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.fx");
+            }
+        }
+        StudioMenuItem {
+            label: "History";
+            check: root.panels.history ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.history");
+            }
+        }
+        StudioMenuItem {
+            label: "Properties";
+            check: root.panels.properties ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.properties");
+            }
+        }
+        StudioMenuItem {
+            label: "Color";
+            check: root.panels.color ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.color");
+            }
+        }
+        StudioMenuItem {
+            label: "Channels";
+            check: root.panels.channels ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.channels");
+            }
+        }
+        StudioMenuItem {
+            label: "Paths";
+            check: root.panels.paths ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.paths");
+            }
+        }
+        StudioMenuItem {
+            label: "Actions";
+            check: root.panels.actions ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.actions");
+            }
+        }
+        StudioMenuItem {
+            label: "Adjustments";
+            check: root.panels.adjustments ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.adjustments");
+            }
+        }
+        StudioMenuItem {
+            label: "Assets";
+            check: root.panels.assets ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.assets");
+            }
+        }
+        StudioMenuItem {
+            label: "Gradients";
+            check: root.panels.gradients ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.gradients");
+            }
+        }
+        StudioMenuItem {
+            label: "Patterns";
+            check: root.panels.patterns ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.patterns");
+            }
+        }
+        StudioMenuItem {
+            label: "Brushes";
+            check: root.panels.brushes ? "\u{2713}" : "";
+            clicked => {
+                root.action("dock.brushes");
+            }
+        }
+        StudioMenuDivider {
+        }
+        StudioMenuItem {
+            label: "Board Settings";
+            clicked => {
+                root.action("settings");
+            }
+        }
+        StudioMenuItem {
+            label: "Reset Layout";
+            clicked => {
+                root.action("dock.reset");
+            }
+        }
+    }
+
+    // SmartCanvasSettingsPopover: ratio / resolution / background + opacity.
+    if root.settings-open : Rectangle {
+        x: 0px;
+        y: StudioTheme.menu-bar-h;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        z: 55;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => {
+                root.settings-pick("close", "");
+            }
+        }
+
+        settings-panel := Rectangle {
+            x: parent.width - self.width - 12px;
+            y: 4px;
+            width: 300px;
+            height: 268px;
+            background: StudioTheme.glass-panel-strong;
+            border-radius: StudioTheme.radius-md;
+            border-width: 1px;
+            border-color: StudioTheme.toolbar-border;
+
+            // Absorbs clicks on the panel's own padding so the backdrop
+            // TouchArea below does not treat them as "outside" and close it.
+            TouchArea {
+                width: 100%;
+                height: 100%;
+            }
+
+            VerticalLayout {
+                padding: StudioTheme.space-3;
+                spacing: StudioTheme.space-2;
+
+                Text {
+                    text: "BOARD SETTINGS";
+                    font-family: "Cascadia Mono";
+                    font-size: 10.5px;
+                    letter-spacing: 1.2px;
+                    font-weight: 600;
+                    color: StudioTheme.foreground;
+                    vertical-alignment: center;
+                }
+                // The nine media ratios (`mediaRatioOptions` minus `auto`).
+                HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    SettingsChip { label: "16:9"; active: root.ratio == "16:9"; picked => { root.settings-pick("ratio", "16:9"); } }
+                    SettingsChip { label: "1:1"; active: root.ratio == "1:1"; picked => { root.settings-pick("ratio", "1:1"); } }
+                    SettingsChip { label: "9:16"; active: root.ratio == "9:16"; picked => { root.settings-pick("ratio", "9:16"); } }
+                }
+                HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    SettingsChip { label: "4:3"; active: root.ratio == "4:3"; picked => { root.settings-pick("ratio", "4:3"); } }
+                    SettingsChip { label: "3:4"; active: root.ratio == "3:4"; picked => { root.settings-pick("ratio", "3:4"); } }
+                    SettingsChip { label: "21:9"; active: root.ratio == "21:9"; picked => { root.settings-pick("ratio", "21:9"); } }
+                }
+                HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    SettingsChip { label: "2:3"; active: root.ratio == "2:3"; picked => { root.settings-pick("ratio", "2:3"); } }
+                    SettingsChip { label: "3:2"; active: root.ratio == "3:2"; picked => { root.settings-pick("ratio", "3:2"); } }
+                    SettingsChip { label: "9:21"; active: root.ratio == "9:21"; picked => { root.settings-pick("ratio", "9:21"); } }
+                }
+                HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    Text { text: "Export"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                    SettingsChip {
+                        label: "1K";
+                        active: root.resolution == "1k";
+                        picked => {
+                            root.settings-pick("resolution", "1k");
+                        }
+                    }
+                    SettingsChip {
+                        label: "2K";
+                        active: root.resolution == "2k";
+                        picked => {
+                            root.settings-pick("resolution", "2k");
+                        }
+                    }
+                    SettingsChip {
+                        label: "4K";
+                        active: root.resolution == "4k";
+                        picked => {
+                            root.settings-pick("resolution", "4k");
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    Text { text: "Background"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                    SettingsChip {
+                        label: "None";
+                        active: root.board-background == "transparent";
+                        picked => {
+                            root.settings-pick("background", "transparent");
+                        }
+                    }
+                    SettingsChip {
+                        label: "White";
+                        active: root.board-background == "#ffffff";
+                        picked => {
+                            root.settings-pick("background", "#ffffff");
+                        }
+                    }
+                    SettingsChip {
+                        label: "Black";
+                        active: root.board-background == "#000000";
+                        picked => {
+                            root.settings-pick("background", "#000000");
+                        }
+                    }
+                }
+                // The custom background colour (`bgCustom`): type a hex and
+                // Apply (applies without closing the popover).
+                HorizontalLayout {
+                    spacing: StudioTheme.space-2;
+                    cross-axis-alignment: center;
+                    Text { text: "Custom"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                    StudioField {
+                        horizontal-stretch: 1;
+                        label: "#";
+                        value: root.custom-background;
+                        edited(value) => { root.custom-background = value; }
+                    }
+                    SettingsChip {
+                        label: "Apply";
+                        active: false;
+                        picked => {
+                            root.settings-pick("background-custom", root.custom-background);
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: StudioTheme.space-2;
+                    cross-axis-alignment: center;
+                    Text { text: "Opacity"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                    Slider {
+                        horizontal-stretch: 1;
+                        value: root.background-opacity;
+                        changed(value) => {
+                            root.slider("background-opacity", value);
+                        }
+                    }
+                    Text {
+                        width: 30px;
+                        text: "\{round(root.background-opacity)}";
+                        font-size: 11px;
+                        color: StudioTheme.node-muted;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+
+    // Filter dialog (`ps-filter-dialog.tsx`) + the menu modals (`ps-menus.tsx`).
+    if root.filter-open : ImageFilterDialog {
+        label: root.filter-label;
+        params: root.filter-params;
+        preview: root.filter-preview;
+        warning: root.filter-warning;
+        liquify: root.filter-liquify;
+        param-set(key, value) => {
+            root.filter-param(key, value);
+        }
+        param-text(key, value) => {
+            root.filter-param-text(key, value);
+        }
+        reset => {
+            root.filter-reset();
+        }
+        apply => {
+            root.filter-apply();
+        }
+        cancel => {
+            root.filter-cancel();
+        }
+        liquify-drag(x, y) => {
+            root.filter-push(x, y);
+        }
+    }
+    if root.modal-open : ImageTransformModal {
+        mode: root.modal-mode;
+        field-a: root.modal-a;
+        field-b: root.modal-b;
+        constrain: root.modal-constrain;
+        anchor: root.modal-anchor;
+        angle: root.modal-angle;
+        dx: root.modal-dx;
+        dy: root.modal-dy;
+        sx: root.modal-scale-x;
+        sy: root.modal-scale-y;
+        rotate-deg: root.modal-rotation;
+        skew-x: root.modal-skew-x;
+        skew-y: root.modal-skew-y;
+        message: root.modal-message;
+        field(key, value) => {
+            root.modal-field(key, value);
+        }
+        toggle(key) => {
+            root.modal-toggle(key);
+        }
+        run => {
+            root.modal-run();
+        }
+        close => {
+            root.modal-close();
+        }
+    }
+
+
+    // Export path prompt (shared with the library modal). One modal for every
+    // raster format: the extension decides the encoder (PNG/JPEG/BMP), and the
+    // File menu pre-fills it per entry.
+    if root.export-open : ExportImportModal {
+        title: "Export Image";
+        import-mode: false;
+        hint: "Writes the board composite at the project's export resolution. The extension picks the encoder: .png, .jpg/.jpeg or .bmp (relative paths resolve from the app data directory).";
+        path: root.export-path;
+        message: root.export-message;
+        error: root.export-error;
+        path-edited(path) => {
+            root.export-path-edited(path);
+        }
+        run => {
+            root.export-run();
+        }
+        close => {
+            root.export-close();
+        }
+    }
+
+    // Import bitmap as a layer (the same path prompt in import mode).
+    if root.import-open : ExportImportModal {
+        title: "Import Bitmap";
+        import-mode: true;
+        hint: "Adds the PNG at this path as a new Image layer, fitted to the board (relative paths resolve from the app data directory).";
+        path: root.import-path;
+        message: root.import-message;
+        error: root.import-error;
+        path-edited(path) => {
+            root.import-path-edited(path);
+        }
+        run => {
+            root.import-run();
+        }
+        close => {
+            root.import-close();
+        }
+    }
+
+    // Export PSD: one PSD layer per project layer plus the merged composite.
+    if root.psd-export-open : ExportImportModal {
+        title: "Export PSD";
+        import-mode: false;
+        hint: "Writes the board as a PSD at the project's export size (layer names, visibility, opacity and blend modes survive; text/shape/adjustment layers are flattened; relative paths resolve from the app data directory).";
+        path: root.psd-export-path;
+        message: root.psd-export-message;
+        error: root.psd-export-error;
+        path-edited(path) => {
+            root.psd-export-path-edited(path);
+        }
+        run => {
+            root.psd-export-run();
+        }
+        close => {
+            root.psd-export-close();
+        }
+    }
+
+    image-focus := FocusScope {
+        width: 100%;
+        height: 100%;
+        // The scope owns the studio's keyboard shortcuts, but it must not eat
+        // the first pointer press to grab focus: it sits above the whole
+        // workspace, so `focus-on-click` swallowed every click on the rail, the
+        // board and the menus. The board and the studio entry focus it
+        // explicitly instead.
+        focus-on-click: false;
+        init => {
+            self.focus();
+        }
+        key-pressed(e) => {
+            // Escape closes the open menu (and with it every flyout) before it
+            // reaches the document shortcuts.
+            if (e.text == Key.Escape && root.menu != "") {
+                root.action("");
+            } else {
+                root.key(e.text, e.modifiers.control, e.modifiers.shift);
+            }
+            accept
+        }
+        key-released(e) => {
+            root.key-up(e.text);
+            accept
+        }
+    }
+
+    // Dock drop zones while a tab is dragged to another edge, and the shared
+    // tooltip surface above everything.
+    DockDropOverlay {
+        studio: "image";
+    }
+    TooltipLayer {
+    }
+}
+
+

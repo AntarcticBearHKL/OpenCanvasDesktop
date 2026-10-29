@@ -1,0 +1,179 @@
+// Local storage tab: how much the app keeps on this device, where it goes by
+// kind, then the one destructive action. Presentation only — every value and
+// callback is owned by Rust.
+
+import { Theme } from "../../theme.slint";
+import { I18n } from "../i18n.slint";
+import { Button } from "../widgets.slint";
+import { StorageKindRow } from "../overlay-types.slint";
+import {
+    SettingsCard, SettingsDivider, SettingsEmptyState, SettingsPageHeader, SettingsShareBar,
+} from "settings-widgets.slint";
+
+export component LocalStorageTab inherits VerticalLayout {
+    in property <[StorageKindRow]> storage-rows: [];
+    in property <string> storage-summary: "";
+    in property <bool> storage-clear-armed: false;
+    callback storage-refresh();
+    callback storage-reveal();
+    callback storage-clear();
+
+    spacing: 14px;
+
+    SettingsPageHeader {
+        title: I18n.config-storage-title;
+        description: I18n.config-storage-hint;
+    }
+
+    // 1. How much, in one headline.
+    SettingsCard {
+        eyebrow: I18n.config-storage-eyebrow-summary;
+        title: I18n.config-storage-total;
+        action-label: I18n.config-storage-reveal;
+        action => {
+            root.storage-reveal();
+        }
+
+        Text {
+            text: root.storage-summary == "" ? I18n.config-storage-empty : root.storage-summary;
+            font-size: 20px;
+            font-weight: 600;
+            font-family: "Cascadia Mono";
+            color: Theme.node-text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        HorizontalLayout {
+            min-height: 30px;
+            spacing: 6px;
+            cross-axis-alignment: center;
+            Text {
+                text: root.storage-rows.length;
+                font-size: 12px;
+                font-family: "Cascadia Mono";
+                color: Theme.node-text;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.storage-rows.length == 1 ? I18n.config-storage-kind : I18n.config-storage-kinds;
+                font-size: 12px;
+                color: Theme.muted-foreground;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+            Button { variant: "ghost"; height: 28px; radius: Theme.radius-sm; font-size: 12px; font-weight: 600; pad: 10px; disabled-opacity: 0.5; disabled-bg: transparent;
+                label: I18n.config-storage-refresh;
+                clicked => {
+                    root.storage-refresh();
+                }
+            }
+        }
+    }
+
+    // 2. Where it goes, largest first, with a bar so the biggest kind is obvious.
+    SettingsCard {
+        eyebrow: I18n.config-storage-eyebrow-breakdown;
+        title: I18n.config-storage-by-kind;
+
+        if root.storage-rows.length == 0 : SettingsEmptyState {
+            title: I18n.config-storage-empty;
+            hint: I18n.config-storage-empty-hint;
+        }
+
+        for row[index] in root.storage-rows : VerticalLayout {
+            spacing: 0px;
+
+            if index > 0 : SettingsDivider { }
+
+            VerticalLayout {
+                min-height: 42px;
+                padding-top: 10px;
+                padding-bottom: 10px;
+                spacing: 6px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    cross-axis-alignment: center;
+
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 2px;
+                        Text {
+                            text: row.label;
+                            font-size: 13px;
+                            font-weight: 600;
+                            color: Theme.node-text;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: row.detail;
+                            font-size: 11px;
+                            color: Theme.muted-foreground;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 4px;
+                        cross-axis-alignment: center;
+                        Text {
+                            text: row.files;
+                            font-size: 12px;
+                            font-family: "Cascadia Mono";
+                            color: Theme.node-muted;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: row.files == 1 ? I18n.config-storage-file : I18n.config-storage-files;
+                            font-size: 11px;
+                            color: Theme.muted-foreground;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Text {
+                        text: row.size;
+                        font-size: 13px;
+                        font-weight: 600;
+                        font-family: "Cascadia Mono";
+                        color: Theme.node-text;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // A zero share (an empty scan) leaves no bar at all.
+                SettingsShareBar {
+                    visible: row.share > 0;
+                    share: row.share;
+                }
+            }
+        }
+    }
+
+    // 3. The destructive action, last and two-step.
+    SettingsCard {
+        eyebrow: I18n.config-storage-eyebrow-danger;
+        title: I18n.config-storage-clear-title;
+        hint: I18n.config-storage-clear-hint;
+
+        HorizontalLayout {
+            alignment: end;
+            Button { variant: "ghost"; height: 32px; radius: Theme.radius-sm; font-size: 12px; font-weight: 600; pad: 12px; disabled-opacity: 0.5; disabled-bg: transparent;
+                label: root.storage-clear-armed ? I18n.config-storage-clear-armed : I18n.config-storage-clear;
+                danger: true;
+                armed: root.storage-clear-armed;
+                clicked => {
+                    root.storage-clear();
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,394 @@
+// Settings modal shell (web `AppConfigModal`): scrim + panel chrome, the
+// header, the left tab rail and the content switch. Each tab lives in its own
+// component under `settings/`; Rust owns every value and the shell only
+// forwards input. Tab switching swaps the content pane instantly — AntD's tab
+// pane has no transition, only the active rail item's 150ms background wash
+// (motion-catalog.md §4/§6).
+
+import { Theme } from "../theme.slint";
+import { I18n } from "i18n.slint";
+import { Icons } from "icons.slint";
+import {
+    ConfigChannelRow, ConfigOptionRow, CostRecordRow, LocalModelRow, LogRow, StorageKindRow,
+} from "overlay-types.slint";
+import { ProvidersTab } from "settings/providers-tab.slint";
+import { AppearanceTab } from "settings/appearance-tab.slint";
+import { LocalModelsTab } from "settings/local-models-tab.slint";
+import { LocalStorageTab } from "settings/local-storage-tab.slint";
+import { CostTab } from "settings/cost-tab.slint";
+import { LogsTab } from "settings/logs-tab.slint";
+import { AboutTab } from "settings/about-tab.slint";
+
+
+// Left rail tab of the settings modal (AntD Tabs, tabPlacement="start").
+component TabButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 32px;
+    border-radius: Theme.radius-sm;
+    background: root.active ? Theme.node-accent-soft : (ta.has-hover ? Theme.hover : transparent);
+    animate background {
+        duration: root.active ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        Text {
+            text: root.label;
+            font-size: 13px;
+            font-weight: root.active ? 600 : 500;
+            color: root.active ? Theme.node-accent : Theme.foreground;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+// Provider/model/local-model settings modal. Rust owns every value
+// (`config_ui.rs`/`config_tabs.rs`); this file only renders the shell and the
+// tabs and forwards input.
+export component ConfigModal inherits Rectangle {
+    in property <string> tab: "providers";
+    in property <[ConfigChannelRow]> channels: [];
+    in property <[ConfigOptionRow]> appearance-theme: [];
+    in property <string> config-theme: "light";
+    // The Appearance tab's window glass settings (0–100 each).
+    in property <float> glass-opacity: 80;
+    in property <float> glass-blur: 100;
+    in property <bool> local-runtime-available: false;
+    in property <[LocalModelRow]> local-models: [];
+    in property <string> local-models-dir: "";
+    in property <[StorageKindRow]> storage-rows: [];
+    in property <string> storage-summary: "";
+    in property <bool> storage-clear-armed: false;
+    in property <[CostRecordRow]> cost-rows: [];
+    in property <string> cost-summary: "";
+    in property <string> cost-generation-id: "";
+    in property <int> cost-priced-count: 0;
+    in property <[LogRow]> log-rows: [];
+    in property <string> logs-filter: "all";
+    in property <string> logs-category: "all";
+    in property <[string]> logs-categories: [];
+    in property <string> app-version: "";
+    callback close();
+    callback tab-pick(string);
+    callback channel-field(string, string, string);
+    callback option-pick(string, string);
+    // Appearance tab sliders: "opacity" | "blur" plus the new 0–100 level.
+    callback glass-setting(string, float);
+    callback local-refresh();
+    callback local-reveal();
+    callback storage-refresh();
+    callback storage-reveal();
+    callback storage-clear();
+    callback cost-clear();
+    callback cost-id-edited(string);
+    callback cost-lookup();
+    callback log-filter-pick(string);
+    callback log-category-pick(string);
+    callback log-toggle(string);
+    callback logs-copy();
+    callback logs-download();
+    callback logs-clear();
+    callback open-plugins();
+
+    width: 100%;
+    height: 100%;
+    background: Theme.overlay;
+    z: 120;
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => {
+            root.close();
+        }
+        // Right-click is the universal "back" gesture for the settings modal.
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.up && e.button == PointerEventButton.right) {
+                root.close();
+            }
+        }
+    }
+
+    panel := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 900px;
+        height: 620px;
+        background: Theme.glass-panel;
+        border-width: 1px;
+        border-color: Theme.glass-panel-border;
+        border-radius: Theme.radius-lg;
+
+        // See `ModalShell`: without this, clicks on the panel's own background
+        // (padding, labels, the gaps between rows) reach the scrim behind it and
+        // close Settings while the user is still working in it.
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.up && e.button == PointerEventButton.right) {
+                    root.close();
+                }
+            }
+        }
+
+        // 1px inner highlight along the top edge of the raised glass.
+        Rectangle {
+            y: 0px;
+            width: 100%;
+            height: 1px;
+            background: Theme.glass-panel-border;
+        }
+
+        VerticalLayout {
+            spacing: 0px;
+
+            header := Rectangle {
+                height: 52px;
+                background: transparent;
+
+                HorizontalLayout {
+                    padding-left: 20px;
+                    padding-right: 12px;
+                    Text {
+                        text: I18n.config-title;
+                        font-size: 16px;
+                        font-weight: 600;
+                        color: Theme.node-text;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: Theme.radius-sm;
+                        background: close-ta.has-hover ? Theme.hover : transparent;
+                        close-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.close();
+                            }
+                        }
+                        Path {
+                            x: 6px;
+                            y: 6px;
+                            width: 16px;
+                            height: 16px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.close;
+                            fill: transparent;
+                            stroke-width: 2px;
+                            stroke-line-cap: round;
+                            stroke: Theme.node-muted;
+                        }
+                    }
+                }
+                Rectangle {
+                    y: parent.height - 1px;
+                    width: 100%;
+                    height: 1px;
+                    background: Theme.toolbar-border;
+                }
+            }
+
+            HorizontalLayout {
+                vertical-stretch: 1;
+                spacing: 0px;
+
+                tab-rail := Rectangle {
+                    width: 184px;
+                    background: transparent;
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 4px;
+                        TabButton {
+                            label: I18n.config-tab-providers;
+                            active: root.tab == "providers";
+                            clicked => {
+                                root.tab-pick("providers");
+                            }
+                        }
+                        TabButton {
+                            label: I18n.config-tab-appearance;
+                            active: root.tab == "appearance";
+                            clicked => {
+                                root.tab-pick("appearance");
+                            }
+                        }
+                        TabButton {
+                            label: I18n.config-tab-local-models;
+                            active: root.tab == "local-models";
+                            clicked => {
+                                root.tab-pick("local-models");
+                            }
+                        }
+                        TabButton {
+                            label: I18n.config-tab-local-storage;
+                            active: root.tab == "local-storage";
+                            clicked => {
+                                root.tab-pick("local-storage");
+                            }
+                        }
+                        TabButton {
+                            label: I18n.config-tab-cost;
+                            active: root.tab == "cost";
+                            clicked => {
+                                root.tab-pick("cost");
+                            }
+                        }
+                        TabButton {
+                            label: I18n.config-tab-logs;
+                            active: root.tab == "logs";
+                            clicked => {
+                                root.tab-pick("logs");
+                            }
+                        }
+                        TabButton {
+                            label: I18n.config-tab-about;
+                            active: root.tab == "about";
+                            clicked => {
+                                root.tab-pick("about");
+                            }
+                        }
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: transparent;
+                        }
+                    }
+                    Rectangle {
+                        x: parent.width - 1px;
+                        width: 1px;
+                        height: 100%;
+                        background: Theme.toolbar-border;
+                    }
+                }
+
+                content := Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+                    Flickable {
+                        width: 100%;
+                        height: 100%;
+                        VerticalLayout {
+                            padding: 18px;
+                            spacing: 14px;
+
+                            if root.tab == "providers" : ProvidersTab {
+                                channels: root.channels;
+                                channel-field(id, field, value) => {
+                                    root.channel-field(id, field, value);
+                                }
+                            }
+
+                            if root.tab == "appearance" : AppearanceTab {
+                                appearance-theme: root.appearance-theme;
+                                plate-opacity: root.glass-opacity;
+                                backdrop-blur: root.glass-blur;                                option-pick(kind, value) => {
+                                    root.option-pick(kind, value);
+                                }
+                                opacity-changed(value) => {
+                                    root.glass-setting("opacity", value);
+                                }
+                                blur-changed(value) => {
+                                    root.glass-setting("blur", value);
+                                }
+                            }
+
+                            if root.tab == "local-models" : LocalModelsTab {
+                                local-runtime-available: root.local-runtime-available;
+                                local-models: root.local-models;
+                                local-models-dir: root.local-models-dir;
+                                local-refresh => {
+                                    root.local-refresh();
+                                }
+                                local-reveal => {
+                                    root.local-reveal();
+                                }
+                            }
+
+                            if root.tab == "local-storage" : LocalStorageTab {
+                                storage-rows: root.storage-rows;
+                                storage-summary: root.storage-summary;
+                                storage-clear-armed: root.storage-clear-armed;
+                                storage-refresh => {
+                                    root.storage-refresh();
+                                }
+                                storage-reveal => {
+                                    root.storage-reveal();
+                                }
+                                storage-clear => {
+                                    root.storage-clear();
+                                }
+                            }
+
+                            if root.tab == "cost" : CostTab {
+                                cost-rows: root.cost-rows;
+                                cost-summary: root.cost-summary;
+                                cost-generation-id: root.cost-generation-id;
+                                cost-priced-count: root.cost-priced-count;
+                                cost-clear => {
+                                    root.cost-clear();
+                                }
+                                cost-id-edited(value) => {
+                                    root.cost-id-edited(value);
+                                }
+                                cost-lookup => {
+                                    root.cost-lookup();
+                                }
+                            }
+
+                            if root.tab == "logs" : LogsTab {
+                                log-rows: root.log-rows;
+                                logs-filter: root.logs-filter;
+                                logs-category: root.logs-category;
+                                logs-categories: root.logs-categories;
+                                log-filter-pick(filter) => {
+                                    root.log-filter-pick(filter);
+                                }
+                                log-category-pick(category) => {
+                                    root.log-category-pick(category);
+                                }
+                                log-toggle(key) => {
+                                    root.log-toggle(key);
+                                }
+                                logs-copy => {
+                                    root.logs-copy();
+                                }
+                                logs-download => {
+                                    root.logs-download();
+                                }
+                                logs-clear => {
+                                    root.logs-clear();
+                                }
+                            }
+
+                            if root.tab == "about" : AboutTab {
+                                app-version: root.app-version;
+                                open-plugins => {
+                                    root.open-plugins();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

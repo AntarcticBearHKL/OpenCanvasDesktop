@@ -1,0 +1,48 @@
+import { Theme } from "../theme.slint";
+import { IconButton } from "widgets.slint";
+import { Icons } from "icons.slint";
+
+// Custom window chrome for the frameless window (`app.slint` sets
+// `no-frame: true`): the three window buttons. They live on the home screen only
+// (top-right of the right pane, whose header is also the manual drag surface);
+// the canvas moves with a right-drag and the studio draws its own menu bar.
+// This file only draws and reports the buttons.
+//
+// Hover feedback is the dock's treatment verbatim (`hover-button.slint`): the
+// `--hover` wash at 150ms + cubic-bezier(0.4,0,0.2,1) (motion-catalog.md §4,
+// the Tailwind default). The close button swaps the wash and glyph to the
+// danger token, the Windows convention.
+
+
+// Minimise / maximise-restore / close. `maximized` picks the restore glyph, so
+// the same button reads correctly in both window states; Rust keeps the flag in
+// step with `slint::Window::is_maximized`.
+export component WindowButtons inherits HorizontalLayout {
+    in property <bool> maximized: false;
+    callback minimize();
+    callback maximize-toggle();
+    callback close();
+
+    spacing: Theme.space-1;
+    alignment: end;
+
+    IconButton { variant: "window";
+        icon: Icons.win-minimize;
+        clicked => {
+            root.minimize();
+        }
+    }
+    IconButton { variant: "window";
+        icon: root.maximized ? Icons.win-restore : Icons.win-maximize;
+        clicked => {
+            root.maximize-toggle();
+        }
+    }
+    IconButton { variant: "window";
+        icon: Icons.close;
+        danger: true;
+        clicked => {
+            root.close();
+        }
+    }
+}

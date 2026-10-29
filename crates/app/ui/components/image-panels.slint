@@ -1,0 +1,976 @@
+// Image Studio panels (1/2): the Photoshop tool rail, the floating tool-options
+// card that replaced the options bar, and the colour picker dock. Reuses the
+// shared studio widget primitives from studio-widgets.slint (chips, sliders,
+// fields, buttons).
+import { StudioTheme } from "../studio-theme.slint";
+import { IconButton, Slider } from "widgets.slint";
+import { Icons } from "icons.slint";
+import { ColorMath } from "color-math.slint";
+import { ImageSwatchGroup, ImageToolRow } from "overlay-types.slint";
+import { StudioChip, StudioColorHex, StudioField, StudioIconButton, StudioToolButton, StudioSlider } from "studio-widgets.slint";
+
+
+// The left tool rail (`image-studio.tsx:1646`): one 40px column of 24px tool
+// buttons, thin separators between the PS tool groups, then zoom and the
+// foreground/background swatches with their swap/reset arrows at the bottom.
+export component ImageToolRail inherits Rectangle {
+    in property <[ImageToolRow]> tools: [];
+    in property <string> active-tool: "hand";
+    in property <color> fg: #000000;
+    in property <color> bg: #ffffff;
+    in property <string> slot: "fg";
+    callback tool-pick(string);
+    callback zoom(string);
+    callback color-slot(string);
+    callback color-swap();
+    callback color-reset();
+
+    width: StudioTheme.rail-w;
+    background: StudioTheme.rail;
+
+    // The rail's right edge against the canvas.
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        height: 100%;
+        background: StudioTheme.hairline;
+    }
+
+    // Photoshop separates its tools into selection / path / paint / shape /
+    // sample blocks; the first id of each block starts with a rule. Hand is
+    // the rail's first tool, so it opens without a rule above it.
+    pure function starts-group(id: string) -> bool {
+        return id == "pen" || id == "marquee" || id == "brush" || id == "shape" || id == "eyedropper";
+    }
+
+    VerticalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        spacing: 1px;
+
+        for tool in root.tools : VerticalLayout {
+            spacing: 1px;
+
+            if root.starts-group(tool.id) : Rectangle {
+                width: 24px;
+                height: 1px;
+                background: StudioTheme.separator;
+            }
+            StudioToolButton {
+                icon: Icons.image-tool-icon(tool.id);
+                tip: tool.label;
+                tip-studio: "image";
+                tooltip-enabled: true;
+                active: tool.active;
+                clicked => {
+                    root.tool-pick(tool.id);
+                }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+            background: transparent;
+        }
+
+        Rectangle {
+            width: 24px;
+            height: 1px;
+            background: StudioTheme.separator;
+        }
+        StudioToolButton {
+            icon: Icons.zoom-in;
+            tip: "Zoom in";
+            tip-studio: "image";
+            tooltip-enabled: true;
+            clicked => {
+                root.zoom("in");
+            }
+        }
+        StudioToolButton {
+            icon: Icons.zoom-out;
+            tip: "Zoom out";
+            tip-studio: "image";
+            tooltip-enabled: true;
+            clicked => {
+                root.zoom("out");
+            }
+        }
+
+        Rectangle {
+            height: 6px;
+            background: transparent;
+        }
+
+        // Foreground / background swatches: the two overlapping chips, then
+        // the tiny swap and reset arrows (the same slot/swap/reset model the
+        // colour panel uses).
+        Rectangle {
+            width: 28px;
+            height: 28px;
+            background: transparent;
+
+            bg-ta := TouchArea {
+                x: 8px;
+                y: 8px;
+                width: 18px;
+                height: 18px;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.color-slot("bg");
+                }
+            }
+            Rectangle {
+                x: 8px;
+                y: 8px;
+                width: 18px;
+                height: 18px;
+                border-width: root.slot == "bg" ? 2px : 1px;
+                border-color: root.slot == "bg" ? StudioTheme.selection : StudioTheme.control-border-strong;
+                background: root.bg;
+            }
+
+            fg-ta := TouchArea {
+                x: 0px;
+                y: 0px;
+                width: 18px;
+                height: 18px;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.color-slot("fg");
+                }
+            }
+            Rectangle {
+                x: 0px;
+                y: 0px;
+                width: 18px;
+                height: 18px;
+                border-width: root.slot == "fg" ? 2px : 1px;
+                border-color: root.slot == "fg" ? StudioTheme.selection : StudioTheme.control-border-strong;
+                background: root.fg;
+            }
+        }
+
+        Rectangle {
+            height: 16px;
+            background: transparent;
+
+            swap-ta := TouchArea {
+                x: 14px;
+                y: 2px;
+                width: 12px;
+                height: 12px;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.color-swap();
+                }
+            }
+            Path {
+                x: 14px;
+                y: 2px;
+                width: 12px;
+                height: 12px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.swap;
+                fill: transparent;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                stroke: swap-ta.has-hover ? StudioTheme.text : StudioTheme.text-muted;
+                animate stroke {
+                    duration: StudioTheme.motion-hover;
+                    easing: ease-out;
+                }
+            }
+
+            reset-ta := TouchArea {
+                x: 0px;
+                y: 2px;
+                width: 12px;
+                height: 12px;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.color-reset();
+                }
+            }
+            Path {
+                x: 0px;
+                y: 2px;
+                width: 12px;
+                height: 12px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.undo;
+                fill: transparent;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                stroke: reset-ta.has-hover ? StudioTheme.text : StudioTheme.text-muted;
+                animate stroke {
+                    duration: StudioTheme.motion-hover;
+                    easing: ease-out;
+                }
+            }
+        }
+    }
+}
+
+// A labelled slider row inside the tool-options card: caption and read-out on
+// one line, the slider full width beneath it.
+component OptionField inherits VerticalLayout {
+    in property <string> label: "";
+    in property <string> reading: "";
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <float> value: 0;
+    callback changed(float);
+
+    spacing: 0px;
+    height: self.preferred-height;
+
+    HorizontalLayout {
+        spacing: StudioTheme.space-1;
+        Text {
+            horizontal-stretch: 1;
+            text: root.label;
+            font-size: 11px;
+            color: StudioTheme.text-muted;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.reading;
+            font-size: 11px;
+            color: StudioTheme.text;
+            vertical-alignment: center;
+        }
+    }
+    StudioSlider {
+        height: 16px;
+        minimum: root.minimum;
+        maximum: root.maximum;
+        value: root.value;
+        changed(value) => {
+            root.changed(value);
+        }
+    }
+}
+
+// The tool options, as a compact floating card anchored right of the tool rail
+// (`image-studio.tsx:1550-1618`, reworked as a panel): the active tool's glyph
+// and name in the header, its contextual controls stacked below, and a close
+// affordance in the corner. The studio owns when the card is on screen — a tool
+// without options never shows it.
+export component ImageToolOptions inherits Rectangle {
+    in property <string> tool: "hand";
+    in property <[ImageToolRow]> tools: [];
+    in property <float> brush: 24;
+    in property <float> hardness: 80;
+    in property <float> brush-opacity: 100;
+    in property <float> tolerance: 32;
+    in property <float> feather: 0;
+    in property <bool> contiguous: true;
+    in property <bool> sample-all: true;
+    in property <bool> antialias: true;
+    in property <bool> gradient-radial: false;
+    in property <bool> gradient-reverse: false;
+    in property <string> shape-kind: "rectangle";
+    in property <bool> shape-fill: true;
+    in property <float> stroke-width: 2;
+    in property <string> transform-mode: "";
+    // Gradient tool options the card owns while the gradient tool is active
+    // (`image-studio.tsx`'s `gradient` state): blend mode, opacity (1..100) and
+    // the mid stop position (0..100).
+    in-out property <string> gradient-blend: "normal";
+    in-out property <float> gradient-opacity: 100;
+    in-out property <float> gradient-stop: 100;
+    in property <color> fg: #000000;
+    in property <color> bg: #ffffff;
+    in property <string> slot: "fg";
+    callback slider(string, float);
+    callback toggle(string);
+    callback shape-pick(string);
+    callback transform-pick(string);
+    callback gradient-pick(string);
+    callback color-slot(string);
+    callback color-swap();
+    callback color-reset();
+    callback close();
+
+    // Card metrics: the width the studio anchors it by, and the auto height its
+    // content asks for.
+    width: 236px;
+    height: card-body.preferred-height;
+    background: StudioTheme.glass-panel-strong;
+    border-radius: StudioTheme.radius-md;
+    border-width: 1px;
+    border-color: StudioTheme.toolbar-border;
+
+    property <bool> paint-tool: root.tool == "brush" || root.tool == "eraser";
+    property <bool> select-tool: root.tool == "marquee" || root.tool == "ellipse-marquee" || root.tool == "lasso" || root.tool == "polygon-lasso";
+    property <bool> tolerance-tool: root.tool == "wand" || root.tool == "bucket" || root.tool == "quick-select";
+    property <bool> gradient-tool: root.tool == "gradient";
+    property <bool> shape-tool: root.tool == "shape";
+    property <bool> transform-tool: root.transform-mode != "";
+    property <bool> has-options: root.transform-tool || root.paint-tool || root.tolerance-tool || root.select-tool || root.gradient-tool || root.shape-tool;
+    // The card's own title: the transform family replaces the active tool while
+    // a transform is armed.
+    property <string> title: root.transform-tool ? "Transform" : root.tool;
+    property <string> glyph-tool: root.transform-tool ? "pointer" : root.tool;
+
+    // Clicks on the card's surface must not fall through to the board.
+    TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    card-body := VerticalLayout {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        padding: 10px;
+        spacing: 8px;
+
+        // ---- header: tool glyph, name, close affordance ----------------------
+        HorizontalLayout {
+            spacing: StudioTheme.space-1;
+            cross-axis-alignment: center;
+
+            Path {
+                width: 14px;
+                height: 14px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.image-tool-icon(root.glyph-tool);
+                fill: transparent;
+                stroke-width: 1.8px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                stroke: StudioTheme.text;
+            }
+            // The header names the tool the way the rail does (the model's
+            // label, e.g. "Magic Wand"); an unmatched row claims no width.
+            for row in root.tools : Text {
+                visible: !root.transform-tool && row.id == root.tool;
+                text: row.label;
+                width: !root.transform-tool && row.id == root.tool ? self.preferred-width : 0px;
+                font-size: 11px;
+                font-weight: 600;
+                color: StudioTheme.text-strong;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            // A model that has not been pushed yet still reads as a tool name.
+            if root.tools.length == 0 && !root.transform-tool : Text {
+                text: root.tool;
+                font-size: 11px;
+                font-weight: 600;
+                color: StudioTheme.text-strong;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+            // The card's close affordance: a small × in the corner.
+            close-btn := Rectangle {
+                width: 16px;
+                height: 16px;
+                background: transparent;
+
+                close-ta := TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.close();
+                    }
+                }
+                Path {
+                    x: 4px;
+                    y: 4px;
+                    width: 8px;
+                    height: 8px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: Icons.close;
+                    fill: transparent;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                    stroke: close-ta.has-hover ? StudioTheme.text-strong : StudioTheme.text-muted;
+                }
+            }
+        }
+
+        // ---- the armed transform's mode chips -------------------------------
+        if root.transform-tool : FlexboxLayout {
+            // Two rows of chips: the card's auto height needs a real number
+            // here, because a wrapping flexbox's preferred height is not.
+            height: 48px;
+            spacing: 4px;
+            spacing-horizontal: 4px;
+            spacing-vertical: 4px;
+            StudioChip {
+                label: "Free";
+                active: root.transform-mode == "free";
+                clicked => { root.transform-pick("free"); }
+            }
+            StudioChip {
+                label: "Skew";
+                active: root.transform-mode == "skew";
+                clicked => { root.transform-pick("skew"); }
+            }
+            StudioChip {
+                label: "Distort";
+                active: root.transform-mode == "distort";
+                clicked => { root.transform-pick("distort"); }
+            }
+            StudioChip {
+                label: "Perspective";
+                active: root.transform-mode == "perspective";
+                clicked => { root.transform-pick("perspective"); }
+            }
+            StudioChip {
+                label: "Warp";
+                active: root.transform-mode == "warp";
+                clicked => { root.transform-pick("warp"); }
+            }
+            StudioChip {
+                label: "Done";
+                clicked => { root.transform-pick(""); }
+            }
+        }
+
+        // ---- paint tools: size, hardness, opacity ---------------------------
+        if root.paint-tool : OptionField {
+            label: "Size";
+            reading: "\{round(root.brush)} px";
+            minimum: 1;
+            maximum: 200;
+            value: root.brush;
+            changed(value) => { root.slider("brush", value); }
+        }
+        if root.paint-tool : OptionField {
+            label: "Hardness";
+            reading: "\{round(root.hardness)}%";
+            minimum: 0;
+            maximum: 100;
+            value: root.hardness;
+            changed(value) => { root.slider("hardness", value); }
+        }
+        if root.paint-tool : OptionField {
+            label: "Opacity";
+            reading: "\{round(root.brush-opacity)}%";
+            minimum: 0;
+            maximum: 100;
+            value: root.brush-opacity;
+            changed(value) => { root.slider("opacity", value); }
+        }
+
+        // ---- magic wand / bucket / quick selection --------------------------
+        if root.tolerance-tool : OptionField {
+            label: "Tolerance";
+            reading: "\{round(root.tolerance)}";
+            minimum: 0;
+            maximum: 255;
+            value: root.tolerance;
+            changed(value) => { root.slider("tolerance", value); }
+        }
+        if root.tolerance-tool : FlexboxLayout {
+            height: 24px;
+            spacing: 4px;
+            spacing-horizontal: 4px;
+            spacing-vertical: 4px;
+            StudioChip {
+                label: "Contiguous";
+                active: root.contiguous;
+                clicked => { root.toggle("contiguous"); }
+            }
+            StudioChip {
+                label: "Sample All Layers";
+                active: root.sample-all;
+                clicked => { root.toggle("sample-all"); }
+            }
+        }
+
+        // ---- selection tools ------------------------------------------------
+        if root.select-tool : OptionField {
+            label: "Feather";
+            reading: "\{round(root.feather)} px";
+            minimum: 0;
+            maximum: 100;
+            value: root.feather;
+            changed(value) => { root.slider("feather", value); }
+        }
+        if root.select-tool : FlexboxLayout {
+            height: 24px;
+            spacing: 4px;
+            spacing-horizontal: 4px;
+            spacing-vertical: 4px;
+            StudioChip {
+                label: "Anti-alias";
+                active: root.antialias;
+                clicked => { root.toggle("antialias"); }
+            }
+        }
+
+        // ---- gradient tool --------------------------------------------------
+        if root.gradient-tool : FlexboxLayout {
+            height: 24px;
+            spacing: 4px;
+            spacing-horizontal: 4px;
+            spacing-vertical: 4px;
+            StudioChip {
+                label: "Linear";
+                active: !root.gradient-radial;
+                clicked => { if root.gradient-radial { root.toggle("gradient-radial"); } }
+            }
+            StudioChip {
+                label: "Radial";
+                active: root.gradient-radial;
+                clicked => { if !root.gradient-radial { root.toggle("gradient-radial"); } }
+            }
+            StudioChip {
+                label: "Reverse";
+                active: root.gradient-reverse;
+                clicked => { root.toggle("gradient-reverse"); }
+            }
+        }
+        // Blend mode: the full PS list, wrapping inside the card.
+        if root.gradient-tool : FlexboxLayout {
+            // 16 blend chips wrap into six rows inside the 216px content box.
+            height: 144px;
+            spacing: 4px;
+            spacing-horizontal: 4px;
+            spacing-vertical: 4px;
+            for mode in ["normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity"] : StudioChip {
+                label: mode;
+                active: root.gradient-blend == mode;
+                clicked => { root.gradient-pick(mode); }
+            }
+        }
+        if root.gradient-tool : OptionField {
+            label: "Opacity";
+            reading: "\{round(root.gradient-opacity)}%";
+            minimum: 1;
+            maximum: 100;
+            value: root.gradient-opacity;
+            changed(value) => { root.slider("gradient-opacity", value); }
+        }
+        if root.gradient-tool : OptionField {
+            label: "Mid Stop";
+            reading: "\{round(root.gradient-stop)}%";
+            minimum: 0;
+            maximum: 100;
+            value: root.gradient-stop;
+            changed(value) => { root.slider("gradient-stop", value); }
+        }
+        // Foreground / background pair: two stacked swatches with swap and
+        // reset, the active slot ringed in selection blue.
+        if root.gradient-tool : HorizontalLayout {
+            spacing: StudioTheme.space-2;
+            cross-axis-alignment: center;
+
+            // 30px tall: the two 20px swatches stack to y=8+20, so the holder
+            // must be taller than one control row or the bg swatch is clipped.
+            Rectangle {
+                width: 34px;
+                height: 30px;
+                background: transparent;
+                fg-ta := TouchArea {
+                    x: 0px;
+                    y: 0px;
+                    width: 20px;
+                    height: 20px;
+                    mouse-cursor: pointer;
+                    clicked => { root.color-slot("fg"); }
+                }
+                Rectangle {
+                    x: 0px;
+                    y: 0px;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 2px;
+                    border-width: root.slot == "fg" ? 2px : 1px;
+                    border-color: root.slot == "fg" ? StudioTheme.selection : StudioTheme.control-border-strong;
+                    background: root.fg;
+                }
+                bg-ta := TouchArea {
+                    x: 10px;
+                    y: 8px;
+                    width: 20px;
+                    height: 20px;
+                    mouse-cursor: pointer;
+                    clicked => { root.color-slot("bg"); }
+                }
+                Rectangle {
+                    x: 10px;
+                    y: 8px;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 2px;
+                    border-width: root.slot == "bg" ? 2px : 1px;
+                    border-color: root.slot == "bg" ? StudioTheme.selection : StudioTheme.control-border-strong;
+                    background: root.bg;
+                }
+            }
+            StudioIconButton {
+                icon: Icons.swap;
+                clicked => { root.color-swap(); }
+            }
+            StudioIconButton {
+                icon: Icons.undo;
+                clicked => { root.color-reset(); }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+        }
+
+        // ---- shape tool -----------------------------------------------------
+        if root.shape-tool : FlexboxLayout {
+            height: 48px;
+            spacing: 4px;
+            spacing-horizontal: 4px;
+            spacing-vertical: 4px;
+            StudioChip {
+                label: "Rectangle";
+                active: root.shape-kind == "rectangle";
+                clicked => { root.shape-pick("rectangle"); }
+            }
+            StudioChip {
+                label: "Rounded";
+                active: root.shape-kind == "rounded-rectangle";
+                clicked => { root.shape-pick("rounded-rectangle"); }
+            }
+            StudioChip {
+                label: "Ellipse";
+                active: root.shape-kind == "ellipse";
+                clicked => { root.shape-pick("ellipse"); }
+            }
+            StudioChip {
+                label: "Polygon";
+                active: root.shape-kind == "polygon";
+                clicked => { root.shape-pick("polygon"); }
+            }
+            StudioChip {
+                label: "Line";
+                active: root.shape-kind == "line";
+                clicked => { root.shape-pick("line"); }
+            }
+            StudioChip {
+                label: "Fill";
+                active: root.shape-fill;
+                clicked => { root.toggle("shape-fill"); }
+            }
+        }
+        if root.shape-tool : OptionField {
+            label: "Stroke Width";
+            reading: "\{round(root.stroke-width)} px";
+            minimum: 0;
+            maximum: 40;
+            value: root.stroke-width;
+            changed(value) => { root.slider("stroke-width", value); }
+        }
+    }
+}
+
+// Colour picker (ps-color-picker.tsx + ps-asset-panels.tsx:324): the SV square
+// with its hue strip, fg/bg swatches with swap/reset, the swatch strip and the
+// HSB/RGB/hex fields.
+export component ImageColorPanel inherits Rectangle {
+    in property <color> fg: #000000;
+    in property <color> bg: #ffffff;
+    in property <string> fg-hex: "#000000";
+    in property <string> bg-hex: "#ffffff";
+    in property <string> slot: "fg";
+    in property <float> hue-deg: 0;
+    in property <float> sat: 0;
+    in property <float> val: 0;
+    in property <string> red: "0";
+    in property <string> green: "0";
+    in property <string> blue: "0";
+    in property <[ImageSwatchGroup]> swatch-groups: [];
+    callback slot-pick(string);
+    callback swap();
+    callback reset();
+    callback field(string, string);
+    callback sv(float, float);
+    callback hue-pick(float);
+    callback pick(string);
+    callback add();
+    callback remove(int);
+
+    property <color> active: root.slot == "fg" ? root.fg : root.bg;
+
+    VerticalLayout {
+        padding: StudioTheme.panel-pad;
+        spacing: StudioTheme.panel-gap;
+
+        HorizontalLayout {
+            spacing: StudioTheme.space-3;
+
+            // SV square: the hue at full saturation overlaid with white->clear
+            // and clear->black gradients (`ps-color-picker.tsx`).
+            VerticalLayout {
+                width: 120px;
+                spacing: StudioTheme.space-2;
+
+                sv-square := Rectangle {
+                    height: 96px;
+                    border-radius: 2px;
+                    border-width: 1px;
+                    border-color: StudioTheme.control-border;
+                    background: ColorMath.from-hsv(root.hue-deg / 360, 1, 1);
+                    clip: true;
+
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: StudioTheme.image-sv-white;
+                    }
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: StudioTheme.image-sv-black;
+                    }
+                    TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: crosshair;
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.down) {
+                                root.set-sv(self.mouse-x, self.mouse-y, self.width, self.height);
+                            }
+                        }
+                        moved => {
+                            if (self.pressed) {
+                                root.set-sv(self.mouse-x, self.mouse-y, self.width, self.height);
+                            }
+                        }
+                    }
+                    Rectangle {
+                        x: min(parent.width - self.width, max(0px, parent.width * (root.sat / 100) - self.width / 2));
+                        y: min(parent.height - self.height, max(0px, parent.height * (1 - root.val / 100) - self.height / 2));
+                        width: 10px;
+                        height: 10px;
+                        border-radius: 5px;
+                        border-width: 2px;
+                        border-color: StudioTheme.picker-handle;
+                    }
+                }
+
+                hue-strip := Rectangle {
+                    height: 10px;
+                    border-radius: 2px;
+                    border-width: 1px;
+                    border-color: StudioTheme.control-border;
+                    background: StudioTheme.image-hue-strip;
+
+                    TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.down) {
+                                root.set-hue(self.mouse-x, self.width);
+                            }
+                        }
+                        moved => {
+                            if (self.pressed) {
+                                root.set-hue(self.mouse-x, self.width);
+                            }
+                        }
+                    }
+                    Rectangle {
+                        x: min(parent.width - self.width, max(0px, parent.width * (root.hue-deg / 360) - self.width / 2));
+                        y: (parent.height - self.height) / 2;
+                        width: 8px;
+                        height: 14px;
+                        border-radius: 2px;
+                        border-width: 2px;
+                        border-color: StudioTheme.picker-handle;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: StudioTheme.space-1;
+
+                HorizontalLayout {
+                    spacing: StudioTheme.space-3;
+                    cross-axis-alignment: center;
+
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 2px;
+                        border-width: 1px;
+                        border-color: StudioTheme.control-border-strong;
+                        background: root.bg;
+
+                        Rectangle {
+                            width: 28px;
+                            height: 28px;
+                            border-radius: 2px;
+                            border-width: root.slot == "fg" ? 2px : 1px;
+                            border-color: root.slot == "fg" ? StudioTheme.selection : StudioTheme.control-border-strong;
+                            background: root.fg;
+
+                            TouchArea {
+                                width: 100%;
+                                height: 100%;
+                                mouse-cursor: pointer;
+                                clicked => { root.slot-pick("fg"); }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: StudioTheme.space-1;
+                        HorizontalLayout {
+                            spacing: StudioTheme.space-1;
+                            StudioChip {
+                                label: "FG";
+                                active: root.slot == "fg";
+                                clicked => { root.slot-pick("fg"); }
+                            }
+                            StudioChip {
+                                label: "BG";
+                                active: root.slot == "bg";
+                                clicked => { root.slot-pick("bg"); }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: StudioTheme.space-1;
+                            StudioChip {
+                                label: "Swap";
+                                clicked => { root.swap(); }
+                            }
+                            StudioChip {
+                                label: "Reset";
+                                clicked => { root.reset(); }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    StudioField {
+                        horizontal-stretch: 1;
+                        label: "H";
+                        value: "\{round(root.hue-deg)}";
+                        edited(value) => { root.field("h", value); }
+                    }
+                    StudioField {
+                        horizontal-stretch: 1;
+                        label: "S";
+                        value: "\{round(root.sat)}";
+                        edited(value) => { root.field("s", value); }
+                    }
+                    StudioField {
+                        horizontal-stretch: 1;
+                        label: "B";
+                        value: "\{round(root.val)}";
+                        edited(value) => { root.field("v", value); }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    StudioField {
+                        horizontal-stretch: 1;
+                        label: "R";
+                        value: root.red;
+                        edited(value) => { root.field("r", value); }
+                    }
+                    StudioField {
+                        horizontal-stretch: 1;
+                        label: "G";
+                        value: root.green;
+                        edited(value) => { root.field("g", value); }
+                    }
+                    StudioField {
+                        horizontal-stretch: 1;
+                        label: "B";
+                        value: root.blue;
+                        edited(value) => { root.field("b", value); }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    cross-axis-alignment: center;
+                    Rectangle {
+                        width: 22px;
+                        height: 22px;
+                        border-radius: 2px;
+                        border-width: 1px;
+                        border-color: StudioTheme.control-border-strong;
+                        background: root.active;
+                    }
+                    StudioField {
+                        horizontal-stretch: 1;
+                        value: root.slot == "fg" ? root.fg-hex : root.bg-hex;
+                        edited(value) => { root.field("hex", value); }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    cross-axis-alignment: center;
+                    Text { text: "Swatches"; font-size: 11px; color: StudioTheme.text-muted; vertical-alignment: center; }
+                    StudioIconButton {
+                        icon: Icons.plus;
+                        clicked => { root.add(); }
+                    }
+                }
+            }
+        }
+
+        Flickable {
+            height: 24px;
+            content-width: groups-row.preferred-width;
+            content-height: self.height;
+            interactive: false;
+            groups-row := HorizontalLayout {
+                spacing: StudioTheme.space-2;
+                for group in root.swatch-groups : HorizontalLayout {
+                    cross-axis-alignment: center;
+                    spacing: StudioTheme.space-1;
+                    for swatch in group.items : Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 2px;
+                        border-width: swatch.active ? 2px : 1px;
+                        border-color: swatch.active ? StudioTheme.selection : StudioTheme.control-border-strong;
+                        background: swatch.color;
+
+                        TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.pick(StudioColorHex.of(swatch.color));
+                            }
+                            pointer-event(e) => {
+                                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                                    root.remove(swatch.index);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function set-sv(x: length, y: length, area-width: length, area-height: length) {
+        root.sv(min(100, max(0, x / area-width * 100)), 100 - min(100, max(0, y / area-height * 100)));
+    }
+    function set-hue(x: length, strip-width: length) {
+        root.hue-pick(min(360, max(0, x / strip-width * 360)));
+    }
+}

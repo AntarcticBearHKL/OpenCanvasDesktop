@@ -1,0 +1,3077 @@
+import { Theme } from "../theme.slint";
+import { PointerIds } from "pointer-ids.slint";
+import { NodeHandles } from "node-handles.slint";
+import {
+    StackImage, AssetItem, AssetTreeRow, RefImage, GenerationSettings,
+    TextOptionRow,
+} from "overlay-types.slint";
+import { InlineGenerationPanel } from "panel-popovers.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "widgets.slint";
+
+// One pill of the text-style popover: a compact, stretchable toggle following
+// the sibling design language (1px border strengthening on hover, press 0.97).
+component StylePill inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> active: false;
+    in property <float> vs: 1;
+    callback clicked();
+
+    horizontal-stretch: 1;
+    height: 22px * root.vs;
+    border-radius: Theme.radius-sm * root.vs;
+    border-width: 1px;
+    border-color: root.active ? Theme.brand : sp-ta.has-hover ? Theme.border-strong : Theme.node-stroke;
+    background: root.active ? Theme.node-accent-soft : sp-ta.has-hover ? Theme.hover : Theme.toolbar-panel;
+    transform-scale-x: sp-ta.pressed ? 0.97 : 1.0;
+    transform-scale-y: sp-ta.pressed ? 0.97 : 1.0;
+    animate background, border-color {
+        duration: root.active ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate transform-scale-x, transform-scale-y {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+
+    sp-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.label;
+        font-size: 10px * root.vs;
+        font-weight: 500;
+        color: root.active ? Theme.node-accent : Theme.node-text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+// Keyframe / reference slot of a video-prompt card. `value` carries the bound
+// node title (or the reference count) and `drop` marks the active drop zone of
+// a wiring drag: 2px selection-blue border over the accent wash, entering with
+// the shared 150ms color transition (canvas-node.tsx:398-406).
+component FrameSlot inherits Rectangle {
+    in property <string> label: "";
+    in property <string> value: "";
+    in property <bool> drop: false;
+    in property <float> vs: 1;
+
+    horizontal-stretch: 1;
+    height: 96px * root.vs;
+    border-radius: Theme.radius-xl * root.vs;
+    border-width: root.drop ? 2px * root.vs : 1px * root.vs;
+    border-color: root.drop ? Theme.selection-blue : Theme.node-stroke;
+    animate border-color, border-width, background {
+        duration: root.drop ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    background: root.drop ? Theme.canvas-accent-fill : Theme.node-fill;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: Theme.space-1 * root.vs;
+
+        // The slot's placeholder label is centred both ways inside the slot,
+        // like the value below it: a slot is a drop target, not a caption row.
+        // `elide` lets a nine-slot row shrink instead of overflowing the card.
+        Text {
+            text: root.label;
+            width: 100%;
+            font-size: 12px * root.vs;
+            color: root.drop ? Theme.selection-blue : Theme.node-muted;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Text {
+            visible: root.value != "";
+            width: 90%;
+            text: root.value;
+            font-size: 12px * root.vs;
+            font-weight: 500;
+            color: Theme.node-text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+// One arrow of the reference-slot stepper. The 22px row stays vertically
+// centred, the press uses the shared 0.97/90ms affordance and hover strengthens
+// the 1px border instead of filling the button.
+component SlotStepButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> enabled: true;
+    in property <float> vs: 1;
+    callback clicked();
+
+    height: 18px * root.vs;
+    width: 18px * root.vs;
+    border-radius: Theme.radius-sm * root.vs;
+    border-width: 1px * root.vs;
+    border-color: !root.enabled ? Theme.border
+                : ta.has-hover ? Theme.border-strong
+                : Theme.border;
+    background: root.enabled && ta.has-hover ? Theme.hover : transparent;
+    transform-scale-x: ta.pressed && root.enabled ? 0.97 : 1.0;
+    transform-scale-y: ta.pressed && root.enabled ? 0.97 : 1.0;
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate border-color {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate transform-scale-x {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+    animate transform-scale-y {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+    Text {
+        text: root.label;
+        font-size: 12px * root.vs;
+        font-weight: 600;
+        color: root.enabled ? Theme.node-text : Theme.node-muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// Reference-slot count stepper of a video-prompt card: "- N +", the count
+// always vertically centred between the two arrows.
+component SlotStepper inherits Rectangle {
+    in property <int> count: 3;
+    in property <bool> can-remove: true;
+    in property <bool> can-add: true;
+    in property <float> vs: 1;
+    callback step(int);
+
+    height: 22px * root.vs;
+    width: self.preferred-width;
+    border-radius: Theme.radius-sm * root.vs;
+    border-width: 1px * root.vs;
+    border-color: ta.has-hover ? Theme.border-strong : Theme.border;
+    background: ta.has-hover ? Theme.hover : Theme.muted;
+    animate border-color {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: default;
+    }
+    HorizontalLayout {
+        padding-left: Theme.space-1 * root.vs;
+        padding-right: Theme.space-1 * root.vs;
+        spacing: Theme.space-1 * root.vs;
+        cross-axis-alignment: center;
+        alignment: center;
+
+        SlotStepButton {
+            label: "-";
+            enabled: root.can-remove;
+            vs: root.vs;
+            clicked => {
+                root.step(-1);
+            }
+        }
+        Text {
+            text: root.count;
+            min-width: 12px * root.vs;
+            font-size: 11px * root.vs;
+            font-weight: 600;
+            color: Theme.node-text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        SlotStepButton {
+            label: "+";
+            enabled: root.can-add;
+            vs: root.vs;
+            clicked => {
+                root.step(1);
+            }
+        }
+    }
+}
+
+// Frames / Reference segmented chip of the video-prompt card
+// (`videoModeOptions`, video-prompt-node-content.tsx:13-64): the selected chip
+// carries the shared accent ink, hover the 150ms wash.
+component VideoModeChip inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> active: false;
+    in property <float> vs: 1;
+    callback clicked();
+
+    height: 22px * root.vs;
+    width: self.preferred-width;
+    border-radius: Theme.radius-sm * root.vs;
+    background: root.active ? Theme.toolbar-accent-bg : chip-ta.has-hover ? Theme.hover : Theme.muted;
+    animate background {
+        duration: root.active ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    chip-ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    HorizontalLayout {
+        padding-left: Theme.space-2 * root.vs;
+        padding-right: Theme.space-2 * root.vs;
+
+        Text {
+            text: root.label;
+            font-size: 11px * root.vs;
+            font-weight: 500;
+            color: root.active ? Theme.toolbar-accent-text : Theme.node-muted;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// Multi-line plugin source editor (sticky note / markdown / html / svg edit
+// modes). Two-way bound to the card's `plugin-edit` so typing is not reset by
+// row rebuilds; `ink` follows the surface (dark note color vs card background).
+component PluginEditor inherits TextInput {
+    in property <float> vs: 1;
+    in property <color> ink: Theme.node-text;
+
+    callback text-edited(string);
+
+    width: 100%;
+    vertical-stretch: 1;
+    edited => {
+        root.text-edited(self.text);
+    }
+    font-size: 13px * root.vs;
+    color: root.ink;
+    wrap: word-wrap;
+    single-line: false;
+}
+
+// Sandboxed-content placeholder for `html:render` (no webview): a framed box
+// that shows the `{{input}}`-substituted text.
+component HtmlSandbox inherits Rectangle {
+    in property <string> text: "";
+    in property <float> vs: 1;
+
+    vertical-stretch: 1;
+    border-radius: Theme.radius-md * root.vs;
+    border-width: 1px * root.vs;
+    border-color: Theme.node-stroke;
+    background: Theme.toolbar-panel;
+
+    VerticalLayout {
+        padding: Theme.space-2 * root.vs;
+        spacing: Theme.space-2 * root.vs;
+
+        HorizontalLayout {
+            height: 16px * root.vs;
+            spacing: Theme.space-2 * root.vs;
+
+            Path {
+                width: 12px * root.vs;
+                height: 12px * root.vs;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.panel-left;
+                fill: transparent;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                stroke: Theme.node-faint;
+            }
+            Text {
+                text: "sandbox -no webview";
+                font-size: 11px * root.vs;
+                color: Theme.node-faint;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            vertical-alignment: center;
+            text: root.text;
+            font-size: 12px * root.vs;
+            color: Theme.node-text;
+            wrap: word-wrap;
+            vertical-stretch: 1;
+        }
+    }
+}
+
+// Equirectangular panorama placeholder (no 3D renderer): a 2:1 frame with the
+// source state; generation flows through the built-in image panel.
+component PanoramaFrame inherits Rectangle {
+    in property <bool> empty: true;
+    in property <float> vs: 1;
+
+    vertical-stretch: 1;
+    border-radius: Theme.radius-md * root.vs;
+    border-width: 1px * root.vs;
+    border-color: Theme.node-stroke;
+    background: Theme.toolbar-panel;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: Theme.space-2 * root.vs;
+
+        Path {
+            width: 40px * root.vs;
+            height: 20px * root.vs;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: Icons.compass;
+            fill: transparent;
+            stroke-width: 1.5px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: Theme.node-placeholder;
+        }
+        Text {
+            vertical-alignment: center;
+            text: "360-equirectangular";
+            font-size: 12px * root.vs;
+            color: Theme.node-placeholder;
+            horizontal-alignment: center;
+        }
+        Text {
+            vertical-alignment: center;
+            text: root.empty ? "No panorama yet -generate or upload" : "Panorama source ready";
+            font-size: 11px * root.vs;
+            color: Theme.node-faint;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+// In-place editor (body / title): a `TextInput` that takes the keyboard when it
+// becomes visible, so opting in never depends on a parent id reference (Slint
+// scopes item names inside conditional subtrees). `select-on-focus` reproduces
+// the rename input's `focus()` + `select()` (`canvas-node.tsx:199-203`).
+component InlineEditor inherits TextInput {
+    in property <bool> select-on-focus: false;
+
+    changed visible => {
+        if (self.visible) {
+            self.focus();
+            if (root.select-on-focus) {
+                self.select-all();
+            }
+        }
+    }
+}
+
+// Generating spinner (`LoadingContent`, canvas-node.tsx:519-527): a 40px ring in
+// `node.stroke` with a 2px `node.accent` top arc, one turn per second
+// (motion-catalog - `animate-spin` = 1000ms linear infinite).
+component Spinner inherits Rectangle {
+    in property <float> vs: 1;
+
+    width: 40px * root.vs;
+    height: 40px * root.vs;
+
+    property <angle> turn: 0deg;
+    animate turn {
+        duration: Theme.motion-spin;
+        iteration-count: -1;
+        easing: linear;
+    }
+    init => {
+        root.turn = 360deg;
+    }
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        border-radius: self.width / 2;
+        border-width: 2px * root.vs;
+        border-color: Theme.node-stroke;
+    }
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: Icons.loader;
+        fill: transparent;
+        stroke-width: 1.2px;
+        stroke-line-cap: round;
+        stroke: Theme.node-accent;
+        transform-origin: {
+            x: self.width / 2,
+            y: self.height / 2,
+        };
+        transform-rotation: root.turn;
+    }
+}
+
+// Centered empty state of a media body (`EmptyImageContent` / `VideoNodeContent`
+// empty branch): an outlined glyph plus the placeholder line.
+component EmptyMedia inherits VerticalLayout {
+    in property <string> icon: "";
+    in property <string> label: "";
+    in property <string> hint: "";
+    in property <float> vs: 1;
+
+    alignment: center;
+    spacing: Theme.space-3 * root.vs;
+
+    Rectangle {
+        width: 56px * root.vs;
+        height: 56px * root.vs;
+        background: transparent;
+
+        Path {
+            x: 16px * root.vs;
+            y: 16px * root.vs;
+            width: 24px * root.vs;
+            height: 24px * root.vs;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.icon;
+            fill: transparent;
+            stroke-width: 1.5px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: Theme.node-muted;
+        }
+    }
+    Text {
+        vertical-alignment: center;
+        text: root.label;
+        font-size: 14px * root.vs;
+        letter-spacing: 2.5px * root.vs;
+        color: Theme.node-placeholder;
+        horizontal-alignment: center;
+    }
+    if root.hint != "" : Text {
+        vertical-alignment: center;
+        text: root.hint;
+        font-size: 12px * root.vs;
+        color: Theme.node-muted;
+        horizontal-alignment: center;
+    }
+}
+
+// The designed plate behind a card's non-content state -- `loading`, `error`,
+// or an image node with no bitmap yet. One translucent glass tier (`glass-panel`
+// over the canvas), a 1px hairline and a soft diagonal sheen, so the surface
+// reads as a plate in the card rather than as a hole in it. `radius-lg` stays a
+// step tighter than the card's `radius-3xl`, so the plate never touches the
+// card edge.
+component FrostedPlate inherits Rectangle {
+    in property <float> vs: 1;
+
+    border-radius: Theme.radius-lg * root.vs;
+    border-width: 1px * root.vs;
+    border-color: Theme.glass-panel-border;
+    // The card tier, translucent: a small lift away from the canvas tone in
+    // both themes, so the plate is a surface rather than a cut-out.
+    background: Theme.card.with-alpha(0.6);
+    clip: true;
+
+    // The sheen: light from the top-left corner fading out before the opposite
+    // edge. `foreground` moves away from the canvas tone in both themes (a
+    // little darker in light, a little lighter in dark), so the plate always
+    // separates from the field behind it.
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: @linear-gradient(145deg, Theme.foreground.with-alpha(0.09) 0%, Theme.foreground.with-alpha(0.025) 38%, Theme.foreground.with-alpha(0) 70%);
+    }
+    // The inner highlight: one hairline just under the top border.
+    Rectangle {
+        y: 1px * root.vs;
+        width: 100%;
+        height: 1px * root.vs;
+        background: Theme.foreground.with-alpha(0.07);
+    }
+}
+
+// Media info bar (`MediaInfoBar`, canvas-node.tsx:759-791): `title -W x H -// bytes -cost` at `left-3 top-[-28px]`, plus the info button that opens the
+// node info modal. Replaces the title on image nodes with content (web: the
+// title element only renders when `!hasImageContent`).
+component MediaInfoBar inherits Rectangle {
+    in property <string> text: "";
+    in property <float> vs: 1;
+    callback info();
+
+    width: 100%;
+    height: 20px * root.vs;
+
+    HorizontalLayout {
+        spacing: Theme.space-2 * root.vs;
+
+        Text {
+            text: root.text;
+            font-size: 14px * root.vs;
+            font-weight: 500;
+            color: Theme.node-text;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        Rectangle {
+            width: 20px * root.vs;
+            height: 20px * root.vs;
+            border-radius: Theme.radius-md * root.vs;
+            background: info-ta.has-hover ? Theme.hover : transparent;
+
+            info-ta := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.info();
+                }
+            }
+            Path {
+                x: 3px * root.vs;
+                y: 3px * root.vs;
+                width: 14px * root.vs;
+                height: 14px * root.vs;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.info;
+                fill: transparent;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                stroke: Theme.node-muted;
+            }
+        }
+    }
+}
+
+// One assets row (`assets-node-content.tsx:231-255`): thumbnail when the asset
+// carries one, else its kind glyph, name and the muted second line. The desktop
+// list is a read-only projection of the node's studio selection, so the row
+// carries no hover state of its own (no dead affordance).
+component AssetRow inherits Rectangle {
+    in property <string> label: "";
+    in property <string> sub: "";
+    in property <string> kind: "";
+    in property <image> thumb;
+    in property <bool> ready: true;
+    in property <float> vs: 1;
+
+    height: 28px * root.vs;
+    background: transparent;
+    opacity: root.ready ? 1 : 0.55;
+
+    HorizontalLayout {
+        padding-left: Theme.space-1 * root.vs;
+        padding-right: Theme.space-1 * root.vs;
+        spacing: Theme.space-2 * root.vs;
+
+        if root.thumb.width > 0 : Rectangle {
+            width: 20px * root.vs;
+            height: 20px * root.vs;
+            border-radius: Theme.radius-sm * root.vs;
+            clip: true;
+
+            Image {
+                width: 100%;
+                height: 100%;
+                source: root.thumb;
+                image-fit: cover;
+            }
+        }
+        if root.thumb.width == 0 : Rectangle {
+            width: 20px * root.vs;
+            height: 20px * root.vs;
+            background: transparent;
+
+            Path {
+                x: 4px * root.vs;
+                y: 4px * root.vs;
+                width: 12px * root.vs;
+                height: 12px * root.vs;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: root.kind == "pixel" ? Icons.grid : Icons.image;
+                fill: transparent;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                stroke: Theme.node-muted;
+            }
+        }
+        Text {
+            text: root.label;
+            font-size: 13px * root.vs;
+            color: Theme.node-text;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        Text {
+            text: root.sub;
+            font-size: 12px * root.vs;
+            color: Theme.node-muted;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+// One pill button of the assets node (bind / change / refresh). Sibling design
+// language: 1px border that strengthens on hover, press 0.97 at 90ms.
+component AssetTreeButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> accent: false;
+    in property <float> vs: 1;
+    callback clicked();
+
+    height: 24px * root.vs;
+    width: label-text.preferred-width + 18px * root.vs;
+    border-width: 1px;
+    border-radius: Theme.radius-sm;
+    border-color: ta.has-hover ? Theme.border-strong : Theme.border;
+    background: root.accent ? Theme.foreground : (ta.has-hover ? Theme.hover : transparent);
+    transform-scale-x: ta.pressed ? 0.97 : 1.0;
+    transform-scale-y: ta.pressed ? 0.97 : 1.0;
+    animate background {
+        duration: root.accent ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate border-color {
+        duration: root.accent ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate transform-scale-x {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+    animate transform-scale-y {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    label-text := Text {
+        x: 9px * root.vs;
+        height: parent.height;
+        text: root.label;
+        font-size: 11px * root.vs;
+        font-weight: 500;
+        color: root.accent ? Theme.background : Theme.node-text;
+        vertical-alignment: center;
+    }
+}
+
+// One row of the bound folder tree. Folders expand/collapse in place; a file
+// row becomes a node on drag-out (a held press must move past a small threshold
+// so a plain click never creates a node, and a hover never arms the drag).
+export component AssetTreeRowView inherits Rectangle {
+    in property <AssetTreeRow> entry;
+    in property <float> vs: 1;
+    callback activate();
+    callback drag-out();
+    callback drag-start(length, length);
+    callback drag-move(length, length);
+    callback drag-end();
+
+    height: 26px * root.vs;
+    border-radius: Theme.radius-sm;
+    background: ta.has-hover ? Theme.hover : transparent;
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-1 * root.vs + root.entry.depth * 12px * root.vs;
+        padding-right: Theme.space-1 * root.vs;
+        spacing: Theme.space-2 * root.vs;
+        cross-axis-alignment: center;
+
+        Path {
+            width: 13px * root.vs;
+            height: 13px * root.vs;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.entry.kind == "folder"
+                ? (root.entry.expanded ? Icons.chevron-down : Icons.chevron-right)
+                : (root.entry.kind == "video" ? Icons.video : Icons.image);
+            fill: transparent;
+            stroke-width: 1.6px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: Theme.node-muted;
+        }
+        Text {
+            text: root.entry.label;
+            font-size: 12px * root.vs;
+            font-weight: root.entry.kind == "folder" ? 600 : 400;
+            color: root.entry.kind == "folder" ? Theme.node-text : Theme.node-muted;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+    }
+
+    ta := TouchArea {
+        property <length> press-x: 0px;
+        property <length> press-y: 0px;
+        property <bool> dragging: false;
+        mouse-cursor: root.entry.kind == "folder" ? pointer : grab;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                self.press-x = self.mouse-x;
+                self.press-y = self.mouse-y;
+                self.dragging = false;
+            } else if (e.kind == PointerEventKind.move && self.pressed && root.entry.kind != "folder") {
+                // Only a held pointer drags: moving the mouse over a file row
+                // must not arm the ghost. Past the threshold the row reports a
+                // drag with the pointer's window position.
+                let dx = self.mouse-x - self.press-x;
+                let dy = self.mouse-y - self.press-y;
+                if (self.dragging) {
+                    root.drag-move(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                } else if (dx > 4px || dx < -4px || dy > 4px || dy < -4px) {
+                    self.dragging = true;
+                    root.drag-start(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            } else if (e.kind == PointerEventKind.move) {
+                // A hover (or a folder row): nothing is in flight.
+                self.dragging = false;
+            } else if (e.kind == PointerEventKind.up) {
+                if (self.dragging) {
+                    self.dragging = false;
+                    // Report the release point, then drop BEFORE ending: the
+                    // row release path resolves the file from its own arguments,
+                    // but ending first would still hide the ghost before the
+                    // canvas-level fallback can see the drag.
+                    root.drag-move(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                    root.drag-out();
+                    root.drag-end();
+                } else if (root.entry.kind == "folder") {
+                    root.activate();
+                }
+            } else if (e.kind == PointerEventKind.cancel) {
+                if (self.dragging) {
+                    // The scrollable parent (or the window) took the pointer
+                    // over. Do NOT end the drag here: the release still reaches
+                    // the canvas, whose pointer hook resolves the pending drop
+                    // at the release point. Ending it would clear the drag (and
+                    // the ghost position) before that release arrives.
+                    self.dragging = false;
+                }
+            }
+        }
+    }
+}
+
+// Node card anatomy (ui-inventory -, canvas-node.tsx): title above the card at
+// -28px, card rounded-3xl + 2px border, content per kind, handles layer on top.
+// The `enter` animation reproduces `canvas-node-enter` (420ms
+// cubic-bezier(0.2,0.85,0.18,1)); Slint cannot transform a subtree, so the box
+// scales around its own center and every inner size follows `visual-scale`.
+export component NodeCard inherits Rectangle {
+    in property <string> node-id: "";
+    in property <string> kind: "";
+    in property <string> title: "";
+    in property <string> body: "";
+    in property <length> body-size: 14px;
+    // Explicit text colour; unset keeps the theme ink.
+    in property <color> body-color: transparent;
+    in property <bool> body-colored: false;
+    in property <bool> media: false;
+    // Plugin node content resolved by the host bridge (`plugin_content.rs`).
+    in property <string> plugin-kind: "";
+    in property <string> plugin-text: "";
+    in property <string> plugin-raw: "";
+    in property <bool> plugin-empty: false;
+    in property <bool> plugin-editing: false;
+    in property <bool> plugin-interactive: false;
+    in property <bool> plugin-transparent: false;
+    in property <color> plugin-bg: transparent;
+    in property <image> plugin-image;
+    in property <bool> plugin-palette-open: false;
+    in property <[color]> plugin-palette: [];
+    in property <bool> has-source: true;
+    in property <bool> has-target: true;
+
+    // Content layer (`vm::node_row`): decoded body bitmap + status surfaces.
+    in property <image> content-image;
+    in property <string> content-fit: "contain";
+    in property <bool> content-empty: true;
+    in property <string> status: "";
+    in property <string> error-text: "";
+    in property <string> info: "";
+    in property <bool> media-info: false;
+    in property <image> stack-cover;
+    in property <[StackImage]> stack: [];
+    in property <int> stack-count: 0;
+    in property <string> stack-count-label: "";
+    in property <string> stack-cover-error: "";
+    in property <[AssetItem]> assets: [];
+    in property <int> asset-count: 0;
+    in property <string> asset-count-label: "";
+    in property <string> asset-source: "folder";
+    // Bound local folder (assets node): the tree rooted at `asset-folder` (no
+    // upward navigation -`path` is relative and validated by Rust), the bind
+    // state and the error/status line for a missing folder.
+    in property <[AssetTreeRow]> asset-tree: [];
+    in property <bool> asset-bound: false;
+    in property <string> asset-folder: "";
+    in property <string> asset-error: "";
+    in property <string> duration: "";
+    in property <string> status-label: "";
+    // Related/focus highlight and the body/title editor state.
+    in property <bool> related: false;
+    in property <bool> editing: false;
+    in property <string> edit-text: "";
+    in property <bool> editing-title: false;
+    in property <string> title-draft: "";
+    // Text nodes with more than one batch alternative (`metadata.texts`).
+    in property <int> batch-count: 0;
+    in property <string> batch-label: "";
+    in property <[TextOptionRow]> batch: [];
+    // Local expansion of the batch alternatives and the text-style popover.
+    in-out property <bool> batch-open: false;
+    in-out property <bool> style-open: false;
+
+    in property <length> canvas-x: 0px;
+    in property <length> canvas-y: 0px;
+    in property <length> card-width: 340px;
+    in property <length> card-height: 240px;
+    in property <float> scale: 1;
+    in property <float> enter: 1;
+    in property <bool> selected: false;
+    in property <bool> locked: false;
+    in property <bool> drag-active: false;
+    in property <bool> connect-target: false;
+    // Drop-target highlight of a node-drop drag (assets/stack collect).
+    in property <bool> drop-target: false;
+    // Active video-slot zone (`firstFrame` | `lastFrame` | `reference`).
+    in property <string> slot-drop: "";
+    // Bound video-slot values (`metadata.videoSlots` resolved to titles): the
+    // frame slots, the editable reference-slot count and one title per
+    // reference slot.
+    in property <string> slot-first: "";
+    in property <string> slot-last: "";
+    in property <int> ref-slot-count: 3;
+    in property <[string]> ref-slot-titles: [];
+    // Video-prompt generation mode (`metadata.videoMode`): "frames" | "reference".
+    in property <string> video-mode: "frames";
+
+    // Inline prompt editor (`metadata.prompt` owns the text).
+    in-out property <string> prompt-buffer: "";
+    // The buffer is known to hold this node's text (set when the editor is
+    // seeded). An `edited` event that arrives before that cannot be trusted and
+    // must never write an empty value over a non-empty prompt.
+    property <bool> prompt-armed: false;
+    // Programmatic caret request, re-applied whenever `caret-seq` changes.
+    in property <int> prompt-caret: -1;
+    in property <int> prompt-caret-seq: 0;
+    // True while the prompt body is in edit mode (double-click opens it).
+    in property <bool> prompt-editing: false;
+    // Thumbnails of the image nodes wired into this prompt node.
+    in property <[RefImage]> ref-images: [];
+
+    // Generation card body: the model, its settings and the action.
+    in property <string> mode: "image";
+    in property <string> model: "";
+    // Provider brand letter of the selected model (the model row's badge).
+    in property <string> model-brand: "A";
+    in property <string> settings-label: "";
+    in property <GenerationSettings> generation-settings: {
+        quality: "auto",
+        size-scale: "auto",
+        size-ratio: "1:1",
+        count: 1,
+        seconds: 6,
+        resolution: "720",
+        audio: true,
+        watermark: false,
+        reasoning: "auto",
+        text-count: 1,
+    };
+    // Open generation popover: "" | "model" | "settings".
+    in property <string> open-popover: "";
+    in property <bool> can-generate: false;
+    in property <bool> running: false;
+    in property <int> attempt-version: 1;
+    in property <string> attempt-title: "";
+    in property <bool> attempt-frozen: false;
+    in property <int> attempt-run-count: 0;
+    in property <int> attempt-image-count: 0;
+    in property <int> attempt-trace-count: 0;
+
+    callback node-pointer(string, string, length, length, string, bool);
+    callback node-scroll(string, length, length, float);
+    callback node-hover(string, bool);
+    callback node-double-click(string);
+    callback node-retry(string);
+    callback node-view-all(string);
+    callback node-info(string);
+    callback node-asset-bind(string);
+    callback node-asset-toggle(string, string);
+    callback node-asset-refresh(string);
+    callback node-asset-drag(string, string);
+    callback node-asset-drag-start(string, string, length, length);
+    callback node-asset-drag-move(string, length, length);
+    callback node-asset-drag-end(string);
+    callback node-edit-begin(string, string);
+    // Video-prompt Frames / Reference toggle (`onVideoModeChange`) and the
+    // reference-slot stepper (+1 / -1 within the provider's limit).
+    callback node-video-mode(string, string);
+    callback node-video-slots(string, int);
+    callback node-edit-change(string, string);
+    callback node-edit-commit(string);
+    callback node-edit-cancel(string);
+    callback resize-pointer(string, string, length, length);
+    callback connect-pointer(string, string, length, length);
+    callback plugin-text-edited(string, string);
+    callback plugin-palette-pick(string, int);
+    callback node-prompt-edited(string, string, int);
+    callback node-prompt-blur(string);
+    callback node-prompt-edit-cancel(string);
+    callback node-popover(string, string);
+    callback node-setting(string, string, string);
+    callback node-generate(string);
+    callback node-text-option(string, string, string);
+    callback node-ref-remove(string, string);
+
+    // Local editor buffers, re-seeded when an editor opens or the row changes;
+    // typing diverges them from the incoming draft until the editor is reopened.
+    in-out property <string> plugin-edit: "";
+    changed plugin-editing => {
+        root.plugin-edit = root.plugin-raw;
+    }
+    changed node-id => {
+        root.plugin-edit = root.plugin-raw;
+        root.edit-buffer = root.edit-text;
+        root.title-buffer = root.title-draft;
+        root.prompt-buffer = root.body;
+    }
+    // A row can be born with its text already stored (a restored document, a
+    // row rebuilt while the editor is open). `changed body`/`changed node-id`
+    // never fire for that initial value, so seed the buffer here: this is the
+    // frame the card exists in, and `body` is already the node's text.
+    init => {
+        root.prompt-buffer = root.body;
+        root.prompt-armed = root.prompt-editing;
+    }
+
+    in-out property <string> edit-buffer: "";
+    in-out property <string> title-buffer: "";
+    changed body => {
+        if (root.prompt-buffer != root.body) {
+            root.prompt-buffer = root.body;
+        }
+    }
+    // Opening the editor always starts from the node's current text, whatever
+    // the buffer held before (a row rebuilt in place keeps the old value).
+    changed prompt-editing => {
+        if (root.prompt-editing) {
+            root.prompt-buffer = root.body;
+            root.prompt-armed = true;
+        } else {
+            root.prompt-armed = false;
+        }
+    }
+    changed editing => {
+        if (root.editing) {
+            root.edit-buffer = root.edit-text;
+        }
+    }
+    changed editing-title => {
+        if (root.editing-title) {
+            root.title-buffer = root.title-draft;
+        }
+    }
+
+    in-out property <float> enter-scale: root.enter;
+    animate enter-scale {
+        duration: Theme.motion-enter;
+        easing: cubic-bezier(0.2, 0.85, 0.18, 1);
+    }
+    in-out property <float> enter-fade: root.enter;
+    animate enter-fade {
+        duration: Theme.motion-enter;
+        easing: cubic-bezier(0.2, 0.85, 0.18, 1);
+    }
+    // No focus dim: selecting a node never fades the rest of the canvas. The
+    // related outline above is the only focus affordance.
+    out property <float> visual-scale: root.scale * root.enter-scale;
+
+    x: root.canvas-x + root.card-width * (1 - root.enter-scale) / 2;
+    y: root.canvas-y + root.card-height * (1 - root.enter-scale) / 2 + 10px * root.scale * (1 - root.enter-fade);
+    width: root.card-width * root.enter-scale;
+    height: root.card-height * root.enter-scale;
+    opacity: root.enter-fade;
+    z: root.selected || root.connect-target ? 1 : 0;
+
+    // Image and Smart Canvas nodes carry no card chrome: the bitmap (or the
+    // studio project's composite) fills the node rect. The outline only appears
+    // for a selection/related/drop/hover state, so the canvas shows the picture
+    // itself at rest.
+    property <bool> frameless: root.kind == "image" || root.kind == "smart-canvas";
+    property <bool> frameless-outline: root.selected || root.connect-target || root.drop-target
+        || root.related || node-hit.has-hover;
+
+    border-radius: Theme.radius-3xl * root.visual-scale;
+    border-width: root.frameless ? (root.frameless-outline ? 2px * root.visual-scale : 0px)
+        : 2px * root.visual-scale;
+    border-color: root.selected || root.connect-target || root.drop-target
+        ? Theme.selection-blue
+        : root.related
+            ? Theme.node-muted
+            : Theme.node-stroke;
+    animate border-color {
+        duration: root.selected || root.connect-target || root.drop-target ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    background: root.frameless ? transparent
+        : root.plugin-transparent ? transparent
+        : root.media ? Theme.node-fill
+        : Theme.node-panel;
+
+    node-hit := TouchArea {
+        width: 100%;
+        height: 100%;
+        double-clicked => {
+            root.node-double-click(root.node-id);
+        }
+        changed has-hover => {
+            root.node-hover(root.node-id, self.has-hover);
+        }
+        pointer-event(e) => {
+            root.node-pointer(root.node-id, PointerIds.kind-id(e.kind), root.x + self.mouse-x, root.y + self.mouse-y, PointerIds.button-id(e.button), e.modifiers.shift);
+        }
+        // Wheel over a card still zooms the canvas; the card itself does not
+        // own a zoom gesture.
+        scroll-event(e) => {
+            root.node-scroll(root.node-id, root.x + self.mouse-x, root.y + self.mouse-y, e.delta-y / 1px);
+            accept
+        }
+    }
+
+    // Title slot (above the card): the media info bar on image nodes with
+    // content (`MediaInfoBar`), the rename input while editing, else the title
+    // button whose hover reveals the rename hint (canvas-node.tsx:362-396).
+    // One inset for both slots: the title's text edge is the body's text edge
+    // (`space-4` inside the card), so title and body share a left edge.
+    if root.media-info : MediaInfoBar {
+        x: Theme.space-4 * root.visual-scale;
+        y: -(Theme.space-6 * root.visual-scale);
+        width: parent.width - 2 * Theme.space-4 * root.visual-scale;
+        height: 20px * root.visual-scale;
+        text: root.info;
+        vs: root.visual-scale;
+        info => {
+            root.node-info(root.node-id);
+        }
+    }
+    // Title slot (above the card): the rename input while editing, else the
+    // title button whose hover reveals the rename underline.
+    if !root.media-info : Rectangle {
+        x: Theme.space-4 * root.visual-scale;
+        y: -(Theme.space-6 * root.visual-scale);
+        width: parent.width - 2 * Theme.space-4 * root.visual-scale;
+        height: 20px * root.visual-scale;
+        background: transparent;
+
+        title-editor := InlineEditor {
+            visible: root.editing-title;
+            width: 100%;
+            height: 20px * root.visual-scale;
+            select-on-focus: true;
+            text <=> root.title-buffer;
+            edited => {
+                root.node-edit-change(root.node-id, self.text);
+            }
+            key-pressed(e) => {
+                if (e.text == "\n") {
+                    root.node-edit-commit(root.node-id);
+                    return accept;
+                }
+                if (e.text == "\u{1b}") {
+                    root.node-edit-cancel(root.node-id);
+                    return accept;
+                }
+                return reject;
+            }
+            changed has-focus => {
+                if (!self.has-focus) {
+                    root.node-edit-commit(root.node-id);
+                }
+            }
+            font-size: 14px * root.visual-scale;
+            font-weight: 500;
+            color: Theme.node-text;
+            single-line: true;
+        }
+        Rectangle {
+            visible: root.editing-title;
+            y: 19px * root.visual-scale;
+            width: 100%;
+            height: 1px;
+            background: Theme.node-muted;
+            opacity: 0.6;
+        }
+        Rectangle {
+            visible: !root.editing-title;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+
+            title-ta := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                double-clicked => {
+                    if (!root.locked) {
+                        root.node-edit-begin(root.node-id, "title");
+                    }
+                }
+                pointer-event(e) => {
+                    root.node-pointer(root.node-id, PointerIds.kind-id(e.kind), root.x + self.mouse-x, root.y - Theme.space-6 * root.visual-scale + self.mouse-y, PointerIds.button-id(e.button), e.modifiers.shift);
+                }
+            }
+            Text {
+                width: 100%;
+                height: 100%;
+                text: root.title;
+                font-size: 14px * root.visual-scale;
+                font-weight: 500;
+                color: Theme.node-label;
+                vertical-alignment: bottom;
+                overflow: elide;
+            }
+            Rectangle {
+                y: 19px * root.visual-scale;
+                width: 100%;
+                height: 1px;
+                background: Theme.node-muted;
+                opacity: title-ta.has-hover ? 0.6 : 0;
+                animate opacity {
+                    duration: Theme.motion-select;
+                    easing: ease-out;
+                }
+            }
+        }
+    }
+
+    // The card body: one rhythm for every kind -- `space-4` of padding and
+    // `space-3` between rows, all scaled by the enter/zoom visual scale. Slint
+    // only clips Rectangle/Path, so the whole body sits in one clipping box at
+    // the card's bounds: no kind can paint outside the card, and long content
+    // scrolls inside its own Flickable.
+    body-clip := Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        clip: !root.drag-active;
+        background: transparent;
+
+        VerticalLayout {
+            x: 0px;
+            y: 0px;
+            width: 100%;
+            height: 100%;
+            // An image node has no inset: its bitmap is the whole card.
+            padding: root.frameless ? 0px : Theme.space-4 * root.visual-scale;
+            spacing: Theme.space-3 * root.visual-scale;
+
+            // Image attempt: one prompt/config version with its output. The
+            // card is read-only; double-click opens the workbench.
+            if root.kind == "image-attempt" : VerticalLayout {
+                spacing: Theme.space-2 * root.visual-scale;
+
+                Rectangle {
+                    height: 250px * root.visual-scale;
+                    border-radius: Theme.radius-2xl * root.visual-scale;
+                    clip: !root.drag-active;
+                    background: root.content-empty ? Theme.muted : transparent;
+                    border-width: 1px * root.visual-scale;
+                    border-color: Theme.node-stroke;
+
+                    if root.content-empty : Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: transparent;
+                        Path {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2 - 10px;
+                            width: 34px * root.visual-scale;
+                            height: 34px * root.visual-scale;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.image;
+                            fill: transparent;
+                            stroke-width: 1.4px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                            stroke: Theme.node-placeholder;
+                        }
+                        Text {
+                            x: 0px;
+                            y: parent.height / 2 + 22px;
+                            width: 100%;
+                            height: 20px;
+                            text: "No result yet";
+                            font-size: 12px * root.visual-scale;
+                            color: Theme.node-muted;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    if !root.content-empty : Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.content-image;
+                        image-fit: cover;
+                    }
+                }
+
+                Text {
+                    width: 100%;
+                    height: 40px * root.visual-scale;
+                    text: root.body != "" ? root.body : "Double-click to write a prompt";
+                    font-size: 12px * root.visual-scale;
+                    color: Theme.node-text;
+                    wrap: word-wrap;
+                    overflow: elide;
+                    vertical-alignment: top;
+                }
+
+                HorizontalLayout {
+                    height: 20px * root.visual-scale;
+                    spacing: Theme.space-2 * root.visual-scale;
+                    Text {
+                        text: "v" + root.attempt-version;
+                        font-size: 11px * root.visual-scale;
+                        font-weight: 700;
+                        color: Theme.node-accent;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: root.attempt-title;
+                        font-size: 11px * root.visual-scale;
+                        color: Theme.node-muted;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: root.attempt-frozen ? "frozen" : "draft";
+                        font-size: 10px * root.visual-scale;
+                        color: root.attempt-frozen ? Theme.node-muted : Theme.node-accent;
+                        vertical-alignment: center;
+                    }
+                }
+                Text {
+                    width: 100%;
+                    height: 18px * root.visual-scale;
+                    text: root.settings-label + " · " + root.attempt-run-count + " runs · "
+                        + root.attempt-image-count + " images · " + root.attempt-trace-count + " trace";
+                    font-size: 10px * root.visual-scale;
+                    color: Theme.node-muted;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+            }
+
+            // Image body (`ImageNodeContent` + `EmptyImageContent`).
+            if root.status == "" && root.kind == "image" : Rectangle {
+                vertical-stretch: 1;
+                border-radius: Theme.radius-2xl * root.visual-scale;
+                clip: !root.drag-active;
+                background: transparent;
+
+                if root.content-empty : Rectangle {
+                    width: 100%;
+                    height: 100%;
+                    background: transparent;
+
+                    // No bitmap yet: a frosted plate at the body's normal inset
+                    // (an image node's body itself has no padding), so the card
+                    // reads as a designed placeholder instead of a hole.
+                    FrostedPlate {
+                        x: Theme.space-4 * root.visual-scale;
+                        y: Theme.space-4 * root.visual-scale;
+                        width: parent.width - 2 * Theme.space-4 * root.visual-scale;
+                        height: parent.height - 2 * Theme.space-4 * root.visual-scale;
+                        vs: root.visual-scale;
+                    }
+                    // One centred column: a large muted image glyph above the
+                    // single placeholder line.
+                    Rectangle {
+                        x: Theme.space-4 * root.visual-scale;
+                        y: (parent.height - self.height) / 2;
+                        width: parent.width - 2 * Theme.space-4 * root.visual-scale;
+                        height: (32px + Theme.space-3 + 18px) * root.visual-scale;
+                        background: transparent;
+
+                        Path {
+                            x: (parent.width - self.width) / 2;
+                            y: 0px;
+                            width: 32px * root.visual-scale;
+                            height: 32px * root.visual-scale;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.image;
+                            fill: transparent;
+                            stroke-width: 1.4px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                            stroke: Theme.node-placeholder.with-alpha(0.8);
+                        }
+                        Text {
+                            x: 0px;
+                            y: (32px + Theme.space-3) * root.visual-scale;
+                            width: 100%;
+                            height: 18px * root.visual-scale;
+                            text: "No image yet";
+                            font-size: 13px * root.visual-scale;
+                            color: Theme.node-muted;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                if !root.content-empty : Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.content-image;
+                    image-fit: cover;
+                }
+            }
+
+            // Smart Canvas body: the linked Image Studio project's composite
+            // (rendered by `App::smart_canvas_preview`) is the node body, edge
+            // to edge, exactly like an Image node's bitmap. A project with
+            // nothing on its board is a plain white plate with one quiet line.
+            // The card is display-only, like an Image node: double-click opens
+            // the studio.
+            if root.status == "" && root.kind == "smart-canvas" : Rectangle {
+                vertical-stretch: 1;
+                border-radius: Theme.radius-2xl * root.visual-scale;
+                clip: true;
+                background: root.content-empty ? #FFFFFF : transparent;
+
+                if root.content-empty : Text {
+                    width: 100%;
+                    height: 100%;
+                    text: "Nothing here yet";
+                    font-size: 13px * root.visual-scale;
+                    color: Theme.node-placeholder;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                if !root.content-empty : Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.content-image;
+                    image-fit: cover;
+                }
+            }
+
+            // Video body: poster frame + duration/status strip. Slint has no video
+            // decoder, so playback is explicitly out of scope: the poster stands in
+            // for the frame, a film glyph marks the kind, and the strip reports the
+            // duration and generation status.
+            if root.status == "" && root.kind == "video" : Rectangle {
+                vertical-stretch: 1;
+                border-radius: Theme.radius-2xl * root.visual-scale;
+                clip: true;
+                background: root.content-empty ? transparent : Theme.media-video-backdrop;
+
+                if root.content-empty : EmptyMedia {
+                    width: 100%;
+                    height: 100%;
+                    icon: Icons.video;
+                    label: "Empty video node";
+                    vs: root.visual-scale;
+                }
+                if !root.content-empty : Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.content-image;
+                    image-fit: contain;
+                }
+                if !root.content-empty : Rectangle {
+                    width: 44px * root.visual-scale;
+                    height: 44px * root.visual-scale;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 22px * root.visual-scale;
+                    background: Theme.toolbar-panel;
+                    opacity: 0.92;
+
+                    Path {
+                        x: 12px * root.visual-scale;
+                        y: 12px * root.visual-scale;
+                        width: 20px * root.visual-scale;
+                        height: 20px * root.visual-scale;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: Icons.video;
+                        fill: transparent;
+                        stroke-width: 1.8px;
+                        stroke-line-cap: round;
+                        stroke-line-join: round;
+                        stroke: Theme.node-text;
+                    }
+                }
+                if !root.content-empty : Rectangle {
+                    y: parent.height - 24px * root.visual-scale;
+                    width: 100%;
+                    height: 24px * root.visual-scale;
+                    background: Theme.toolbar-panel;
+                    opacity: 0.86;
+
+                    HorizontalLayout {
+                        padding-left: Theme.space-2 * root.visual-scale;
+                        padding-right: Theme.space-2 * root.visual-scale;
+                        spacing: Theme.space-2 * root.visual-scale;
+
+                        Text {
+                            text: root.duration;
+                            font-size: 11px * root.visual-scale;
+                            font-family: "monospace";
+                            color: Theme.node-text;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: root.status-label;
+                            font-size: 11px * root.visual-scale;
+                            color: Theme.node-muted;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            horizontal-alignment: right;
+                        }
+                    }
+                }
+            }
+
+            // Image-stack contact sheet (`ImageStackNodeContent`): cover on top,
+            // backing cards drifted and rotated behind it, count chip top-right.
+            if root.status == "" && root.kind == "image-stack" : Rectangle {
+                vertical-stretch: 1;
+                clip: true;
+                background: transparent;
+
+                if root.stack-count == 0 : Rectangle {
+                    x: Theme.space-2 * root.visual-scale;
+                    y: Theme.space-2 * root.visual-scale;
+                    width: parent.width - 2 * Theme.space-2 * root.visual-scale;
+                    height: parent.height - 2 * Theme.space-2 * root.visual-scale;
+                    border-radius: Theme.radius-2xl * root.visual-scale;
+                    border-width: 1px * root.visual-scale;
+                    border-color: Theme.node-stroke;
+                    background: transparent;
+
+                    // Static hint: images arrive by dropping them onto the
+                    // stack (the drop-collect rule) or by generating them.
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: Theme.space-2 * root.visual-scale;
+
+                        Path {
+                            width: 24px * root.visual-scale;
+                            height: 24px * root.visual-scale;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.images;
+                            fill: transparent;
+                            stroke-width: 1.5px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                            stroke: Theme.node-muted;
+                        }
+                        Text {
+                            vertical-alignment: center;
+                            width: parent.width - 2 * Theme.space-4 * root.visual-scale;
+                            text: "Drop images here, or generate multiple images";
+                            font-size: 13px * root.visual-scale;
+                            color: Theme.node-muted;
+                            wrap: word-wrap;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+                // Backing cards: heap offsets arrive precomputed (StackImage.dx/dy/angle).
+                for image[index] in root.stack : Rectangle {
+                    x: (parent.width - self.width) / 2 + image.dx * root.visual-scale;
+                    y: (parent.height - self.height) / 2 + image.dy * root.visual-scale;
+                    width: 100%;
+                    height: 100%;
+                    z: 0 - index;
+                    border-radius: Theme.radius-2xl * root.visual-scale;
+                    border-width: 1px * root.visual-scale;
+                    border-color: Theme.node-stroke;
+                    background: Theme.node-fill;
+                    transform-rotation: image.angle * 1deg;
+                    clip: true;
+
+                    if image.thumb.width > 0 : Image {
+                        width: 100%;
+                        height: 100%;
+                        source: image.thumb;
+                        image-fit: cover;
+                    }
+                }
+                // Cover.
+                if root.stack-count > 0 : Rectangle {
+                    x: 0px;
+                    y: 0px;
+                    width: 100%;
+                    height: 100%;
+                    z: 20;
+                    border-radius: Theme.radius-2xl * root.visual-scale;
+                    border-width: 1px * root.visual-scale;
+                    border-color: Theme.node-stroke;
+                    background: Theme.node-fill;
+                    clip: true;
+
+                    if root.stack-cover.width > 0 : Image {
+                        width: 100%;
+                        height: 100%;
+                        source: root.stack-cover;
+                        image-fit: root.stack-count > 1 ? cover : contain;
+                    }
+                    if root.stack-cover.width == 0 && root.stack-cover-error != "" : Text {
+                        width: parent.width - 2 * Theme.space-3 * root.visual-scale;
+                        text: root.stack-cover-error;
+                        font-size: 12px * root.visual-scale;
+                        color: Theme.node-muted;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    if root.stack-cover.width == 0 && root.stack-cover-error == "" : Spinner {
+                        width: 20px * root.visual-scale;
+                        height: 20px * root.visual-scale;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        vs: 0.5 * root.visual-scale;
+                    }
+                }
+                if root.stack-count > 0 : Rectangle {
+                    x: parent.width - self.width - Theme.space-2 * root.visual-scale;
+                    y: Theme.space-2 * root.visual-scale;
+                    z: 40;
+                    height: 22px * root.visual-scale;
+                    width: self.preferred-width;
+                    border-radius: Theme.radius-md * root.visual-scale;
+                    background: Theme.toolbar-panel;
+                    opacity: stack-chip-ta.has-hover ? 0.9 : 1;
+
+                    stack-chip-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.node-view-all(root.node-id);
+                        }
+                    }
+                    HorizontalLayout {
+                        padding-left: Theme.space-2 * root.visual-scale;
+                        padding-right: Theme.space-2 * root.visual-scale;
+                        spacing: Theme.space-1 * root.visual-scale;
+
+                        Path {
+                            width: 12px * root.visual-scale;
+                            height: 12px * root.visual-scale;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.layers;
+                            fill: transparent;
+                            stroke-width: 2px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                            stroke: Theme.node-text;
+                        }
+                        Text {
+                            text: root.stack-count-label;
+                            font-size: 11px * root.visual-scale;
+                            font-weight: 500;
+                            color: Theme.node-text;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            // Assets (`assets-node-content.tsx`): a bound local folder renders
+            // a tree rooted at that folder (no upward navigation); without a
+            // binding the node keeps its studio-output list. The rows scroll in
+            // their own Flickable, so a long tree never paints outside the card.
+            if root.status == "" && root.kind == "assets" : VerticalLayout {
+                vertical-stretch: 1;
+                spacing: Theme.space-2 * root.visual-scale;
+
+                // Source line + bind/change (+ refresh once bound).
+                HorizontalLayout {
+                    height: 24px * root.visual-scale;
+                    spacing: Theme.space-1 * root.visual-scale;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        text: root.asset-source == "studio" ? "Studio output" : "Local folder";
+                        font-size: 11px * root.visual-scale;
+                        font-weight: 600;
+                        color: Theme.node-muted;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: root.asset-bound ? root.asset-folder : "";
+                        font-size: 11px * root.visual-scale;
+                        color: Theme.node-placeholder;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+                    AssetTreeButton {
+                        label: root.asset-bound ? "Change folder" : "Bind folder";
+                        vs: root.visual-scale;
+                        clicked => {
+                            root.node-asset-bind(root.node-id);
+                        }
+                    }
+                    if root.asset-bound : AssetTreeButton {
+                        label: "Refresh";
+                        vs: root.visual-scale;
+                        clicked => {
+                            root.node-asset-refresh(root.node-id);
+                        }
+                    }
+                }
+
+                // A bound folder that is gone/unreadable: a clear error state
+                // with the re-bind action right here.
+                if root.asset-bound && root.asset-tree.length == 0 && root.asset-error != "" : VerticalLayout {
+                    vertical-stretch: 1;
+                    alignment: center;
+                    spacing: Theme.space-2 * root.visual-scale;
+
+                    Path {
+                        width: 22px * root.visual-scale;
+                        height: 22px * root.visual-scale;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: Icons.folder-input;
+                        fill: transparent;
+                        stroke-width: 1.5px;
+                        stroke-line-cap: round;
+                        stroke-line-join: round;
+                        stroke: Theme.node-danger;
+                    }
+                    Text {
+                        width: parent.width - 2 * Theme.space-4 * root.visual-scale;
+                        text: root.asset-error;
+                        font-size: 12px * root.visual-scale;
+                        color: Theme.node-danger;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                    }
+                    AssetTreeButton {
+                        label: "Re-bind folder";
+                        accent: true;
+                        vs: root.visual-scale;
+                        clicked => {
+                            root.node-asset-bind(root.node-id);
+                        }
+                    }
+                }
+
+                // The rooted tree: folders expand, files drag out.
+                if root.asset-bound && root.asset-tree.length > 0 : Flickable {
+                    vertical-stretch: 1;
+                    content-width: self.width;
+                    content-height: asset-tree-list.preferred-height;
+
+                    asset-tree-list := VerticalLayout {
+                        width: 100%;
+                        spacing: 0px;
+
+                        for row in root.asset-tree : AssetTreeRowView {
+                            entry: row;
+                            vs: root.visual-scale;
+                            activate => {
+                                root.node-asset-toggle(root.node-id, row.path);
+                            }
+                            drag-start(x, y) => {
+                                root.node-asset-drag-start(root.node-id, row.path, x, y);
+                            }
+                            drag-move(x, y) => {
+                                root.node-asset-drag-move(root.node-id, x, y);
+                            }
+                            drag-end => {
+                                root.node-asset-drag-end(root.node-id);
+                            }
+                            drag-out => {
+                                root.node-asset-drag(root.node-id, row.path);
+                            }
+                        }
+                    }
+                }
+
+                // Bound but empty: a real empty state, not an error.
+                if root.asset-bound && root.asset-tree.length == 0 && root.asset-error == "" : VerticalLayout {
+                    vertical-stretch: 1;
+                    alignment: center;
+                    spacing: Theme.space-2 * root.visual-scale;
+
+                    Text {
+                        width: parent.width - 2 * Theme.space-4 * root.visual-scale;
+                        text: "No image or video files in this folder";
+                        font-size: 12px * root.visual-scale;
+                        color: Theme.node-placeholder;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                    }
+                }
+
+                // Unbound: the studio selection (if any), else the bind prompt.
+                if !root.asset-bound && root.assets.length == 0 : VerticalLayout {
+                    vertical-stretch: 1;
+                    alignment: center;
+                    spacing: Theme.space-3 * root.visual-scale;
+
+                    Path {
+                        width: 24px * root.visual-scale;
+                        height: 24px * root.visual-scale;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: Icons.folder-input;
+                        fill: transparent;
+                        stroke-width: 1.5px;
+                        stroke-line-cap: round;
+                        stroke-line-join: round;
+                        stroke: Theme.node-muted;
+                    }
+                    Text {
+                        vertical-alignment: center;
+                        width: parent.width - 2 * Theme.space-4 * root.visual-scale;
+                        text: "Bind a local folder, then drag its images or videos onto the canvas";
+                        font-size: 12px * root.visual-scale;
+                        color: Theme.node-placeholder;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                    }
+                }
+                if !root.asset-bound && root.assets.length > 0 : Flickable {
+                    vertical-stretch: 1;
+                    content-width: self.width;
+                    content-height: asset-list.preferred-height;
+
+                    asset-list := VerticalLayout {
+                        width: 100%;
+                        spacing: Theme.space-1 * root.visual-scale;
+
+                        for item in root.assets : AssetRow {
+                            label: item.label;
+                            sub: item.sub;
+                            kind: item.kind;
+                            thumb: item.thumb;
+                            ready: item.ready;
+                            vs: root.visual-scale;
+                        }
+                    }
+                }
+            }
+
+            // Text generation (`mode: "text"`): a Text node wired to a prompt gets
+            // the same compact flat body as image/video generation -- model,
+            // reasoning effort, count and the action -- instead of the old
+            // second-level panel. The generated alternatives land in
+            // `metadata.texts` and are rendered by the batch list below.
+            if root.status == "" && root.kind == "text" && root.can-generate : VerticalLayout {
+                vertical-stretch: 1;
+                spacing: Theme.space-3 * root.visual-scale;
+
+                Flickable {
+                    vertical-stretch: 1;
+                    content-width: self.width;
+                    content-height: text-generation-panel.preferred-height;
+
+                    text-generation-panel := InlineGenerationPanel {
+                        width: 100%;
+                        mode: "text";
+                        model: root.model;
+                        model-brand: root.model-brand;
+                        settings: root.generation-settings;
+                        vs: root.visual-scale;
+                        setting(key, value) => {
+                            root.node-setting(root.node-id, key, value);
+                        }
+                    }
+                }
+
+                text-run := Rectangle {
+                    height: 32px * root.visual-scale;
+                    border-radius: Theme.radius-lg * root.visual-scale;
+                    border-width: 1px * root.visual-scale;
+                    border-color: Theme.node-stroke;
+                    background: Theme.brand;
+                    opacity: root.running ? 0.4 : 1;
+
+                    // No Stop state here either: the card disables while the
+                    // task runs; deleting the node cancels it.
+                    text-run-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: root.running ? default : pointer;
+                        clicked => {
+                            if (!root.running) {
+                                root.node-generate(root.node-id);
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: Theme.space-2 * root.visual-scale;
+
+                        Text {
+                            text: "Generate";
+                            font-size: 12px * root.visual-scale;
+                            font-weight: 600;
+                            color: Theme.brand-foreground;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            // Text body (`TextContent`): the primary text (mono), the in-place
+            // editor, or the double-click hint. Batch nodes carry the count chip
+            // (click expands the alternatives) and a style button that opens the
+            // text-style popover (bold / italic / family / size / align / colour).
+            if root.status == "" && root.kind == "text" : VerticalLayout {
+                vertical-stretch: root.can-generate ? 0 : 1;
+                min-height: 96px * root.visual-scale;
+                spacing: Theme.space-1 * root.visual-scale;
+
+                HorizontalLayout {
+                    height: 22px * root.visual-scale;
+                    spacing: Theme.space-1 * root.visual-scale;
+                    cross-axis-alignment: center;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 1px;
+                        background: transparent;
+                    }
+                    // "Aa" opens the popover below the chip row.
+                    style-btn := Rectangle {
+                        width: 26px * root.visual-scale;
+                        height: 22px * root.visual-scale;
+                        border-radius: Theme.radius-md * root.visual-scale;
+                        border-width: 1px;
+                        border-color: root.style-open ? Theme.brand : style-ta.has-hover ? Theme.border-strong : transparent;
+                        background: root.style-open ? Theme.node-accent-soft : style-ta.has-hover ? Theme.hover : Theme.toolbar-panel;
+
+                        style-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.style-open = !root.style-open;
+                            }
+                        }
+                        Text {
+                            width: 100%;
+                            height: 100%;
+                            text: "Aa";
+                            font-size: 11px * root.visual-scale;
+                            font-weight: 600;
+                            color: root.style-open ? Theme.node-accent : Theme.node-muted;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    if root.batch-count > 1 : Rectangle {
+                        height: 22px * root.visual-scale;
+                        width: self.preferred-width;
+                        border-radius: Theme.radius-md * root.visual-scale;
+                        border-width: 1px;
+                        border-color: root.batch-open ? Theme.brand : chip-ta.has-hover ? Theme.border-strong : transparent;
+                        background: root.batch-open ? Theme.node-accent-soft : Theme.toolbar-panel;
+
+                        chip-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.batch-open = !root.batch-open;
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-left: Theme.space-1 * root.visual-scale;
+                            padding-right: Theme.space-1 * root.visual-scale;
+                            spacing: Theme.space-1 * root.visual-scale;
+                            cross-axis-alignment: center;
+
+                            Path {
+                                width: 12px * root.visual-scale;
+                                height: 12px * root.visual-scale;
+                                viewbox-width: 24;
+                                viewbox-height: 24;
+                                commands: Icons.file-text;
+                                fill: transparent;
+                                stroke-width: 2px;
+                                stroke-line-cap: round;
+                                stroke-line-join: round;
+                                stroke: Theme.node-text;
+                            }
+                            Text {
+                                text: root.batch-label;
+                                font-size: 11px * root.visual-scale;
+                                font-weight: 500;
+                                color: Theme.node-text;
+                                vertical-alignment: center;
+                            }
+                            Path {
+                                width: 10px * root.visual-scale;
+                                height: 10px * root.visual-scale;
+                                viewbox-width: 24;
+                                viewbox-height: 24;
+                                commands: root.batch-open ? Icons.chevron-up : Icons.chevron-down;
+                                fill: transparent;
+                                stroke-width: 2.4px;
+                                stroke-line-cap: round;
+                                stroke-line-join: round;
+                                stroke: Theme.node-muted;
+                            }
+                        }
+                    }
+                }
+
+                // Expanded alternatives: every `metadata.texts` entry, the primary
+                // marked, click a row to make it primary, the × takes it out.
+                if root.batch-open && root.batch.length > 0 : VerticalLayout {
+                    vertical-stretch: 1;
+                    spacing: Theme.space-1 * root.visual-scale;
+
+                    for option in root.batch : Rectangle {
+                        height: 24px * root.visual-scale;
+                        border-radius: Theme.radius-sm * root.visual-scale;
+                        border-width: 1px;
+                        border-color: option.primary ? Theme.brand : row-ta.has-hover ? Theme.border-strong : transparent;
+                        background: option.primary ? Theme.node-accent-soft : row-ta.has-hover ? Theme.hover : Theme.toolbar-panel;
+
+                        row-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                if (!option.primary) {
+                                    root.node-text-option(root.node-id, option.id, "primary");
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-left: Theme.space-1 * root.visual-scale;
+                            padding-right: Theme.space-1 * root.visual-scale;
+                            spacing: Theme.space-1 * root.visual-scale;
+                            cross-axis-alignment: center;
+
+                            Text {
+                                horizontal-stretch: 1;
+                                text: option.content;
+                                font-size: 10px * root.visual-scale;
+                                color: option.primary ? Theme.node-accent : Theme.node-text;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            if option.primary : Text {
+                                text: "PRIMARY";
+                                font-size: 8px * root.visual-scale;
+                                font-weight: 600;
+                                letter-spacing: 1px * root.visual-scale;
+                                color: Theme.node-accent;
+                                vertical-alignment: center;
+                            }
+                            IconButton {
+                                size: 20px * root.visual-scale;
+                                icon: Icons.close;
+                                enabled: option.can-take-out;
+                                clicked => {
+                                    root.node-text-option(root.node-id, option.id, "take-out");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // The editor and the plain body only show while the list is closed.
+                body-editor := InlineEditor {
+                    visible: root.editing && !root.batch-open;
+                    width: 100%;
+                    height: 100%;
+                    text <=> root.edit-buffer;
+                    edited => {
+                        root.node-edit-change(root.node-id, self.text);
+                    }
+                    key-pressed(e) => {
+                        if (e.text == "\u{1b}") {
+                            root.node-edit-cancel(root.node-id);
+                            return accept;
+                        }
+                        if (e.text == "\n" && e.modifiers.control) {
+                            root.node-edit-commit(root.node-id);
+                            return accept;
+                        }
+                        return reject;
+                    }
+                    changed has-focus => {
+                        if (!self.has-focus) {
+                            root.node-edit-commit(root.node-id);
+                        }
+                    }
+                    font-size: root.body-size * root.visual-scale;
+                    font-family: "monospace";
+                    color: root.body-colored ? root.body-color : Theme.node-text;
+                    wrap: word-wrap;
+                    single-line: false;
+                }
+                if !root.editing && !root.batch-open && root.body != "" : Text {
+                    vertical-stretch: 1;
+                    vertical-alignment: center;
+                    width: 100%;
+                    text: root.body;
+                    font-size: root.body-size * root.visual-scale;
+                    font-family: "monospace";
+                    color: root.body-colored ? root.body-color : Theme.node-text;
+                    wrap: word-wrap;
+                }
+                if !root.editing && !root.batch-open && root.body == "" : Text {
+                    vertical-stretch: 1;
+                    vertical-alignment: center;
+                    text: "Double-click to edit text";
+                    font-size: 14px * root.visual-scale;
+                    font-family: "monospace";
+                    color: Theme.node-placeholder;
+                }
+            }
+
+            // Prompt body (`PromptContent`): the prompt IS the node body -- a
+            // read-only line-clamped Text at rest (a single click therefore
+            // falls through to the card's drag gesture: no caret, no focus), a
+            // full-body TextInput while editing (double-click opens it, Escape
+            // restores the pre-edit text, Enter inserts a newline, focus loss
+            // commits through `node-prompt-blur`), the top row of reference
+            // images wired into this node and, on a video-prompt card, the
+            // Frames/Reference mode chips with the three frame slots pinned
+            // under the editor. One branch for both kinds: the editor renders
+            // once. Reference names never enter the text: the top chip row is
+            // the reference input.
+            if root.status == "" && (root.kind == "prompt" || root.kind == "video-prompt") : VerticalLayout {
+                vertical-stretch: 1;
+                spacing: Theme.space-3 * root.visual-scale;
+
+                // Reference labels at the TOP of the card: one compact chip per
+                // image node wired into this prompt, thumbnail + title. The row
+                // is the reference input; it never edits the prompt text.
+                if root.ref-images.length > 0 : Flickable {
+                    height: 24px * root.visual-scale;
+                    content-width: ref-chip-row.preferred-width;
+                    content-height: self.height;
+
+                    ref-chip-row := HorizontalLayout {
+                        height: 100%;
+                        spacing: Theme.space-1 * root.visual-scale;
+                        cross-axis-alignment: center;
+
+                        for ref-image in root.ref-images : Rectangle {
+                            width: ref-chip-content.preferred-width + 14px * root.visual-scale;
+                            height: 22px * root.visual-scale;
+                            border-radius: Theme.radius-sm * root.visual-scale;
+                            border-width: 1px;
+                            border-color: Theme.node-stroke;
+                            background: Theme.node-fill;
+
+                            ref-chip-content := HorizontalLayout {
+                                x: 6px * root.visual-scale;
+                                height: 100%;
+                                spacing: Theme.space-1 * root.visual-scale;
+                                cross-axis-alignment: center;
+
+                                if ref-image.thumb.width > 0 : Rectangle {
+                                    width: 14px * root.visual-scale;
+                                    height: 14px * root.visual-scale;
+                                    border-radius: 3px * root.visual-scale;
+                                    clip: true;
+
+                                    Image {
+                                        width: 100%;
+                                        height: 100%;
+                                        source: ref-image.thumb;
+                                        image-fit: cover;
+                                    }
+                                }
+                                Text {
+                                    text: ref-image.title;
+                                    font-size: 10px * root.visual-scale;
+                                    font-weight: 500;
+                                    color: Theme.node-text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    width: min(self.preferred-width, 96px * root.visual-scale);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                prompt-text := Rectangle {
+                    vertical-stretch: 1;
+                    clip: true;
+                    background: transparent;
+
+                    property <int> caret-seq: root.prompt-caret-seq;
+
+                    // Resting state: read-only, no TextInput, so the card's own
+                    // TouchArea owns the single click and drags the node. The
+                    // body is always the plain prompt text; references are the
+                    // wired chips at the top, never tokens in this string.
+                    Text {
+                        visible: !root.prompt-editing;
+                        width: 100%;
+                        height: 100%;
+                        vertical-alignment: top;
+                        text: root.body != "" ? root.body : (root.kind == "video-prompt" ? "Describe a video to generate..." : "Describe an image to generate...");
+                        font-size: 14px * root.visual-scale;
+                        font-family: "monospace";
+                        color: root.body != "" ? Theme.node-text : Theme.node-placeholder;
+                        // The body uses every pixel the card gives it: wrap
+                        // normally and clip only at the card's own bottom edge.
+                        // There is no line cap; a short prompt shows in full and
+                        // a long one is hidden only once the height is full.
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+
+                    // Edit overlay: fills the body, focused, caret at the end.
+                    prompt-input := TextInput {
+                        visible: root.prompt-editing;
+                        width: 100%;
+                        height: 100%;
+                        text <=> root.prompt-buffer;
+                        edited => {
+                            // An `edited` value is trusted once the session is
+                            // seeded with the node's text. A non-empty value
+                            // always is (typing), but an empty one from an
+                            // unseeded buffer must never erase the prompt.
+                            if (root.prompt-armed || self.text != "") {
+                                root.prompt-armed = true;
+                                root.node-prompt-edited(root.node-id, self.text, self.cursor-position-byte-offset);
+                            }
+                        }
+                        key-pressed(e) => {
+                            if (e.text == "\u{1b}") {
+                                root.node-prompt-edit-cancel(root.node-id);
+                                return accept;
+                            }
+                            return reject;
+                        }
+                        changed has-focus => {
+                            if (!self.has-focus && root.prompt-editing) {
+                                root.node-prompt-blur(root.node-id);
+                            }
+                        }
+                        changed visible => {
+                            if (self.visible) {
+                                // Rust bumps `caret-seq` with the caret at the
+                                // end when edit mode opens; focus completes it.
+                                self.focus();
+                            }
+                        }
+                        font-size: 14px * root.visual-scale;
+                        font-family: "monospace";
+                        color: Theme.node-text;
+                        wrap: word-wrap;
+                        single-line: false;
+                    }
+
+                    changed caret-seq => {
+                        if (root.prompt-caret >= 0) {
+                            prompt-input.set-selection-offsets(root.prompt-caret, root.prompt-caret);
+                        }
+                    }
+                }
+                // Video-prompt tail: the Frames / Reference mode
+                // (`video-prompt-node-content.tsx:54-66`), the reference-slot
+                // stepper in `reference` mode and the slots themselves, pinned
+                // at the bottom under the prompt editor. The slot set follows
+                // the tab: `frames` shows the two keyframes, `reference` shows
+                // exactly `ref-slot-count` reference slots.
+                if root.kind == "video-prompt" : VerticalLayout {
+                    vertical-stretch: 0;
+                    spacing: Theme.space-3 * root.visual-scale;
+
+                    HorizontalLayout {
+                        height: 22px * root.visual-scale;
+                        spacing: Theme.space-1 * root.visual-scale;
+
+                        VideoModeChip {
+                            label: "Frames";
+                            active: root.video-mode != "reference";
+                            vs: root.visual-scale;
+                            clicked => {
+                                root.node-video-mode(root.node-id, "frames");
+                            }
+                        }
+                        VideoModeChip {
+                            label: "Reference";
+                            active: root.video-mode == "reference";
+                            vs: root.visual-scale;
+                            clicked => {
+                                root.node-video-mode(root.node-id, "reference");
+                            }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            background: transparent;
+                        }
+                        // The editable N: 1..=9 reference images (the provider's
+                        // `VIDEO_REFERENCE_IMAGE_LIMIT`), default 3.
+                        if root.video-mode == "reference" : SlotStepper {
+                            count: root.ref-slot-count;
+                            can-remove: root.ref-slot-count > 1;
+                            can-add: root.ref-slot-count < 9;
+                            vs: root.visual-scale;
+                            step(delta) => {
+                                root.node-video-slots(root.node-id, delta);
+                            }
+                        }
+                    }
+                    // Frames tab: the first and last keyframe only.
+                    if root.video-mode != "reference" : HorizontalLayout {
+                        height: 96px * root.visual-scale;
+                        spacing: Theme.space-2 * root.visual-scale;
+
+                        FrameSlot {
+                            label: "First frame";
+                            value: root.slot-first;
+                            drop: root.slot-drop == "firstFrame";
+                            vs: root.visual-scale;
+                        }
+                        FrameSlot {
+                            label: "Last frame";
+                            value: root.slot-last;
+                            drop: root.slot-drop == "lastFrame";
+                            vs: root.visual-scale;
+                        }
+                    }
+                    // Reference tab: N reference-image slots, all visible in
+                    // one row that fills the card width (the frames row's
+                    // geometry). Nine slots are narrow but never clipped or
+                    // hidden behind a scroll: the stepper's N is what you see.
+                    if root.video-mode == "reference" : HorizontalLayout {
+                        height: 96px * root.visual-scale;
+                        spacing: Theme.space-2 * root.visual-scale;
+
+                        for title[index] in root.ref-slot-titles : FrameSlot {
+                            // The slot's number keeps a nine-slot row legible;
+                            // the bound reference's title is the value.
+                            label: "" + (index + 1);
+                            value: title;
+                            drop: root.slot-drop == "reference";
+                            vs: root.visual-scale;
+                        }
+                    }
+                }
+            }
+
+            // Generation body (`ImageGenerationContent` / `VideoGenerationContent`):
+            // the parameter panel at the top taking the spare height, the action
+            // pinned full-width at the bottom. The prompt arrives through the
+            // node's connection, never from this card.
+            if root.status == "" && (root.kind == "image-generation" || root.kind == "video-generation") : VerticalLayout {
+                vertical-stretch: 1;
+                spacing: Theme.space-3 * root.visual-scale;
+
+                // The panel absorbs the card's spare height and shares it evenly
+                // between its rows, so the action keeps one fixed gap above it
+                // and nothing pools in a void.
+                generation-panel := InlineGenerationPanel {
+                    width: 100%;
+                    vertical-stretch: 1;
+                    mode: root.mode;
+                    model: root.model;
+                    model-brand: root.model-brand;
+                    settings: root.generation-settings;
+                    vs: root.visual-scale;
+                    setting(key, value) => {
+                        root.node-setting(root.node-id, key, value);
+                    }
+                }
+
+                // Parameters at the top, the action pinned full-width at the
+                // bottom. There is no output well: generated media lands in a
+                // downstream image node, so an empty preview area would only be
+                // dead space on the card. The panel above takes the spare
+                // height, which keeps this gap constant.
+                //
+                // The action: full-width, 36px, solid brand, pinned last. The
+                // disabled state is 40% opacity with the muted label.
+                generate-btn := Rectangle {
+                    height: 36px * root.visual-scale;
+                    width: 100%;
+                    vertical-stretch: 0;
+                    border-radius: Theme.radius-md * root.visual-scale;
+                    border-width: 1px * root.visual-scale;
+                    border-color: root.can-generate && !root.running
+                        ? (generate-ta.has-hover ? Theme.node-accent : Theme.brand)
+                        : Theme.node-stroke;
+                    background: root.can-generate && !root.running
+                        ? (generate-ta.has-hover ? Theme.node-accent : Theme.brand)
+                        : Theme.brand;
+                    opacity: root.can-generate && !root.running ? 1.0 : 0.4;
+                    transform-scale-x: generate-ta.pressed ? 0.97 : 1.0;
+                    transform-scale-y: generate-ta.pressed ? 0.97 : 1.0;
+                    animate background {
+                        duration: root.can-generate ? Theme.motion-select : Theme.motion-hover;
+                        easing: ease-out;
+                    }
+                    animate border-color {
+                        duration: root.can-generate ? Theme.motion-select : Theme.motion-hover;
+                        easing: ease-out;
+                    }
+                    animate opacity {
+                        duration: Theme.motion-hover;
+                        easing: ease-out;
+                    }
+                    animate transform-scale-x {
+                        duration: Theme.motion-press;
+                        easing: ease-out;
+                    }
+                    animate transform-scale-y {
+                        duration: Theme.motion-press;
+                        easing: ease-out;
+                    }
+
+                    // There is no Stop state on the generation card. The running
+                    // task is disabled here; stopping is the placeholder image
+                    // node's delete action.
+                    generate-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: root.can-generate && !root.running ? pointer : default;
+                        clicked => {
+                            if (root.can-generate && !root.running) {
+                                root.node-generate(root.node-id);
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        cross-axis-alignment: center;
+                        spacing: Theme.space-2 * root.visual-scale;
+
+                        // One icon box keeps the glyph and the label on the same
+                        // centre line: the Path gets an explicit vertical
+                        // centring inside the box instead of relying on the
+                        // play glyph's own viewbox bounds (which sit high).
+                        Rectangle {
+                            width: 16px * root.visual-scale;
+                            height: 16px * root.visual-scale;
+                            background: transparent;
+
+                            Path {
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                width: 15px * root.visual-scale;
+                                height: 15px * root.visual-scale;
+                                viewbox-width: 24;
+                                viewbox-height: 24;
+                                commands: Icons.play;
+                                fill: transparent;
+                                stroke-width: 2px * root.visual-scale;
+                                stroke-line-cap: round;
+                                stroke-line-join: round;
+                                stroke: root.can-generate && !root.running ? Theme.brand-foreground : Theme.node-muted;
+                            }
+                        }
+                        Text {
+                            text: "Generate";
+                            font-size: 12px * root.visual-scale;
+                            font-weight: 600;
+                            color: root.can-generate && !root.running ? Theme.brand-foreground : Theme.node-muted;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            // Plugin node content (`plugin_content.rs` maps each plugin kind to one
+            // of these native renderers; no React, no DOM).
+            if root.plugin-kind == "missing" : VerticalLayout {
+                vertical-stretch: 1;
+                alignment: center;
+                spacing: Theme.space-2 * root.visual-scale;
+
+                Path {
+                    width: 28px * root.visual-scale;
+                    height: 28px * root.visual-scale;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: Icons.puzzle;
+                    fill: transparent;
+                    stroke-width: 1.5px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                    stroke: Theme.node-placeholder;
+                }
+                Text {
+                    vertical-alignment: center;
+                    text: "Plugin not installed";
+                    font-size: 12px * root.visual-scale;
+                    color: Theme.node-placeholder;
+                    horizontal-alignment: center;
+                }
+            }
+            if root.plugin-kind == "sticky" : Rectangle {
+                vertical-stretch: 1;
+                clip: true;
+                border-radius: Theme.radius-md * root.visual-scale;
+                background: root.plugin-bg;
+
+                VerticalLayout {
+                    padding: Theme.space-2 * root.visual-scale;
+                    spacing: Theme.space-2 * root.visual-scale;
+
+                    // Palette row (`sticky-note/index.tsx:94-108`): 8 preset colors.
+                    if root.plugin-palette-open : HorizontalLayout {
+                        height: 22px * root.visual-scale;
+                        spacing: Theme.space-1 * root.visual-scale;
+
+                        for swatch[index] in root.plugin-palette : Rectangle {
+                            width: 20px * root.visual-scale;
+                            height: 20px * root.visual-scale;
+                            border-radius: 10px * root.visual-scale;
+                            border-width: 1px;
+                            border-color: Theme.plugin-note-ink-soft;
+                            background: swatch;
+
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.plugin-palette-pick(root.node-id, index);
+                                }
+                            }
+                        }
+                    }
+                    if root.plugin-editing : PluginEditor {
+                        text <=> root.plugin-edit;
+                        vs: root.visual-scale;
+                        ink: Theme.plugin-note-ink;
+                        text-edited(text) => {
+                            root.plugin-text-edited(root.node-id, text);
+                        }
+                    }
+                    if !root.plugin-editing : Text {
+                        vertical-alignment: center;
+                        text: root.plugin-text;
+                        font-size: 14px * root.visual-scale;
+                        color: root.plugin-empty ? Theme.plugin-note-ink-soft : Theme.plugin-note-ink;
+                        wrap: word-wrap;
+                        vertical-stretch: 1;
+                    }
+                }
+            }
+            if root.plugin-kind == "markdown" : Rectangle {
+                vertical-stretch: 1;
+                clip: true;
+                background: transparent;
+
+                if root.plugin-editing : PluginEditor {
+                    text <=> root.plugin-edit;
+                    vs: root.visual-scale;
+                    text-edited(text) => {
+                        root.plugin-text-edited(root.node-id, text);
+                    }
+                }
+                if !root.plugin-editing : Text {
+                    vertical-alignment: center;
+                    text: root.plugin-text;
+                    font-size: 13px * root.visual-scale;
+                    color: root.plugin-empty ? Theme.node-faint : Theme.node-text;
+                    wrap: word-wrap;
+                }
+            }
+            if root.plugin-kind == "html" : VerticalLayout {
+                vertical-stretch: 1;
+
+                if root.plugin-editing : PluginEditor {
+                    text <=> root.plugin-edit;
+                    vs: root.visual-scale;
+                    text-edited(text) => {
+                        root.plugin-text-edited(root.node-id, text);
+                    }
+                }
+                if !root.plugin-editing : HtmlSandbox {
+                    text: root.plugin-text;
+                    vs: root.visual-scale;
+                }
+            }
+            if root.plugin-kind == "svg" : VerticalLayout {
+                vertical-stretch: 1;
+
+                if root.plugin-editing : PluginEditor {
+                    text <=> root.plugin-edit;
+                    vs: root.visual-scale;
+                    text-edited(text) => {
+                        root.plugin-text-edited(root.node-id, text);
+                    }
+                }
+                if !root.plugin-editing && root.plugin-image.width > 0 : Image {
+                    source: root.plugin-image;
+                    width: 100%;
+                    vertical-stretch: 1;
+                    image-fit: contain;
+                }
+                if !root.plugin-editing && root.plugin-image.width == 0 : Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: Theme.radius-md * root.visual-scale;
+                    border-width: 1px;
+                    border-color: Theme.node-stroke;
+                    background: Theme.toolbar-panel;
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: Theme.space-2 * root.visual-scale;
+
+                        Text {
+                            vertical-alignment: center;
+                            text: "SVG";
+                            font-size: 12px * root.visual-scale;
+                            color: Theme.node-placeholder;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            vertical-alignment: center;
+                            text: "No valid <svg> source yet";
+                            font-size: 11px * root.visual-scale;
+                            color: Theme.node-faint;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+            if root.plugin-kind == "panorama" : PanoramaFrame {
+                empty: root.plugin-empty;
+                vs: root.visual-scale;
+            }
+        }
+
+        // Status plate (`NodeContent` precedence, canvas-node.tsx:496-497): a
+        // designed surface at the card's normal inner inset, whatever the
+        // kind's own body inset is. An image node's body has no padding of its
+        // own, and its card paints no fill -- the plate is what makes a
+        // generating image node read as a card instead of a stray spinner.
+        if root.status == "loading" : Rectangle {
+            x: Theme.space-4 * root.visual-scale;
+            y: Theme.space-4 * root.visual-scale;
+            width: parent.width - 2 * Theme.space-4 * root.visual-scale;
+            height: parent.height - 2 * Theme.space-4 * root.visual-scale;
+            z: 10;
+            background: transparent;
+
+            FrostedPlate {
+                width: 100%;
+                height: 100%;
+                vs: root.visual-scale;
+            }
+
+            // One centred group: the spinner sits directly above the label, and
+            // the group's own box is centred on the plate. The plate's inset is
+            // symmetric, so its centre is the card's centre too. Explicit
+            // geometry (never the layout's stretch) is what guarantees it.
+            Rectangle {
+                width: 100%;
+                height: (40px + Theme.space-3 + 20px) * root.visual-scale;
+                y: (parent.height - self.height) / 2;
+                background: transparent;
+
+                Spinner {
+                    x: (parent.width - self.width) / 2;
+                    y: 0px;
+                    vs: root.visual-scale;
+                }
+                Text {
+                    x: 0px;
+                    y: (40px + Theme.space-3) * root.visual-scale;
+                    width: 100%;
+                    height: 20px * root.visual-scale;
+                    text: "Generating";
+                    font-size: 14px * root.visual-scale;
+                    font-weight: 500;
+                    letter-spacing: 2.8px * root.visual-scale;
+                    color: Theme.node-accent;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        if root.status == "error" : Rectangle {
+            x: Theme.space-4 * root.visual-scale;
+            y: Theme.space-4 * root.visual-scale;
+            width: parent.width - 2 * Theme.space-4 * root.visual-scale;
+            height: parent.height - 2 * Theme.space-4 * root.visual-scale;
+            z: 10;
+            background: transparent;
+
+            FrostedPlate {
+                width: 100%;
+                height: 100%;
+                vs: root.visual-scale;
+            }
+
+            // Message and retry sit in one centred column; only the two
+            // stretchable axes are fixed (`vertical-stretch: 0`), so the
+            // layout's centring has room to work.
+            VerticalLayout {
+                width: 100%;
+                height: 100%;
+                padding: Theme.space-5 * root.visual-scale;
+                alignment: center;
+                spacing: Theme.space-3 * root.visual-scale;
+
+                Text {
+                    vertical-stretch: 0;
+                    horizontal-stretch: 1;
+                    text: root.error-text != "" ? root.error-text : "Generation failed";
+                    font-size: 14px * root.visual-scale;
+                    color: Theme.node-danger;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                }
+                Rectangle {
+                    width: 100%;
+                    height: 32px * root.visual-scale;
+                    vertical-stretch: 0;
+                    background: transparent;
+
+                    retry-btn := Rectangle {
+                        x: (parent.width - self.width) / 2;
+                        height: 32px * root.visual-scale;
+                        width: self.preferred-width;
+                        border-radius: Theme.radius-md * root.visual-scale;
+                        border-width: 1px * root.visual-scale;
+                        border-color: Theme.toolbar-border;
+                        background: retry-ta.has-hover ? Theme.hover : Theme.toolbar-panel;
+
+                        retry-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.node-retry(root.node-id);
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-left: Theme.space-3 * root.visual-scale;
+                            padding-right: Theme.space-3 * root.visual-scale;
+                            spacing: Theme.space-2 * root.visual-scale;
+
+                            Path {
+                                width: 14px * root.visual-scale;
+                                height: 14px * root.visual-scale;
+                                viewbox-width: 24;
+                                viewbox-height: 24;
+                                commands: Icons.refresh;
+                                fill: transparent;
+                                stroke-width: 2px;
+                                stroke-line-cap: round;
+                                stroke-line-join: round;
+                                stroke: Theme.node-text;
+                            }
+                            Text {
+                                text: "Retry";
+                                font-size: 14px * root.visual-scale;
+                                font-weight: 500;
+                                color: Theme.node-text;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Text-style popover (bold / italic / family / size / align / colour): a
+    // raised glass card anchored under the text card's chip row. It writes the
+    // same `metadata.font*`/`text*` keys the web's text settings popover does,
+    // through the one `node-setting` path.
+    if root.style-open && root.kind == "text" : Rectangle {
+        x: parent.width - self.width - Theme.space-2 * root.visual-scale;
+        y: Theme.space-6 * 2 * root.visual-scale;
+        width: 226px * root.visual-scale;
+        height: self.preferred-height;
+        z: 20;
+        border-radius: Theme.radius-lg * root.visual-scale;
+        border-width: 1px;
+        border-color: Theme.glass-panel-border;
+        background: Theme.glass-panel-strong;
+
+        Rectangle {
+            y: 0px;
+            width: 100%;
+            height: 1px;
+            background: Theme.glass-panel-border;
+        }
+
+        VerticalLayout {
+            padding: Theme.space-2 * root.visual-scale;
+            spacing: Theme.space-2 * root.visual-scale;
+
+            HorizontalLayout {
+                height: 18px * root.visual-scale;
+                spacing: Theme.space-1 * root.visual-scale;
+                cross-axis-alignment: center;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: "TEXT STYLE";
+                    font-family: "monospace";
+                    font-size: 9px * root.visual-scale;
+                    letter-spacing: 1.2px * root.visual-scale;
+                    color: Theme.node-faint;
+                    vertical-alignment: center;
+                }
+                IconButton {
+                    size: 18px * root.visual-scale;
+                    icon: Icons.close;
+                    clicked => {
+                        root.style-open = false;
+                    }
+                }
+            }
+
+            // Weight / italic.
+            HorizontalLayout {
+                height: 24px * root.visual-scale;
+                spacing: Theme.space-1 * root.visual-scale;
+                cross-axis-alignment: center;
+
+                StylePill {
+                    label: "B";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "font-weight", "700");
+                    }
+                }
+                StylePill {
+                    label: "Normal";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "font-weight", "400");
+                    }
+                }
+                StylePill {
+                    label: "I";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "italic", "true");
+                    }
+                }
+                StylePill {
+                    label: "Upright";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "italic", "false");
+                    }
+                }
+            }
+            // Family.
+            HorizontalLayout {
+                height: 24px * root.visual-scale;
+                spacing: Theme.space-1 * root.visual-scale;
+                cross-axis-alignment: center;
+
+                StylePill {
+                    label: "Sans";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "font-family", "sans-serif");
+                    }
+                }
+                StylePill {
+                    label: "Serif";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "font-family", "serif");
+                    }
+                }
+                StylePill {
+                    label: "Mono";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "font-family", "monospace");
+                    }
+                }
+            }
+            // Size and alignment.
+            HorizontalLayout {
+                height: 24px * root.visual-scale;
+                spacing: Theme.space-1 * root.visual-scale;
+                cross-axis-alignment: center;
+
+                StylePill {
+                    label: "A-";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "font-size", "-2");
+                    }
+                }
+                StylePill {
+                    label: "A+";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "font-size", "2");
+                    }
+                }
+                StylePill {
+                    label: "L";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "text-align", "left");
+                    }
+                }
+                StylePill {
+                    label: "C";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "text-align", "center");
+                    }
+                }
+                StylePill {
+                    label: "R";
+                    vs: root.visual-scale;
+                    clicked => {
+                        root.node-setting(root.node-id, "text-align", "right");
+                    }
+                }
+            }
+            // Colour swatches (`canvas-text-style-popover.tsx` colour row):
+            // auto reset plus the five semantic inks; every click writes
+            // `metadata.text_color` through the one settings path.
+            HorizontalLayout {
+                height: 20px * root.visual-scale;
+                spacing: Theme.space-1 * root.visual-scale;
+                cross-axis-alignment: center;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: "Color";
+                    font-size: 10px * root.visual-scale;
+                    color: Theme.node-muted;
+                    vertical-alignment: center;
+                }
+                color-auto := Rectangle {
+                    width: 18px * root.visual-scale;
+                    height: 18px * root.visual-scale;
+                    border-radius: 9px * root.visual-scale;
+                    border-width: 1px;
+                    border-color: auto-ta.has-hover ? Theme.border-strong : Theme.node-stroke;
+                    background: Theme.card;
+
+                    auto-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.node-setting(root.node-id, "text-color", "auto");
+                        }
+                    }
+                    Text {
+                        width: 100%;
+                        height: 100%;
+                        text: "A";
+                        font-size: 9px * root.visual-scale;
+                        font-weight: 600;
+                        color: Theme.node-text;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                color-accent := Rectangle {
+                    width: 18px * root.visual-scale;
+                    height: 18px * root.visual-scale;
+                    border-radius: 9px * root.visual-scale;
+                    border-width: 1px;
+                    border-color: accent-ta.has-hover ? Theme.foreground : transparent;
+                    background: Theme.node-accent;
+
+                    accent-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.node-setting(root.node-id, "text-color", "0");
+                        }
+                    }
+                }
+                color-success := Rectangle {
+                    width: 18px * root.visual-scale;
+                    height: 18px * root.visual-scale;
+                    border-radius: 9px * root.visual-scale;
+                    border-width: 1px;
+                    border-color: success-ta.has-hover ? Theme.foreground : transparent;
+                    background: Theme.node-success;
+
+                    success-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.node-setting(root.node-id, "text-color", "1");
+                        }
+                    }
+                }
+                color-warning := Rectangle {
+                    width: 18px * root.visual-scale;
+                    height: 18px * root.visual-scale;
+                    border-radius: 9px * root.visual-scale;
+                    border-width: 1px;
+                    border-color: warning-ta.has-hover ? Theme.foreground : transparent;
+                    background: Theme.node-warning;
+
+                    warning-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.node-setting(root.node-id, "text-color", "2");
+                        }
+                    }
+                }
+                color-info := Rectangle {
+                    width: 18px * root.visual-scale;
+                    height: 18px * root.visual-scale;
+                    border-radius: 9px * root.visual-scale;
+                    border-width: 1px;
+                    border-color: info-ta.has-hover ? Theme.foreground : transparent;
+                    background: Theme.node-info;
+
+                    info-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.node-setting(root.node-id, "text-color", "3");
+                        }
+                    }
+                }
+                color-danger := Rectangle {
+                    width: 18px * root.visual-scale;
+                    height: 18px * root.visual-scale;
+                    border-radius: 9px * root.visual-scale;
+                    border-width: 1px;
+                    border-color: danger-ta.has-hover ? Theme.foreground : transparent;
+                    background: Theme.node-danger;
+
+                    danger-ta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.node-setting(root.node-id, "text-color", "4");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // The generation parameters live inline in the card body now; there is no
+    // second-level popover anchored above the model/settings rows any more.
+
+    // Lock badge (`canvas-node.tsx:464-468`): bottom-left glass chip while the
+    // node's `locked` metadata is set.
+    if root.locked : Rectangle {
+        x: 8px * root.visual-scale;
+        y: parent.height - 24px * root.visual-scale;
+        width: 20px * root.visual-scale;
+        height: 20px * root.visual-scale;
+        border-radius: Theme.radius-md * root.visual-scale;
+        background: Theme.toolbar-panel;
+
+        Path {
+            x: 4px * root.visual-scale;
+            y: 4px * root.visual-scale;
+            width: 12px * root.visual-scale;
+            height: 12px * root.visual-scale;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: Icons.lock;
+            fill: transparent;
+            stroke-width: 2px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: Theme.node-muted;
+        }
+    }
+
+    // The handle layer stays for every kind (it also owns the corner resize
+    // zones). An Image arrives with only its output dot, an Image Stack / Smart
+    // Canvas with neither; `vm::node_row` derives the flags from the asymmetric
+    // `core::connections::accepts_source_connections` /
+    // `accepts_target_connections` rules.
+    NodeHandles {
+        width: 100%;
+        height: 100%;
+        origin-x: root.x;
+        origin-y: root.y;
+        kind: root.kind;
+        locked: root.locked;
+        scale: root.scale;
+        has-source: root.has-source;
+        has-target: root.has-target;
+        show-dots: node-hit.has-hover || root.selected;
+        resize-pointer(corner, kind, x, y) => {
+            root.resize-pointer(corner, kind, x, y);
+        }
+        connect-pointer(handle, kind, x, y) => {
+            root.connect-pointer(handle, kind, x, y);
+        }
+    }
+}
+

@@ -1,0 +1,16 @@
+[package]
+name = "open-canvas-color"
+description = "Pixel formats, colour models and blend-mode math for the vendored imaging crates"
+version.workspace = true
+# Vendored from PhotoCraft's edition-2024 workspace; per-crate edition keeps the
+# sources unchanged while the rest of this workspace stays on 2021.
+edition = "2024"
+license.workspace = true
+
+[lib]
+name = "open_canvas_color"
+path = "src/lib.rs"
+
+[dependencies]
+open-canvas-cms = { workspace = true }
+serde = { workspace = true }

@@ -1,0 +1,8 @@
+# Clippy reads this for every crate in the workspace.
+# Production code keeps its crate-level `deny(clippy::unwrap_used, ...)`; the
+# exemptions below apply to test code only (the vendored imaging crates and our
+# own tests assert with unwrap/expect and index fixed-size fixtures freely).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true

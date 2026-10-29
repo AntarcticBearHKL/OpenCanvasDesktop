@@ -1,0 +1,606 @@
+// AI-backed image tools and their dialogs (`crates/app/src/image_ai.rs`). The
+// dialogs reuse the shared modal chrome (`ModalShell`), the `Theme` tokens and
+// the `Icons` glyphs; every body is a pure function of `ImageAiState` pushed by
+// Rust. Motion: the shared 160ms ease-out modal enter and the 150ms Tailwind
+// default on hover states (docs/research/motion-catalog.md §4/§6).
+import { Theme } from "../theme.slint";
+import { Slider, Button } from "widgets.slint";
+import { Icons } from "icons.slint";
+import { ModalShell } from "modals.slint";
+
+// One open AI image dialog. `kind` picks the body: "ocr" | "angle" | "upscale" |
+// "segment"; the kind-specific fields are filled only for their own body.
+export struct ImageAiState {
+    kind: string,
+    title: string,
+    image: image,
+    source: string,
+    readout: string,
+    message: string,
+    error: bool,
+    running: bool,
+    progress: float,
+    text: string,
+    can-apply: bool,
+    apply-label: string,
+    // Angle parameters (sliders + the lens choice + the variant count).
+    horizontal: float,
+    pitch: float,
+    distance: float,
+    wide: bool,
+    variants: int,
+    // AI upscale factor ("2x" | "4x"), the prompt prefill and the tile count.
+    factor: string,
+    prompt: string,
+    tiles: int,
+    // Segment: the honest local-runtime state.
+    runtime-available: bool,
+    notice: string,
+}
+
+
+
+
+// One selectable chip (factor / format / lens / variant count).
+component AiChip inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 26px;
+    width: self.preferred-width;
+    border-radius: Theme.radius-sm;
+    background: root.active ? Theme.toolbar-accent-bg : chip-ta.has-hover ? Theme.hover : transparent;
+    animate background {
+        duration: root.active ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    chip-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+
+        Text {
+            text: root.label;
+            font-size: 12px;
+            font-weight: 500;
+            color: root.active ? Theme.toolbar-accent-text : Theme.node-muted;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// A horizontal row of chips; `options` are ids, `labels` their display text.
+component AiChipRow inherits Rectangle {
+    in property <[string]> options: [];
+    in property <[string]> labels: [];
+    in property <string> active: "";
+    callback pick(string);
+
+    height: 26px;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: Theme.space-1;
+
+        for option[index] in root.options : AiChip {
+            label: index < root.labels.length ? root.labels[index] : option;
+            active: option == root.active;
+            clicked => {
+                root.pick(option);
+            }
+        }
+    }
+}
+
+// Bordered text input; `in-out` so typing never resets the caret.
+component AiInput inherits Rectangle {
+    in-out property <string> text: "";
+    in property <bool> multiline: false;
+    in property <string> placeholder: "";
+    callback edited(string);
+
+    height: root.multiline ? 92px : 32px;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.node-fill;
+
+    TextInput {
+        x: 8px;
+        y: root.multiline ? 6px : 0px;
+        width: parent.width - 16px;
+        height: root.multiline ? parent.height - 12px : parent.height;
+        text <=> root.text;
+        single-line: !root.multiline;
+        wrap: word-wrap;
+        font-size: 12px;
+        color: Theme.node-text;
+        vertical-alignment: root.multiline ? top : center;
+        edited => {
+            root.edited(root.text);
+        }
+    }
+}
+
+// Small section label.
+component AiLabel inherits Text {
+    font-size: 12px;
+    font-weight: 500;
+    color: Theme.node-label;
+    vertical-alignment: center;
+}
+
+// Image preview plate shared by every body.
+component AiPreview inherits Rectangle {
+    in property <image> source;
+    in property <string> readout: "";
+
+    vertical-stretch: 1;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.node-stroke;
+    background: Theme.media-video-backdrop;
+
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.source;
+        image-fit: contain;
+    }
+    Rectangle {
+        visible: root.readout != "";
+        x: 8px;
+        y: parent.height - 26px;
+        width: parent.width - 16px;
+        height: 20px;
+        border-radius: Theme.radius-sm;
+        background: Theme.glass-panel-strong;
+
+        Text {
+            x: 6px;
+            width: parent.width - 12px;
+            text: root.readout;
+            font-size: 11px;
+            color: Theme.node-text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+// Shared footer: the progress bar of a running request, the status line, Cancel
+// and the primary action.
+component AiFooter inherits VerticalLayout {
+    in property <string> message: "";
+    in property <bool> error: false;
+    in property <bool> running: false;
+    in property <bool> can-apply: true;
+    in property <string> apply-label: "";
+    in property <float> progress: 0;
+    callback close();
+    callback cancel();
+    callback apply();
+
+    height: root.running ? 42px : 32px;
+    spacing: Theme.space-2;
+
+    // 4px track with the accent fill: the per-item progress of a multi-request
+    // job (angle variants / upscale tiles).
+    Rectangle {
+        visible: root.running;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.muted;
+
+        Rectangle {
+            x: 0px;
+            width: parent.width * max(0, min(1, root.progress));
+            height: 100%;
+            border-radius: 2px;
+            background: Theme.node-accent;
+        }
+    }
+    HorizontalLayout {
+        height: 32px;
+        spacing: Theme.space-2;
+
+        Text {
+            visible: root.message != "";
+            text: root.message;
+            font-size: 12px;
+            color: root.error ? Theme.node-danger : Theme.node-muted;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        Rectangle {
+            visible: root.message == "";
+            horizontal-stretch: 1;
+            background: transparent;
+        }
+        Button { variant: "ghost";
+            visible: root.running;
+            label: "Cancel request";
+            icon: Icons.close;
+            clicked => {
+                root.cancel();
+            }
+        }
+        Button { variant: "ghost";
+            visible: !root.running;
+            label: "Close";
+            clicked => {
+                root.close();
+            }
+        }
+        Button { variant: "primary";
+            label: root.apply-label;
+            enabled: !root.running && root.can-apply;
+            clicked => {
+                root.apply();
+            }
+        }
+    }
+}
+
+// The AI image dialog: one body per tool, dispatched by `state.kind`.
+export component ImageAiModal inherits ModalShell {
+    in property <ImageAiState> state;
+    in property <[string]> variant-options: [];
+    in property <[string]> variant-labels: [];
+    in property <[string]> factor-options: [];
+    in property <[string]> factor-labels: [];
+    callback field(string, string);
+    callback pick(string, string);
+    callback cancel();
+    callback apply();
+
+    // Editable drafts: seeded from the pushed state, never reset while the user
+    // types or drags (the pushed value equals what was reported back).
+    in-out property <float> horizontal-draft: 0;
+    in-out property <float> pitch-draft: 0;
+    in-out property <float> distance-draft: 0;
+    in-out property <string> prompt-draft: "";
+    changed state => {
+        root.seed();
+    }
+    function seed() {
+        if (root.horizontal-draft != root.state.horizontal) {
+            root.horizontal-draft = root.state.horizontal;
+        }
+        if (root.pitch-draft != root.state.pitch) {
+            root.pitch-draft = root.state.pitch;
+        }
+        if (root.distance-draft != root.state.distance) {
+            root.distance-draft = root.state.distance;
+        }
+        if (root.prompt-draft != root.state.prompt) {
+            root.prompt-draft = root.state.prompt;
+        }
+    }
+
+    title: root.state.title != "" ? root.state.title : "Image AI";
+    panel-width: root.state.kind == "angle" ? 760px : 640px;
+    body-height: 470px;
+
+    // ---- OCR ---------------------------------------------------------------
+    if root.state.kind == "ocr" : VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: Theme.space-3;
+
+        AiPreview {
+            source: root.state.image;
+            readout: root.state.source;
+        }
+        Text {
+            vertical-alignment: center;
+            text: root.state.notice;
+            font-size: 12px;
+            color: Theme.node-muted;
+            wrap: word-wrap;
+        }
+        Rectangle {
+            visible: root.state.text != "";
+            height: 140px;
+            border-radius: Theme.radius-md;
+            border-width: 1px;
+            border-color: Theme.node-stroke;
+            background: Theme.card;
+
+            Text {
+                vertical-alignment: center;
+                x: 10px;
+                y: 8px;
+                width: parent.width - 20px;
+                height: parent.height - 16px;
+                text: root.state.text;
+                font-size: 12px;
+                color: Theme.node-text;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+        }
+        AiFooter {
+            message: root.state.message;
+            error: root.state.error;
+            running: root.state.running;
+            progress: root.state.progress;
+            can-apply: root.state.can-apply;
+            apply-label: root.state.apply-label;
+            close => {
+                root.close();
+            }
+            cancel => {
+                root.cancel();
+            }
+            apply => {
+                root.apply();
+            }
+        }
+    }
+
+    // ---- Multi-angle -------------------------------------------------------
+    if root.state.kind == "angle" : VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: Theme.space-3;
+
+        HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: Theme.space-3;
+
+            AiPreview {
+                source: root.state.image;
+                readout: root.state.source;
+            }
+            VerticalLayout {
+                width: 320px;
+                spacing: Theme.space-3;
+
+                AiLabel {
+                    text: "Horizontal";
+                }
+                Slider { height: 24px;
+                    minimum: -60;
+                    maximum: 60;
+                    value <=> root.horizontal-draft;
+                    changed(value) => {
+                        root.field("horizontal", "\{value}");
+                    }
+                }
+                AiLabel {
+                    text: "Pitch";
+                }
+                Slider { height: 24px;
+                    minimum: -45;
+                    maximum: 45;
+                    value <=> root.pitch-draft;
+                    changed(value) => {
+                        root.field("pitch", "\{value}");
+                    }
+                }
+                AiLabel {
+                    text: "Camera distance";
+                }
+                Slider { height: 24px;
+                    minimum: 1;
+                    maximum: 10;
+                    value <=> root.distance-draft;
+                    changed(value) => {
+                        root.field("distance", "\{value}");
+                    }
+                }
+                HorizontalLayout {
+                    height: 26px;
+                    spacing: Theme.space-2;
+
+                    AiLabel {
+                        text: "Lens";
+                    }
+                    AiChip {
+                        label: "Standard";
+                        active: !root.state.wide;
+                        clicked => {
+                            root.pick("wide", "standard");
+                        }
+                    }
+                    AiChip {
+                        label: "Wide";
+                        active: root.state.wide;
+                        clicked => {
+                            root.pick("wide", "wide");
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            height: 26px;
+            spacing: Theme.space-2;
+
+            AiLabel {
+                text: "Views";
+            }
+            AiChipRow {
+                options: root.variant-options;
+                labels: root.variant-labels;
+                active: "\{root.state.variants}";
+                pick(option) => {
+                    root.pick("variants", option);
+                }
+            }
+        }
+        Text {
+            vertical-alignment: center;
+            text: root.state.notice;
+            font-size: 12px;
+            color: Theme.node-muted;
+            wrap: word-wrap;
+        }
+        AiFooter {
+            message: root.state.message;
+            error: root.state.error;
+            running: root.state.running;
+            progress: root.state.progress;
+            can-apply: root.state.can-apply;
+            apply-label: root.state.apply-label;
+            close => {
+                root.close();
+            }
+            cancel => {
+                root.cancel();
+            }
+            apply => {
+                root.apply();
+            }
+        }
+    }
+
+    // ---- AI upscale --------------------------------------------------------
+    if root.state.kind == "upscale" : VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: Theme.space-3;
+
+        AiPreview {
+            source: root.state.image;
+            readout: root.state.readout;
+        }
+        HorizontalLayout {
+            height: 26px;
+            spacing: Theme.space-2;
+
+            AiLabel {
+                text: "Factor";
+            }
+            AiChipRow {
+                options: root.factor-options;
+                labels: root.factor-labels;
+                active: root.state.factor;
+                pick(option) => {
+                    root.pick("factor", option);
+                }
+            }
+            Text {
+                text: "\{root.state.tiles} tile(s)";
+                font-size: 12px;
+                color: Theme.node-muted;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                horizontal-alignment: right;
+            }
+        }
+        AiLabel {
+            text: "Prompt";
+        }
+        AiInput {
+            multiline: true;
+            text <=> root.prompt-draft;
+            edited(text) => {
+                root.field("prompt", text);
+            }
+        }
+        Text {
+            vertical-alignment: center;
+            text: root.state.notice;
+            font-size: 12px;
+            color: Theme.node-muted;
+            wrap: word-wrap;
+        }
+        AiFooter {
+            message: root.state.message;
+            error: root.state.error;
+            running: root.state.running;
+            progress: root.state.progress;
+            can-apply: root.state.can-apply;
+            apply-label: root.state.apply-label;
+            close => {
+                root.close();
+            }
+            cancel => {
+                root.cancel();
+            }
+            apply => {
+                root.apply();
+            }
+        }
+    }
+
+    // ---- Segmentation ------------------------------------------------------
+    if root.state.kind == "segment" : VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: Theme.space-3;
+
+        AiPreview {
+            source: root.state.image;
+            readout: root.state.source;
+        }
+        Rectangle {
+            height: 64px;
+            border-radius: Theme.radius-md;
+            background: Theme.node-warning-soft;
+
+            HorizontalLayout {
+                padding: Theme.space-3;
+                spacing: Theme.space-2;
+
+                Path {
+                    width: 16px;
+                    height: 16px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: Icons.info;
+                    fill: transparent;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                    stroke: Theme.node-warning;
+                }
+                Text {
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    text: root.state.notice;
+                    font-size: 12px;
+                    color: Theme.node-text;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        Text {
+            vertical-alignment: center;
+            text: root.state.runtime-available
+                ? "A local segmentation runtime is configured."
+                : "No local segmentation runtime is configured in this build.";
+            font-size: 12px;
+            font-weight: 500;
+            color: root.state.runtime-available ? Theme.node-success : Theme.node-warning;
+        }
+        AiFooter {
+            message: root.state.message;
+            error: root.state.error;
+            running: root.state.running;
+            progress: root.state.progress;
+            can-apply: root.state.can-apply;
+            apply-label: root.state.apply-label;
+            close => {
+                root.close();
+            }
+            cancel => {
+                root.cancel();
+            }
+            apply => {
+                root.apply();
+            }
+        }
+    }
+}

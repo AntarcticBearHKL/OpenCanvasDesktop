@@ -1,0 +1,1105 @@
+import { Theme } from "../theme.slint";
+import { I18n } from "i18n.slint";
+import { IconButton, Button } from "widgets.slint";
+import { Icons } from "icons.slint";
+import { LibraryGroupRow, ProjectListRow } from "overlay-types.slint";
+import { ModalShell } from "modals.slint";
+import { WindowButtons } from "window-chrome.slint";
+
+// The home screen's model: a Project (level 1) holds Canvases. The left
+// sidebar lists the projects (`LibraryGroupRow`), the right pane lists the
+// selected project's canvases (`ProjectListRow`). Rust owns both models; this
+// file only paints them and reports intent back through callbacks.
+
+// Inline single-line rename input (AntD Input small); takes focus on mount and
+// reports every keystroke so Rust owns the draft. It draws on the one surface
+// (no card plate): the accent border alone marks the editable field.
+component NameEdit inherits Rectangle {
+    in property <string> initial: "";
+    in-out property <string> draft: initial;
+    callback edited(string);
+    callback save();
+    callback cancel();
+
+    height: 28px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.node-accent;
+    // A frosted field: a foreground wash over the window plate, never an
+    // opaque plate of its own (the home screen stays one translucent surface).
+    background: Theme.foreground.with-alpha(0.07);
+
+    input := TextInput {
+        x: 8px;
+        width: parent.width - 12px;
+        height: 100%;
+        text <=> root.draft;
+        single-line: true;
+        font-size: 13px;
+        color: Theme.node-text;
+        vertical-alignment: center;
+        edited => {
+            root.edited(root.draft);
+        }
+        accepted => {
+            root.save();
+        }
+    }
+    init => {
+        input.focus();
+        input.select-all();
+    }
+}
+
+// One project in the left sidebar: a project glyph, the name, and - on hover or
+// while selected - the inline rename / arm-then-confirm delete affordances. A
+// single click selects the project, a double-click opens its most recent
+// canvas. The row sits directly on the one surface: a hover wash, a selected
+// tint, no card plate.
+component ProjectSidebarRow inherits Rectangle {
+    in property <string> name: "";
+    in property <bool> active: false;
+    in property <bool> editing: false;
+    in property <bool> armed: false;
+    callback select();
+    callback action(string);
+    callback name-edited(string);
+
+    height: 44px;
+    border-radius: Theme.radius-sm;
+    background: root.active ? Theme.node-accent.with-alpha(0.12) : ta.has-hover ? Theme.hover : transparent;
+    animate background {
+        // Selection steps on the longer token, plain hover on the short one;
+        // reduced motion collapses both to an instant state change.
+        duration: Theme.reduced-motion ? 0ms : (root.active ? Theme.motion-select : Theme.motion-hover);
+        easing: ease-out;
+    }
+
+    // One hairline per project row, matching the canvas rows: the list reads as
+    // rows, not as one continuous block.
+    Rectangle {
+        y: parent.height - 1px;
+        width: 100%;
+        height: 1px;
+        background: Theme.border;
+        opacity: 0.55;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        // A project is a scope switch: one click selects it (and shows its
+        // canvases). Double-click opens its most recently edited canvas; the
+        // canvas row itself opens on a single click.
+        clicked => {
+            if (!root.editing) {
+                root.select();
+            }
+        }
+        double-clicked => {
+            if (!root.editing) {
+                root.action("open");
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-2;
+        padding-right: Theme.space-1;
+        spacing: Theme.space-2;
+        cross-axis-alignment: center;
+
+        if !root.editing : Path {
+            width: 16px;
+            height: 16px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: Icons.folder;
+            fill: transparent;
+            stroke-width: 1.6px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: root.active ? Theme.node-accent : Theme.node-muted;
+        }
+
+        if !root.editing : Text {
+            text: root.name;
+            horizontal-stretch: 1;
+            font-size: 13px;
+            font-weight: root.active ? 600 : 500;
+            color: root.active ? Theme.foreground : Theme.node-label;
+            vertical-alignment: center;
+            overflow: elide;
+            animate color {
+                duration: Theme.reduced-motion ? 0ms : Theme.motion-select;
+                easing: ease-out;
+            }
+        }
+
+        // Renaming swaps the name for the field plus its explicit save / cancel
+        // pair, so the row never changes meaning while the draft is open.
+        if root.editing : NameEdit {
+            horizontal-stretch: 1;
+            initial: root.name;
+            edited(text) => {
+                root.name-edited(text);
+            }
+            save => {
+                root.action("rename-save");
+            }
+            cancel => {
+                root.action("rename-cancel");
+            }
+        }
+        if root.editing : IconButton { variant: "ghost";
+            icon: Icons.check;
+            clicked => {
+                root.action("rename-save");
+            }
+        }
+        if root.editing : IconButton { variant: "ghost";
+            icon: Icons.close;
+            clicked => {
+                root.action("rename-cancel");
+            }
+        }
+
+        // Hover (or the selected row, so the affordances stay reachable) shows
+        // the rename / delete pair in place. `visible` keeps the hidden pair
+        // out of hit testing.
+        if !root.editing && (ta.has-hover || root.active || root.armed) : HorizontalLayout {
+            spacing: 0px;
+            cross-axis-alignment: center;
+
+            IconButton { variant: "ghost";
+                icon: Icons.pencil;
+                size: 24px;
+                clicked => {
+                    root.action("rename");
+                }
+            }
+            IconButton { variant: "ghost";
+                icon: root.armed ? Icons.check : Icons.trash;
+                danger: true;
+                size: 24px;
+                clicked => {
+                    root.action("delete");
+                }
+            }
+        }
+    }
+}
+
+// One canvas row of the right-hand table: name, last edited, actions. The three
+// cells use the same stretch factors as the header (40 / 28 / 32), so every
+// column lines up exactly. A single click selects, a double-click opens; the
+// trailing cell carries rename / duplicate / delete, centred on the row. The row
+// sits directly on the one surface: hover wash, selected tint, one hairline.
+component CanvasRow inherits Rectangle {
+    in property <string> title: "";
+    in property <string> updated: "";
+    in property <bool> editing: false;
+    in property <bool> armed: false;
+    in property <bool> selected: false;
+    // Set by Rust for the rebuild in which the canvas set changed: the row
+    // starts slightly transparent and settles on the select token. The first
+    // paint (and every rebuild that keeps the set) starts opaque.
+    in property <bool> fade-in: false;
+    callback action(string);
+    callback title-edited(string);
+
+    // The entrance is the row's own initial value chasing 1 in `init` (the same
+    // pattern as the modal shell, so the first rendered frame is already mostly
+    // opaque); it stays inside the select token and respects reduced motion.
+    in-out property <float> enter: root.fade-in ? 0.55 : 1;
+    animate enter {
+        duration: Theme.reduced-motion ? 0ms : Theme.motion-select;
+        easing: ease-out;
+    }
+    init => {
+        if (root.fade-in) {
+            root.enter = 1;
+        }
+    }
+
+    height: 44px;
+    opacity: root.enter;
+    background: root.selected ? Theme.node-accent.with-alpha(0.12) : ta.has-hover ? Theme.hover : transparent;
+    animate background {
+        duration: Theme.reduced-motion ? 0ms : (root.selected ? Theme.motion-select : Theme.motion-hover);
+        easing: ease-out;
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        width: 100%;
+        height: 1px;
+        background: Theme.border;
+        opacity: 0.6;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        // One click opens the canvas; selecting is part of opening, so there is
+        // no separate double-click step.
+        clicked => {
+            if (!root.editing) {
+                root.action("open");
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: 0px;
+        cross-axis-alignment: center;
+
+        // ---- name (40%) ---------------------------------------------------
+        Rectangle {
+            width: (parent.width - 32px) * 0.4;
+            height: 100%;
+            background: transparent;
+
+            if !root.editing : Text {
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 100%;
+                text: root.title;
+                font-size: 13px;
+                font-weight: root.selected ? 600 : 500;
+                color: root.selected ? Theme.brand : Theme.foreground;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+                animate color {
+                    duration: Theme.reduced-motion ? 0ms : Theme.motion-select;
+                    easing: ease-out;
+                }
+            }
+            if root.editing : NameEdit {
+                x: 0px;
+                y: (parent.height - self.height) / 2;
+                width: 100%;
+                initial: root.title;
+                edited(text) => {
+                    root.title-edited(text);
+                }
+                save => {
+                    root.action("rename-save");
+                }
+                cancel => {
+                    root.action("rename-cancel");
+                }
+            }
+        }
+
+        // ---- last edited (28%) --------------------------------------------
+        Rectangle {
+            width: (parent.width - 32px) * 0.28;
+            height: 100%;
+            background: transparent;
+
+            Text {
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 100%;
+                text: root.updated;
+                font-size: 12px;
+                color: Theme.node-muted;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+
+        // ---- actions (32%, icons centred in the cell) ---------------------
+        Rectangle {
+            horizontal-stretch: 1;
+            height: 100%;
+            background: transparent;
+
+            HorizontalLayout {
+                width: 100%;
+                height: 100%;
+                alignment: center;
+                // The icon row is centred on the row's cross axis, so the
+                // trailing actions share the name / date text centre line.
+                cross-axis-alignment: center;
+                spacing: 2px;
+                opacity: ta.has-hover || root.selected || root.armed || root.editing ? 1 : 0.45;
+                animate opacity {
+                    duration: Theme.reduced-motion ? 0ms : (root.armed ? Theme.motion-select : Theme.motion-hover);
+                    easing: ease-out;
+                }
+
+                // A double-click on the row opens the canvas; the trailing
+                // icons are rename / duplicate / delete only.
+                if !root.editing : HorizontalLayout {
+                    spacing: 2px;
+                    alignment: center;
+                    cross-axis-alignment: center;
+
+                    IconButton { variant: "ghost";
+                        icon: Icons.pencil;
+                        clicked => {
+                            root.action("rename");
+                        }
+                    }
+                    IconButton { variant: "ghost";
+                        icon: Icons.copy;
+                        clicked => {
+                            root.action("duplicate");
+                        }
+                    }
+                    IconButton { variant: "ghost";
+                        icon: root.armed ? Icons.check : Icons.trash;
+                        danger: true;
+                        clicked => {
+                            root.action("delete");
+                        }
+                    }
+                }
+                if root.editing : HorizontalLayout {
+                    spacing: 2px;
+                    alignment: center;
+                    cross-axis-alignment: center;
+
+                    IconButton { variant: "ghost";
+                        icon: Icons.check;
+                        clicked => {
+                            root.action("rename-save");
+                        }
+                    }
+                    IconButton { variant: "ghost";
+                        icon: Icons.close;
+                        clicked => {
+                            root.action("rename-cancel");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The app band's drag surface: dragging moves the window through the app's own
+// cursor-sampling loop (so the event loop keeps running), and a double-click
+// toggles maximise. Declared behind the band's title and controls, which sit
+// above it and take their own clicks.
+component WindowDragArea inherits TouchArea {
+    callback drag-begin();
+    callback drag-tick();
+    callback drag-end();
+    callback maximize-toggle();
+
+    width: 100%;
+    height: 100%;
+    double-clicked => {
+        root.maximize-toggle();
+    }
+    pointer-event(e) => {
+        if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+            root.drag-begin();
+        } else if (e.kind == PointerEventKind.move && self.pressed) {
+            root.drag-tick();
+        } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+            root.drag-end();
+        }
+    }
+}
+
+// The home screen: ONE continuous surface (no split pane, no section plates).
+// Everything draws on the window plate the root already paints, so this screen
+// only uses `transparent` backgrounds and the single `Theme.background` tone
+// shows through from edge to edge. Top to bottom, left to right:
+//
+//   1. the app band (~76px) - "PROJECTS" is the app-level title at the far
+//                    left (the project list no longer sits above it), the
+//                    settings gear and the three window controls at the far
+//                    right, and the whole band is the manual window drag
+//                    surface (a double-click maximises).
+//   2. the project sidebar (~240px) below the band - a 44px list toolbar
+//                    carrying only the ghost `+` New Project action, then one
+//                    row per project. A single click selects, a double-click
+//                    opens the project's most recent canvas, and the hovered /
+//                    selected row carries rename and delete.
+//   3. the right pane - a 26px project header row (the project name and its
+//                    ghost `+` New Canvas button) followed by the 18px table
+//                    column header, then the full-width canvas table (columns
+//                    40/28/32).
+//
+// The right header stack is exactly `header-band` (44px) tall - the same as the
+// sidebar's list toolbar - so the first project row and the first canvas row
+// start on one y and share a centre line.
+export component LibraryScreen inherits Rectangle {
+    in property <[LibraryGroupRow]> groups: [];
+    in property <[ProjectListRow]> projects: [];
+    in property <string> group-title: "";
+    in property <bool> has-group: false;
+    // True while the window is maximised: swaps the restore glyph.
+    in property <bool> maximized: false;
+    // The app band at the very top of the window: the PROJECTS title and the
+    // window controls. It is the only drag surface on the home screen.
+    property <length> title-band: 76px;
+    // The one offset both home columns share below the app band: the sidebar's
+    // list toolbar and the right pane's header stack are both this tall, so the
+    // two lists start on one y. `project-header-band` is the top part of the
+    // right stack (the project name and its `+`); the table column header takes
+    // the rest.
+    property <length> header-band: 44px;
+    property <length> project-header-band: 26px;
+    callback create-group();
+    callback select-group(string);
+    callback group-action(string, string);
+    callback group-name-edited(string);
+    callback create-project();
+    callback project-action(string, string);
+    callback project-name-edited(string);
+    callback settings();
+    callback minimize();
+    callback maximize-toggle();
+    callback close();
+    callback go-home();
+    // Manual window move from the app band (the only drag surface the home
+    // screen has now that there is no app title bar).
+    callback drag-begin();
+    callback drag-tick();
+    callback drag-end();
+
+    // No plate of its own: the window's single `Theme.background` surface (the
+    // root plate in `app.slint`) runs unbroken from the left edge to the right.
+    background: transparent;
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 0px;
+
+        // =================================================================
+        // 0. the app band: PROJECTS + window controls (the drag surface)
+        // =================================================================
+        Rectangle {
+            height: root.title-band;
+            background: transparent;
+
+            // The whole band moves the window through the app's cursor loop;
+            // a double-click toggles maximise. The title and the controls sit
+            // above it, so a click on a button never starts a drag.
+            WindowDragArea {
+                drag-begin => {
+                    root.drag-begin();
+                }
+                drag-tick => {
+                    root.drag-tick();
+                }
+                drag-end => {
+                    root.drag-end();
+                }
+                maximize-toggle => {
+                    root.maximize-toggle();
+                }
+            }
+
+            HorizontalLayout {
+                width: 100%;
+                height: 100%;
+                padding-left: Theme.space-5;
+                padding-right: Theme.space-2;
+                spacing: Theme.space-2;
+                cross-axis-alignment: center;
+
+                // The app-level title. It used to be the sidebar's 15px caps
+                // label; it is the biggest type on the screen now, and the
+                // project list starts below it instead of above it.
+                // Home replaces the old PROJECTS wordmark: the app title is
+                // the house, and the project rows below carry the names.
+                IconButton {
+                    icon: Icons.home;
+                    tooltip-enabled: true;
+                    tip: "Home";
+                    tip-description: "Save the open project and return to the library";
+                    clicked => {
+                        root.go-home();
+                    }
+                }
+
+                // New Project sits beside Home; no project name is written to
+                // its left.
+                IconButton { variant: "ghost";
+                    icon: Icons.plus;
+                    tooltip-enabled: true;
+                    tip: I18n.library-new-project;
+                    clicked => {
+                        root.create-group();
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 100%;
+                    background: transparent;
+                }
+
+                IconButton { variant: "ghost";
+                    icon: Icons.settings;
+                    clicked => {
+                        root.settings();
+                    }
+                }
+                WindowButtons {
+                    horizontal-stretch: 0;
+                    maximized: root.maximized;
+                    minimize => {
+                        root.minimize();
+                    }
+                    maximize-toggle => {
+                        root.maximize-toggle();
+                    }
+                    close => {
+                        root.close();
+                    }
+                }
+            }
+
+            // The band closes with one hairline, so the two columns below read
+            // as content rather than as part of the app title row.
+            Rectangle {
+                y: parent.height - 1px;
+                width: 100%;
+                height: 1px;
+                background: Theme.border;
+                opacity: 0.5;
+            }
+        }
+
+        HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 0px;
+
+        // =================================================================
+        // 1. the project sidebar
+        // =================================================================
+        Rectangle {
+            width: 240px;
+            background: transparent;
+
+            // The one hairline that separates the project list from the
+            // canvas pane; the surface tone itself runs underneath both.
+            Rectangle {
+                x: parent.width - 1px;
+                width: 1px;
+                height: 100%;
+                background: Theme.border;
+                opacity: 0.75;
+            }
+
+            VerticalLayout {
+                spacing: 0px;
+
+                // ---- the project rows --------------------------------------
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: transparent;
+                    clip: true;
+
+                    if root.groups.length == 0 : Rectangle {
+                        width: 100%;
+                        height: 100%;
+
+                        Text {
+                            x: Theme.space-4;
+                            y: Theme.space-2;
+                            width: parent.width - Theme.space-4 - Theme.space-3;
+                            text: I18n.library-empty-no-projects;
+                            font-size: 12px;
+                            color: Theme.node-muted;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    Flickable {
+                        x: 0px;
+                        y: 0px;
+                        width: 100%;
+                        height: 100%;
+                        content-width: self.width;
+                        content-height: max(root.groups.length * 44px, self.height);
+
+                        VerticalLayout {
+                            width: 100%;
+                            padding-left: Theme.space-2;
+                            padding-right: Theme.space-2;
+                            // No top padding: the first project row starts at
+                            // the content top, level with the right project
+                            // title. The 44px pitch then puts the second
+                            // project row on the first scene/canvas row.
+                            spacing: 0px;
+
+                            for group in root.groups : ProjectSidebarRow {
+                                name: group.name;
+                                active: group.active;
+                                editing: group.editing;
+                                armed: group.armed;
+                                select => {
+                                    root.select-group(group.id);
+                                }
+                                action(a) => {
+                                    root.group-action(group.id, a);
+                                }
+                                name-edited(t) => {
+                                    root.group-name-edited(t);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // =================================================================
+        // 2. the right pane: header + centred canvas table
+        // =================================================================
+        Rectangle {
+            horizontal-stretch: 1;
+            background: transparent;
+
+            VerticalLayout {
+                spacing: 0px;
+
+                // ---- the project header row (project name + New Canvas) ---
+                // The top half of the 44px header stack. The drag surface and
+                // the window controls are in the app band above; this row only
+                // names the selected project and offers its `+`.
+                Rectangle {
+                    height: root.project-header-band;
+                    background: transparent;
+
+                    HorizontalLayout {
+                        width: 100%;
+                        height: 100%;
+                        padding-left: Theme.space-5;
+                        padding-right: Theme.space-2;
+                        spacing: Theme.space-3;
+                        cross-axis-alignment: center;
+
+                        // No project name is written to the left of this +:
+                        // the selected project is already highlighted in the
+                        // sidebar. The button alone adds the canvas.
+                        IconButton { variant: "ghost";
+                            size: 24px;
+                            icon: Icons.plus;
+                            tooltip-enabled: true;
+                            tip: I18n.library-new-canvas;
+                            enabled: root.has-group;
+                            clicked => {
+                                root.create-project();
+                            }
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: 100%;
+                            background: transparent;
+                        }
+                    }
+
+                    // Hairline between the scene/project name and the column
+                    // labels: the title is a heading, the labels are the table.
+                    Rectangle {
+                        y: parent.height - 1px;
+                        width: 100%;
+                        height: 1px;
+                        background: Theme.border;
+                        opacity: 0.45;
+                    }
+                }
+
+                // ---- the canvas table area ---------------------------------
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: transparent;
+                    clip: true;
+
+                    // No project at all: the pane explains how to make one.
+                    if !root.has-group : Rectangle {
+                        width: 100%;
+                        height: 100%;
+
+                        VerticalLayout {
+                            alignment: center;
+                            cross-axis-alignment: center;
+                            spacing: Theme.space-3;
+
+                            Path {
+                                width: 40px;
+                                height: 40px;
+                                viewbox-width: 24;
+                                viewbox-height: 24;
+                                commands: Icons.folder;
+                                fill: transparent;
+                                stroke-width: 1.5px;
+                                stroke-line-cap: round;
+                                stroke-line-join: round;
+                                stroke: Theme.node-placeholder;
+                            }
+                            Text {
+                                vertical-alignment: center;
+                                text: I18n.library-empty-no-projects;
+                                font-size: 15px;
+                                font-weight: 600;
+                                color: Theme.foreground;
+                                horizontal-alignment: center;
+                            }
+                            Text {
+                                vertical-alignment: center;
+                                text: I18n.library-empty-no-projects-hint;
+                                font-size: 13px;
+                                color: Theme.node-muted;
+                                horizontal-alignment: center;
+                            }
+                            Button { variant: "primary";
+                                label: I18n.library-new-project;
+                                clicked => {
+                                    root.create-group();
+                                }
+                            }
+                        }
+                    }
+
+                    // The table spans the whole right pane: the header rule and
+                    // every row hairline run edge to edge, and the 40 / 28 / 32
+                    // column shares split the full pane width.
+                    if root.has-group : Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: transparent;
+
+                        VerticalLayout {
+                            spacing: 0px;
+
+                            // ---- column header (same 40 / 28 / 32 share) -----
+                            // The bottom half of the 44px header stack; with
+                            // the 26px project row above it, the first canvas
+                            // row starts on the same y as the first project
+                            // row in the sidebar.
+                            Rectangle {
+                                height: root.header-band - root.project-header-band;
+                                background: transparent;
+
+                                HorizontalLayout {
+                                    width: 100%;
+                                    height: 100%;
+                                    padding-left: Theme.space-4;
+                                    padding-right: Theme.space-4;
+                                    spacing: 0px;
+                                    cross-axis-alignment: center;
+
+                                    Rectangle {
+                                        width: (parent.width - 32px) * 0.4;
+                                        height: 100%;
+                                        background: transparent;
+
+                                        Text {
+                                            x: 0px;
+                                            y: 0px;
+                                            width: 100%;
+                                            height: 100%;
+                                            text: I18n.library-name-column;
+                                            font-size: 13px;
+                                            font-weight: 700;
+                                            letter-spacing: 0.6px;
+                                            color: Theme.node-muted;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                    Rectangle {
+                                        width: (parent.width - 32px) * 0.28;
+                                        height: 100%;
+                                        background: transparent;
+
+                                        Text {
+                                            x: 0px;
+                                            y: 0px;
+                                            width: 100%;
+                                            height: 100%;
+                                            text: I18n.library-updated-column;
+                                            font-size: 13px;
+                                            font-weight: 700;
+                                            letter-spacing: 0.6px;
+                                            color: Theme.node-muted;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                        height: 100%;
+                                        background: transparent;
+
+                                        Text {
+                                            x: 0px;
+                                            y: 0px;
+                                            width: 100%;
+                                            height: 100%;
+                                            text: I18n.library-actions-column;
+                                            font-size: 13px;
+                                            font-weight: 700;
+                                            letter-spacing: 0.6px;
+                                            color: Theme.node-muted;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    y: parent.height - 1px;
+                                    width: 100%;
+                                    height: 1px;
+                                    background: Theme.border;
+                                    opacity: 0.6;
+                                }
+                            }
+
+                            // ---- canvas rows, or the empty-project state -----
+                            Rectangle {
+                                vertical-stretch: 1;
+                                background: transparent;
+                                clip: true;
+
+                                if root.projects.length == 0 : Rectangle {
+                                    width: 100%;
+                                    height: 100%;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        cross-axis-alignment: center;
+                                        spacing: Theme.space-3;
+
+                                        Path {
+                                            width: 36px;
+                                            height: 36px;
+                                            viewbox-width: 24;
+                                            viewbox-height: 24;
+                                            commands: Icons.smart-canvas;
+                                            fill: transparent;
+                                            stroke-width: 1.5px;
+                                            stroke-line-cap: round;
+                                            stroke-line-join: round;
+                                            stroke: Theme.node-placeholder;
+                                        }
+                                        Text {
+                                            vertical-alignment: center;
+                                            text: I18n.library-empty-project;
+                                            font-size: 15px;
+                                            font-weight: 600;
+                                            color: Theme.foreground;
+                                            horizontal-alignment: center;
+                                        }
+                                        Text {
+                                            vertical-alignment: center;
+                                            text: I18n.library-empty-project-hint;
+                                            font-size: 13px;
+                                            color: Theme.node-muted;
+                                            horizontal-alignment: center;
+                                        }
+                                        Button { variant: "primary";
+                                            label: I18n.library-new-canvas;
+                                            clicked => {
+                                                root.create-project();
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Flickable {
+                                    visible: root.projects.length > 0;
+                                    x: 0px;
+                                    y: 0px;
+                                    width: 100%;
+                                    height: 100%;
+                                    content-width: self.width;
+                                    content-height: max(root.projects.length * 44px, self.height);
+
+                                    VerticalLayout {
+                                        width: 100%;
+                                        spacing: 0px;
+
+                                        for project in root.projects : CanvasRow {
+                                            title: project.title;
+                                            updated: project.updated;
+                                            editing: project.editing;
+                                            armed: project.armed;
+                                            selected: project.selected;
+                                            fade-in: project.fade;
+                                            action(a) => {
+                                                root.project-action(project.id, a);
+                                            }
+                                            title-edited(t) => {
+                                                root.project-name-edited(t);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
+    }
+}
+
+// 16px packing spinner: one turn per second, linear (motion-catalog §4
+// `animate-spin` = 1000ms linear infinite), the accent arc over a muted ring.
+component Spinner inherits Rectangle {
+    width: 16px;
+    height: 16px;
+
+    property <angle> turn: 0deg;
+    animate turn {
+        duration: Theme.motion-spin;
+        iteration-count: -1;
+        easing: linear;
+    }
+    init => {
+        root.turn = 360deg;
+    }
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        border-radius: self.width / 2;
+        border-width: 2px;
+        border-color: Theme.node-stroke;
+    }
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: Icons.loader;
+        fill: transparent;
+        stroke-width: 2px;
+        stroke-line-cap: round;
+        stroke: Theme.node-accent;
+        transform-origin: {
+            x: self.width / 2,
+            y: self.height / 2,
+        };
+        transform-rotation: root.turn;
+    }
+}
+
+// Export/import modal: the path prompt both flows share (no native file dialog;
+// the path starts at a sensible target and can be typed over). Packing an
+// archive is a real job, so the modal shows its packing state while it runs;
+// the state is the component's own (Run sets it, the arriving result clears it).
+export component ExportImportModal inherits ModalShell {
+    in property <bool> import-mode: false;
+    in property <string> hint: "";
+    in property <string> message: "";
+    in property <bool> error: false;
+    in-out property <string> path: "";
+    in-out property <bool> busy: false;
+    callback path-edited(string);
+    callback run();
+
+    body-height: 200px;
+
+    changed message => {
+        root.busy = false;
+    }
+    changed path => {
+        root.busy = false;
+    }
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: Theme.space-3;
+
+        Text {
+            text: root.hint;
+            font-size: 12px;
+            color: Theme.node-muted;
+            wrap: word-wrap;
+        }
+        Rectangle {
+            height: 34px;
+            border-radius: Theme.radius-sm;
+            border-width: 1px;
+            border-color: Theme.node-stroke;
+            // Frosted field: a foreground wash on the frosted modal, no plate.
+            background: Theme.foreground.with-alpha(0.07);
+
+            TextInput {
+                x: 8px;
+                width: parent.width - 16px;
+                height: 100%;
+                text <=> root.path;
+                single-line: true;
+                font-size: 12px;
+                color: Theme.node-text;
+                vertical-alignment: center;
+                edited => {
+                    root.path-edited(root.path);
+                }
+                accepted => {
+                    if (!root.busy) {
+                        root.busy = true;
+                        root.run();
+                    }
+                }
+            }
+        }
+        if root.busy : HorizontalLayout {
+            height: 18px;
+            spacing: Theme.space-2;
+            cross-axis-alignment: center;
+
+            Spinner { }
+            Text {
+                text: root.import-mode ? "Reading the archive…" : "Packing the archive…";
+                font-size: 12px;
+                color: Theme.node-muted;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            vertical-alignment: center;
+            visible: root.message != "";
+            text: root.message;
+            font-size: 12px;
+            color: root.error ? Theme.node-danger : Theme.node-success;
+            wrap: word-wrap;
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            background: transparent;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Theme.space-2;
+
+            Button { variant: "ghost"; pad: 16px; font-size: 13px; font-weight: 500;
+                label: "Cancel";
+                clicked => {
+                    root.close();
+                }
+            }
+            Button { variant: "primary";
+                label: root.import-mode ? "Import" : "Export";
+                enabled: !root.busy;
+                clicked => {
+                    root.busy = true;
+                    root.run();
+                }
+            }
+        }
+    }
+}

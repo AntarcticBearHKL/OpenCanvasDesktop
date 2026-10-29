@@ -1,0 +1,15 @@
+[package]
+name = "open-canvas-geom"
+description = "Geometry primitives (rects, tiles, warps) shared by the vendored imaging crates"
+version.workspace = true
+# Vendored from PhotoCraft's edition-2024 workspace; per-crate edition keeps the
+# sources unchanged while the rest of this workspace stays on 2021.
+edition = "2024"
+license.workspace = true
+
+[lib]
+name = "open_canvas_geom"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }

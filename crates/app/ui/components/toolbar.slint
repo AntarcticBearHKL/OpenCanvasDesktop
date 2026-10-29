@@ -1,0 +1,148 @@
+import { Theme } from "../theme.slint";
+import { IconButton } from "widgets.slint";
+import { Icons } from "icons.slint";
+
+component DockDivider inherits Rectangle {
+    width: 1px;
+    height: 24px;
+    background: Theme.toolbar-border;
+}
+
+// CanvasToolbar (ui-inventory §1.3): centered floating dock, h-14, rounded-xl,
+// glass-surface. Wired: the side-panel toggle, undo/redo (disabled when the
+// history is empty), the direct node-type buttons (one per creatable built-in
+// type) and the conditional delete button. Home lives in the side panel header.
+//
+// Node creation lives at the dock's centre. The bar hugs its content and is
+// centred as a whole: `[panel] │ [undo redo] │ [node types] │ [trash]`.
+// No group stretches, so there are no gaps; the single rhythm is 4px inside a
+// button group, 6px either side of a divider and 10px outer padding.
+//
+// The surface is flat on purpose: a 1px hairline and the glass panel tier, no
+// drop shadow / outer glow. The bar floats over the canvas, it does not light
+// it up.
+//
+// Everything else that used to sit here is gone: the canvas-background menu
+// (the canvas always paints the dot grid), the zoom panel and its percentage
+// button (the percentage is now a fading overlay on the canvas itself), the
+// node list panel and the plugin entries (plugin management moved to the
+// library's top bar).
+export component DockBar inherits Rectangle {
+    in property <bool> can-undo: false;
+    in property <bool> can-redo: false;
+    in property <bool> has-selection: false;
+    // Side-panel state: lights the panel toggle while the canvas panel is open.
+    in property <bool> panel-open: true;
+    // The built-in node types that can be created: only the types whose node
+    // arrives with usable content. `image` is absent (display-only: generation
+    // or an asset drop fills it) and so is `text` (a text node is produced by a
+    // text-generation card; its type still renders existing documents).
+    in property <[string]> create-types: ["image-attempt", "image", "image-stack", "assets", "smart-canvas"];
+    callback undo();
+    callback redo();
+    callback delete-selection();
+    callback toggle-panel();
+    callback create-node(string);
+
+    width: self.preferred-width;
+    height: 56px;
+    border-radius: Theme.radius-xl;
+    border-width: 1px;
+    border-color: Theme.glass-panel-border;
+    background: Theme.glass-panel;
+
+    // One row, three button groups plus the conditional trash, one rhythm: 4px
+    // between the buttons of a group and 6px of breathing room around each
+    // divider. The 10px outer gutter is the only padding, so the bar hugs its
+    // content and stays centred: the last child always ends exactly at
+    // `width - 10px`, with no reserved slot for a hidden action.
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        cross-axis-alignment: center;
+
+        // ---- nav: the side-panel toggle --------------------------------------
+        HorizontalLayout {
+            spacing: 4px;
+            cross-axis-alignment: center;
+
+            IconButton {
+                icon: Icons.panel-left;
+                active: root.panel-open;
+                tooltip-enabled: true;
+                tip: "Side panel";
+                tip-description: "Show or hide the canvas project panel";
+                clicked => {
+                    root.toggle-panel();
+                }
+            }
+        }
+        DockDivider {
+        }
+
+        // ---- history: undo / redo --------------------------------------------
+        HorizontalLayout {
+            spacing: 4px;
+            cross-axis-alignment: center;
+
+            IconButton {
+                icon: Icons.undo;
+                enabled: root.can-undo;
+                tooltip-enabled: true;
+                tip: "Undo";
+                tip-description: "Step back through the last edits";
+                clicked => {
+                    root.undo();
+                }
+            }
+            IconButton {
+                icon: Icons.redo;
+                enabled: root.can-redo;
+                tooltip-enabled: true;
+                tip: "Redo";
+                tip-description: "Replay the edit you just undid";
+                clicked => {
+                    root.redo();
+                }
+            }
+        }
+        DockDivider {
+        }
+
+        // ---- create: one button per creatable built-in node type. This group
+        // owns the bar's centre axis.
+        HorizontalLayout {
+            spacing: 4px;
+            cross-axis-alignment: center;
+
+            for type-id in root.create-types : IconButton {
+                icon: Icons.kind-icon(type-id);
+                tooltip-enabled: true;
+                tip: Icons.type-name(type-id);
+                tip-description: Icons.type-description(type-id);
+                clicked => {
+                    root.create-node(type-id);
+                }
+            }
+        }
+
+        // Delete is the last conditional action and only exists while
+        // something is selected: an `if` removes it from the layout entirely,
+        // so at rest the node group ends at the bar's 10px gutter instead of a
+        // reserved slot.
+        if root.has-selection : DockDivider {
+        }
+        if root.has-selection : IconButton {
+            icon: Icons.trash;
+            danger: true;
+            tooltip-enabled: true;
+            tip: "Delete";
+            tip-description: "Remove the selected nodes and wires";
+            clicked => {
+                root.delete-selection();
+            }
+        }
+
+    }
+}

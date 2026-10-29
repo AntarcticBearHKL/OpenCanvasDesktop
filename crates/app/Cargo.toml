@@ -1,0 +1,76 @@
+[package]
+name = "open-canvas-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+description = "Native Rust + Slint port of the OpenCanvas canvas app (P1: static shell)"
+
+[dependencies]
+slint = { version = "1.18", features = ["unstable-fontique-011", "unstable-winit-030"] }
+open-canvas-core = { path = "../core" }
+# The UI-independent half of the app (document, gestures, paths, persistence
+# helpers, cost log, native window helpers). Slint-free on purpose: it builds in
+# parallel with this crate's codegen unit and survives `.slint`-only edits.
+open-canvas-app-core = { path = "../app-core" }
+open-canvas-ai = { path = "../ai" }
+open-canvas-ps = { path = "../ps" }
+open-canvas-plugins = { path = "../plugins" }
+# Raster decode for canvas node media (`media.rs`): the same `image` build the
+# ps crate links, with every raster format an assets card or OS drop accepts.
+# GIF/TIFF decode their first frame as a still image (the node is a bitmap).
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "bmp",
+    "webp",
+    "gif",
+    "tiff",
+    "ico",
+    "tga",
+] }
+# SVG rasterization for `svg:vector` plugin nodes (headless, no DOM); the
+# raster is handed to Slint as an RGBA pixel buffer, see `plugin_content.rs`.
+resvg = "0.48"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+base64 = "0.22"
+ab_glyph = "0.2"
+# System clipboard for the Ctrl+V fallback path; the same crate is already in
+# the dependency graph through Slint's winit backend, so no new tree is built.
+arboard = "3.7"
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }
+
+[dev-dependencies]
+tempfile = "3"
+gif = "0.14"
+# `Doc::demo()`, the canvas test fixture, lives behind app-core's `test-fixtures`
+# feature (a library dependency does not see `cfg(test)`).
+open-canvas-app-core = { path = "../app-core", features = ["test-fixtures"] }
+# Headless render tests: the testing backend embeds the software rasterizer so
+# `Window::take_snapshot` can assert node content at the pixel level (no GUI,
+# no window; project rule: code-only verification).
+i-slint-backend-testing = { version = "1.18", features = ["renderer-software"] }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+let_underscore_must_use = "deny"
+allow_attributes = "deny"
+
+[build-dependencies]
+slint-build = "1.18"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"

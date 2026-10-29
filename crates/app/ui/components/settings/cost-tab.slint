@@ -1,0 +1,211 @@
+// Cost tab: what the recorded spend adds up to, the generation-id lookup, then
+// the ledger grouped by model. Presentation only — every value and callback is
+// owned by Rust.
+
+import { Theme } from "../../theme.slint";
+import { I18n } from "../i18n.slint";
+import { Button } from "../widgets.slint";
+import { CostRecordRow } from "../overlay-types.slint";
+import {
+    FieldInput, SettingsCard, SettingsChip, SettingsDivider, SettingsEmptyState, SettingsPageHeader,
+} from "settings-widgets.slint";
+
+export component CostTab inherits VerticalLayout {
+    in property <[CostRecordRow]> cost-rows: [];
+    in property <string> cost-summary: "";
+    in property <string> cost-generation-id: "";
+    // Record counts over the whole log (the rows below are the newest window).
+    in property <int> cost-priced-count: 0;
+    callback cost-clear();
+    callback cost-id-edited(string);
+    callback cost-lookup();
+
+    spacing: 14px;
+
+    SettingsPageHeader {
+        title: I18n.config-cost-title;
+        description: I18n.config-cost-page-hint;
+    }
+
+    // 1. What the record adds up to, in one headline.
+    SettingsCard {
+        eyebrow: I18n.config-cost-eyebrow-total;
+        title: I18n.config-cost-total;
+        action-label: I18n.config-cost-clear;
+        action-danger: true;
+        action-enabled: root.cost-rows.length > 0;
+        action => {
+            root.cost-clear();
+        }
+
+        Text {
+            text: root.cost-summary == "" ? I18n.config-cost-empty : root.cost-summary;
+            font-size: 20px;
+            font-weight: 600;
+            font-family: "Cascadia Mono";
+            color: Theme.node-text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        HorizontalLayout {
+            min-height: 24px;
+            spacing: 6px;
+            cross-axis-alignment: center;
+            Text {
+                text: root.cost-priced-count;
+                font-size: 12px;
+                font-family: "Cascadia Mono";
+                color: Theme.node-text;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.cost-priced-count == 1 ? I18n.config-cost-priced-record : I18n.config-cost-priced-records;
+                font-size: 12px;
+                color: Theme.muted-foreground;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+        }
+    }
+
+    // 2. Resolve one generation id to its recorded price.
+    SettingsCard {
+        eyebrow: I18n.config-cost-eyebrow-lookup;
+        title: I18n.config-cost-lookup;
+        hint: I18n.config-cost-lookup-hint;
+
+        VerticalLayout {
+            spacing: 6px;
+
+            Text {
+                text: I18n.config-cost-lookup-label;
+                font-size: 11px;
+                font-family: "Cascadia Mono";
+                letter-spacing: 0.8px;
+                color: Theme.muted-foreground;
+                vertical-alignment: center;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                cross-axis-alignment: center;
+                FieldInput {
+                    horizontal-stretch: 1;
+                    mono: true;
+                    initial: root.cost-generation-id;
+                    placeholder: I18n.config-cost-lookup-field;
+                    edited(value) => {
+                        root.cost-id-edited(value);
+                    }
+                }
+                Button {
+                    variant: "primary";
+                    height: 30px;
+                    radius: Theme.radius-sm;
+                    font-size: 12px;
+                    font-weight: 600;
+                    pad: 14px;
+                    label: I18n.config-cost-lookup-action;
+                    clicked => {
+                        root.cost-lookup();
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. The ledger: one bold header per model, its records underneath.
+    SettingsCard {
+        eyebrow: I18n.config-cost-eyebrow-ledger;
+        title: I18n.config-cost-recent;
+
+        if root.cost-rows.length == 0 : SettingsEmptyState {
+            title: I18n.config-cost-empty;
+            hint: I18n.config-cost-empty-hint;
+        }
+
+        for row[index] in root.cost-rows : VerticalLayout {
+            spacing: 0px;
+
+            // A headline separates the model groups; the first one needs none.
+            if row.heading && index > 0 : SettingsDivider { }
+
+            if row.heading : HorizontalLayout {
+                height: 30px;
+                spacing: 8px;
+                cross-axis-alignment: center;
+                Text {
+                    text: row.model;
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: Theme.node-text;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    text: row.detail;
+                    font-size: 11px;
+                    color: Theme.muted-foreground;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: transparent;
+                }
+            }
+
+            if !row.heading : HorizontalLayout {
+                min-height: 40px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 10px;
+                cross-axis-alignment: center;
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    Text {
+                        text: row.model;
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Theme.node-text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: row.detail;
+                        font-size: 12px;
+                        color: Theme.muted-foreground;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+
+                // Where the price came from: estimate / lookup / api.
+                if row.source != "" : SettingsChip {
+                    label: row.source;
+                }
+
+                // The amount slot itself: an unpriced record is flagged, never
+                // rendered as a zero.
+                if row.unpriced : SettingsChip {
+                    tone: "danger";
+                    label: row.amount;
+                }
+                if !row.unpriced : Text {
+                    text: row.amount;
+                    font-size: 13px;
+                    font-weight: 600;
+                    font-family: "Cascadia Mono";
+                    color: Theme.node-text;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

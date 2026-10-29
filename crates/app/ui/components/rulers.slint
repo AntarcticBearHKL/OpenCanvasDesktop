@@ -1,0 +1,108 @@
+import { Theme } from "../theme.slint";
+import { RulerTick, RulerTickImage } from "overlay-types.slint";
+
+// Ruler tick labels (canvas-rulers.tsx): 20px top strip / 26px left strip on
+// the canvas edge, `toolbar.panel` surface with a `toolbar.border` edge, world
+// values from the viewport transform in `node.muted` at fontSize 11. Labels
+// only — the web draws no tick lines — and the two strips never overlap because
+// the tick lists are built with the corner skipped (panels.rs).
+//
+// Both strips stay flush with the canvas edges. The canvas carries no window
+// chrome over them any more (the floating pill cluster is gone), so every
+// number stays readable and clickable.
+//
+// The left axis reads bottom-to-top, but the label is NOT rotated here: Rust
+// rasterises it at the exact pixel size with `ab_glyph` and rotates the bitmap
+// (-90°, `ruler_text.rs`), and the cached `slint::Image` is drawn upright at a
+// whole-pixel position. Slint re-samples a rotated `Text` on every fractional
+// position, which softened and thickened the numbers while the canvas panned; a
+// bitmap has no transform, so it stays crisp. `ruler-left-width` is the one
+// place the strip width is declared: the top strip's x offset follows it so the
+// corner never overlaps.
+component RulerLabelImage inherits Image {
+    in property <RulerTickImage> tick;
+
+    x: Math.round((26px - root.tick.label-width) / 2px) * 1px;
+    y: root.tick.label-y;
+    width: root.tick.label-width;
+    height: root.tick.label-height;
+    source: root.tick.image;
+    image-fit: fill;
+}
+
+export component Rulers inherits Rectangle {
+    in property <[RulerTick]> ticks-x: [];
+    in property <[RulerTickImage]> labels-y: [];
+    // Width of the vertical strip; the top strip starts right of it.
+    out property <length> ruler-left-width: 26px;
+
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    z: 75;
+
+    // Left strip: width 26, page top = below the top bar (the canvas area
+    // already starts there), height = the rest of the canvas.
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.ruler-left-width;
+        height: 100%;
+        background: Theme.glass-panel;
+
+        Rectangle {
+            y: 0px;
+            width: 100%;
+            height: 1px;
+            background: Theme.glass-panel-border;
+        }
+
+        Rectangle {
+            x: parent.width - 1px;
+            width: 1px;
+            height: 100%;
+            background: Theme.glass-panel-border;
+        }
+
+        for tick in root.labels-y : RulerLabelImage {
+            tick: tick;
+        }
+    }
+
+    // Top strip: starts right of the left strip, page top = below the top bar.
+    Rectangle {
+        x: root.ruler-left-width;
+        y: 0px;
+        width: parent.width - root.ruler-left-width;
+        height: 20px;
+        background: Theme.glass-panel;
+
+        Rectangle {
+            y: 0px;
+            width: 100%;
+            height: 1px;
+            background: Theme.glass-panel-border;
+        }
+
+        Rectangle {
+            y: parent.height - 1px;
+            width: 100%;
+            height: 1px;
+            background: Theme.glass-panel-border;
+        }
+
+        for tick in root.ticks-x : Text {
+            // Web: `left: screen + 4 - RULER_THICKNESS`, line-height 20.
+            x: tick.pos - 16px;
+            y: 0px;
+            width: 60px;
+            height: 20px;
+            text: tick.label;
+            font-size: 10px;
+            font-weight: 400;
+            color: Theme.node-muted;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+        }
+    }
+}

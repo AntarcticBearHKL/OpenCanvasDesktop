@@ -1,0 +1,152 @@
+// English copy for the shell chrome (top bar, canvas dock) and the settings
+// modal. Rust owns the one table (`src/i18n.rs`) and pushes it here at startup,
+// so the components only read. There is no locale switch: the product ships
+// en-US only.
+export global I18n {
+    in property <string> locale: "en-US";
+
+    // Home screen (library.slint): the project sidebar and the canvas table.
+    // The model is Projects (level 1) holding Canvases.
+    in property <string> library-eyebrow: "LIBRARY";
+    in property <string> library-projects-label: "PROJECTS";
+    in property <string> library-new-project: "New Project";
+    in property <string> library-new-canvas: "New Canvas";
+    in property <string> library-no-project: "No project";
+    in property <string> library-name-column: "Name";
+    in property <string> library-updated-column: "Last edited";
+    in property <string> library-actions-column: "Actions";
+    in property <string> library-empty-project: "No canvases yet";
+    in property <string> library-empty-project-hint: "Create a canvas and it opens in the editor.";
+    in property <string> library-empty-no-projects: "No projects yet";
+    in property <string> library-empty-no-projects-hint: "Create a project to hold your canvases.";
+
+    // Canvas dock + zoom popover (toolbar.slint).
+    in property <string> dock-shortcuts: "Keyboard shortcuts";
+
+    // Shortcut reference values (shortcuts-list.slint; keys stay literal).
+    in property <string> shortcut-toggle-tool: "Temporarily switch Select / Move";
+    in property <string> shortcut-wheel: "Zoom canvas";
+    in property <string> shortcut-zoom-slider: "Adjust zoom precisely";
+    in property <string> shortcut-box-select: "Box-select nodes";
+    in property <string> shortcut-add-selection: "Add nodes to the selection";
+    in property <string> shortcut-select-all: "Select all nodes";
+    in property <string> shortcut-copy: "Copy selected nodes";
+    in property <string> shortcut-cut: "Cut selected nodes";
+    in property <string> shortcut-paste: "Paste nodes or clipboard payload";
+    in property <string> shortcut-undo: "Undo";
+    in property <string> shortcut-redo: "Redo";
+    in property <string> shortcut-delete: "Delete selection or the selected wire";
+    in property <string> shortcut-cut-wires: "Cut wires crossed by the stroke";
+    in property <string> shortcut-reset-view: "Reset view";
+    in property <string> shortcut-fit: "Fit to content";
+    in property <string> shortcut-escape: "Clear selection and close overlays";
+
+    // Settings modal (config-modal.slint).
+    in property <string> config-title: "Settings";
+    in property <string> config-tab-providers: "Providers";
+    in property <string> config-tab-appearance: "Appearance";
+    in property <string> config-tab-local-models: "Local models";
+    in property <string> config-tab-local-storage: "Local storage";
+    in property <string> config-tab-cost: "Cost";
+    in property <string> config-tab-logs: "Runtime logs";
+    in property <string> config-tab-about: "About";
+    in property <string> config-plugins-title: "Plugins";
+    in property <string> config-plugins-hint: "Install, enable and remove node plugins. The plugin manager opens over this window.";
+    in property <string> config-plugins-open: "Open plugin manager";
+
+    in property <string> config-providers-title: "Providers";
+    in property <string> config-providers-name: "Name";
+    in property <string> config-providers-base-url: "Base URL";
+    in property <string> config-providers-api-key: "API key";
+    in property <string> config-providers-no-models: "No models yet";
+
+    in property <string> config-appearance-theme: "Theme";
+    in property <string> config-appearance-window: "Window";
+    in property <string> config-appearance-opacity: "Opacity";
+    in property <string> config-appearance-opacity-hint: "The white frost over the captured desktop. 80 ships as the asset-library look; 0 shows the blurred desktop almost directly.";
+    in property <string> config-appearance-blur: "Blur";
+    in property <string> config-appearance-blur-off: "Off";
+    in property <string> config-appearance-blur-hint: "Blurs the captured desktop behind the window. 0 removes the blur layer and falls back to the opaque plate; higher values give a stronger, softer frost.";
+    in property <string> config-theme-light: "Light";
+    in property <string> config-theme-dark: "Dark";
+    in property <string> config-theme-system: "Follow system";
+
+    in property <string> config-local-title: "Local Models";
+    in property <string> config-local-page-hint: "Optional models that run on this device instead of in the cloud.";
+    in property <string> config-local-eyebrow-runtime: "RUNTIME";
+    in property <string> config-local-runtime: "On-device runtime";
+    in property <string> config-local-runtime-ready: "Runtime installed";
+    in property <string> config-local-runtime-missing: "Runtime not installed";
+    in property <string> config-local-runtime-hint: "Runs background removal and segmentation locally. Model files are never downloaded for you.";
+    in property <string> config-local-refresh: "Refresh";
+    in property <string> config-local-reveal: "Reveal";
+    in property <string> config-local-dir: "Models folder";
+    in property <string> config-local-eyebrow-models: "MODELS";
+    in property <string> config-local-models-title: "Available models";
+    in property <string> config-local-empty: "No local models";
+    in property <string> config-local-empty-hint: "Add model files to the models folder, then refresh.";
+    in property <string> config-local-installed: "Installed";
+    in property <string> config-local-missing: "Not installed";
+
+    in property <string> config-storage-title: "Local Storage";
+    in property <string> config-storage-hint: "What this app keeps on this device, and how much room it takes.";
+    in property <string> config-storage-eyebrow-summary: "TOTAL";
+    in property <string> config-storage-total: "App data";
+    in property <string> config-storage-eyebrow-breakdown: "BREAKDOWN";
+    in property <string> config-storage-by-kind: "By kind";
+    in property <string> config-storage-eyebrow-danger: "DANGER";
+    in property <string> config-storage-clear-title: "Clear local data";
+    in property <string> config-storage-clear-hint: "Deletes the exported files in the app data folder. Projects, models and settings are kept.";
+    in property <string> config-storage-refresh: "Refresh";
+    in property <string> config-storage-reveal: "Reveal";
+    in property <string> config-storage-clear: "Clear exports";
+    in property <string> config-storage-clear-armed: "Confirm clear exports?";
+    in property <string> config-storage-empty: "No data directory yet";
+    in property <string> config-storage-empty-hint: "Storage appears here after the app writes its first file.";
+    in property <string> config-storage-kind: "kind";
+    in property <string> config-storage-kinds: "kinds";
+    in property <string> config-storage-file: "file";
+    in property <string> config-storage-files: "files";
+
+    in property <string> config-cost-title: "Cost";
+    in property <string> config-cost-page-hint: "Every generation this app has priced, recorded on this device.";
+    in property <string> config-cost-eyebrow-total: "TOTAL";
+    in property <string> config-cost-total: "Total spend";
+    in property <string> config-cost-priced-record: "priced record";
+    in property <string> config-cost-priced-records: "priced records";
+    in property <string> config-cost-eyebrow-ledger: "LEDGER";
+    in property <string> config-cost-recent: "Recorded generations";
+    in property <string> config-cost-empty: "No cost records yet";
+    in property <string> config-cost-empty-hint: "Generate something, or look up a generation id, to record its cost here.";
+    in property <string> config-cost-clear: "Clear history";
+    in property <string> config-cost-unpriced: "Unpriced";
+    in property <string> config-cost-eyebrow-lookup: "LOOKUP";
+    in property <string> config-cost-lookup: "Look up a generation id";
+    in property <string> config-cost-lookup-hint: "Resolves a generation id to the cost the provider recorded for it. The result is appended to the ledger.";
+    in property <string> config-cost-lookup-label: "Generation id";
+    in property <string> config-cost-lookup-field: "gen_...";
+    in property <string> config-cost-lookup-action: "Look up";
+
+    in property <string> config-logs-title: "Runtime Logs";
+    in property <string> config-logs-page-hint: "What this app has done this session, newest first.";
+    in property <string> config-logs-eyebrow-controls: "FILTERS";
+    in property <string> config-logs-controls-title: "Filter and export";
+    in property <string> config-logs-level: "Level";
+    in property <string> config-logs-category: "Category";
+    in property <string> config-logs-eyebrow-stream: "STREAM";
+    in property <string> config-logs-stream-title: "Log stream";
+    in property <string> config-logs-empty: "No runtime logs yet";
+    in property <string> config-logs-empty-hint: "Runtime activity appears here as it happens.";
+    in property <string> config-logs-empty-filtered: "No logs match this filter";
+    in property <string> config-logs-empty-filtered-hint: "Change the level or category to see more entries.";
+    in property <string> config-logs-clear: "Clear";
+    in property <string> config-logs-all: "All";
+    in property <string> config-logs-all-categories: "All categories";
+    in property <string> config-logs-copy: "Copy";
+    in property <string> config-logs-download: "Download";
+    in property <string> config-logs-info: "Info";
+    in property <string> config-logs-warn: "Warning";
+    in property <string> config-logs-error: "Error";
+
+    in property <string> config-about-version: "Version";
+}

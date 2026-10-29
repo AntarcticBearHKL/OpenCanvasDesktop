@@ -1,0 +1,736 @@
+import { Theme } from "../theme.slint";
+import { Icons } from "icons.slint";
+import { HoverAction, MentionRow } from "overlay-types.slint";
+
+// Popover enter animation (globals.css:795-805 `canvas-popover-in`): 160ms
+// `ease-out`, opacity 0 + translateY(4px) + scale(.98) → none. Slint's Transform
+// item supplies the scale and origin; the rise rides on `y`.
+export component PopoverCard inherits Rectangle {
+    in property <length> anchor-x: 0px;
+    in property <length> anchor-y: 0px;
+    in property <bool> shown: false;
+
+    in-out property <float> reveal: root.shown ? 1 : 0;
+    animate reveal {
+        duration: Theme.motion-popover;
+        easing: ease-out;
+    }
+
+    // Anchored like the web's `-translate-x-1/2 -translate-y-full` bars.
+    x: root.anchor-x - self.width / 2;
+    y: root.anchor-y - self.height + 4px * (1 - root.reveal);
+    opacity: root.reveal;
+    transform-scale-x: 98% + 2% * root.reveal;
+    transform-scale-y: 98% + 2% * root.reveal;
+    transform-origin: {
+        x: self.width / 2,
+        y: self.height / 2,
+    };
+    background: Theme.glass-panel-strong;
+    border-width: 1px;
+    border-color: Theme.glass-panel-border;
+    border-radius: Theme.radius-xl;
+
+    // Layered panel edges: top highlight + bottom hairline on the opaque fill.
+    Rectangle {
+        y: 0px;
+        width: 100%;
+        height: 1px;
+        background: Theme.glass-panel-border;
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        width: 100%;
+        height: 1px;
+        background: Theme.glass-panel-border;
+    }
+
+    @children
+}
+
+// One floating-bar action: 44px hit row, 32px pill, `hover:bg-hover`
+// (canvas-floating-toolbar.tsx:26-37).
+component BarAction inherits Rectangle {
+    in property <string> icon: "";
+    in property <string> label: "";
+    in property <bool> show-label: false;
+    in property <bool> active: false;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    callback hovered(bool);
+    callback press-state(bool);
+
+    width: self.preferred-width;
+    height: 44px;
+    background: transparent;
+    opacity: root.enabled ? 1 : 0.4;
+    animate opacity {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+        changed has-hover => {
+            root.hovered(self.has-hover);
+        }
+        changed pressed => {
+            root.press-state(self.pressed);
+        }
+    }
+
+    HorizontalLayout {
+        cross-axis-alignment: center;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        padding-left: 2px;
+        padding-right: 2px;
+
+        Rectangle {
+            width: root.show-label ? self.preferred-width : 32px;
+            height: 32px;
+            border-radius: 16px;
+            border-width: 1px;
+            border-color: root.active ? Theme.brand : ta.has-hover && root.enabled ? Theme.border-strong : transparent;
+            background: root.active ? Theme.brand : ta.has-hover && root.enabled ? Theme.hover : transparent;
+            transform-scale-x: ta.pressed && root.enabled ? 0.97 : 1.0;
+            transform-scale-y: ta.pressed && root.enabled ? 0.97 : 1.0;
+            animate background {
+                duration: root.active ? Theme.motion-select : Theme.motion-hover;
+                easing: ease-out;
+            }
+            animate border-color {
+                duration: root.active ? Theme.motion-select : Theme.motion-hover;
+                easing: ease-out;
+            }
+            animate transform-scale-x {
+                duration: Theme.motion-press;
+                easing: ease-out;
+            }
+            animate transform-scale-y {
+                duration: Theme.motion-press;
+                easing: ease-out;
+            }
+
+            HorizontalLayout {
+                alignment: center;
+                cross-axis-alignment: center;
+                height: 100%;
+                padding-left: root.show-label ? 10px : 0px;
+                padding-right: root.show-label ? 10px : 0px;
+                spacing: 8px;
+
+                Path {
+                    width: 16px;
+                    height: 16px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: root.icon;
+                    fill: transparent;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                    stroke: root.active ? Theme.brand-foreground : root.danger ? Theme.node-danger : Theme.toolbar-item-text;
+                }
+                if root.show-label : Text {
+                    text: root.label;
+                    font-size: 13px;
+                    font-weight: 500;
+                    color: root.active ? Theme.brand-foreground : root.danger ? Theme.node-danger : Theme.toolbar-item-text;
+                    animate color {
+                        duration: root.active ? Theme.motion-select : Theme.motion-hover;
+                        easing: ease-out;
+                    }
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+component BarDivider inherits Rectangle {
+    width: 1px;
+    height: 20px;
+    background: Theme.toolbar-item-text;
+    opacity: 0.2;
+}
+
+// Glass-raised menu row (w-44 panel, rounded-md rows, `hover:bg-hover`); the
+// active row carries the selected-state ink (`toolbar.accent-*`).
+export component MenuItem inherits Rectangle {
+    in property <string> icon: "";
+    in property <string> label: "";
+    in property <bool> enabled: true;
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 32px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: root.active ? Theme.brand : ta.has-hover && root.enabled ? Theme.border-strong : transparent;
+    background: root.active ? Theme.brand : ta.has-hover && root.enabled ? Theme.toolbar-item-hover : transparent;
+    opacity: root.enabled ? 1 : 0.4;
+    transform-scale-x: ta.pressed && root.enabled ? 0.97 : 1.0;
+    transform-scale-y: ta.pressed && root.enabled ? 0.97 : 1.0;
+    animate background {
+        duration: root.active ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate border-color {
+        duration: root.active ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate opacity {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate transform-scale-x {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+    animate transform-scale-y {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 10px;
+
+        Path {
+            width: 16px;
+            height: 16px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.icon;
+            fill: transparent;
+            stroke-width: 2px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: root.active ? Theme.brand-foreground : Theme.toolbar-item;
+        }
+        Text {
+            text: root.label;
+            font-size: 13px;
+            color: root.active ? Theme.brand-foreground : Theme.toolbar-item;
+            animate color {
+                duration: root.active ? Theme.motion-select : Theme.motion-hover;
+                easing: ease-out;
+            }
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+export component MenuCard inherits PopoverCard {
+    width: 176px;
+    height: self.preferred-height;
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 2px;
+        @children
+    }
+}
+
+// Reference chip (design-system §1D "Chip (reference)" + `canvas-prompt-ref-chip`):
+// toolbar.panel fill, node.stroke border, node.text, rounded-md. The web chip
+// plays transform+opacity over 160ms while dragged; Slint has no HTML5 drag, so
+// hovering replays the same 160ms lift. Sized by the owner (`chip-height` 24px in
+// the composer, 28px on the card). `removable` adds the card's inline × control
+// (revealed on hover, so the row never shifts); clicking it emits `removed`.
+export component RefChip inherits Rectangle {
+    in property <string> label: "";
+    in property <float> vs: 1;
+    in property <length> chip-height: 24px;
+    in property <length> chip-max-width: 160px;
+    in property <bool> removable: false;
+
+    callback removed();
+
+    in-out property <float> lift: chip-ta.has-hover ? 1 : 0;
+    animate lift {
+        duration: Theme.motion-popover;
+        easing: ease-out;
+    }
+
+    height: root.chip-height * root.vs;
+    width: min(chip-row.preferred-width, root.chip-max-width * root.vs);
+    border-radius: Theme.radius-md * root.vs;
+    border-width: 1px * root.vs;
+    border-color: Theme.node-stroke;
+    background: Theme.toolbar-panel;
+    opacity: 1 - 0.45 * root.lift;
+    transform-scale-x: 100% + 8% * root.lift;
+    transform-scale-y: 100% + 8% * root.lift;
+
+    chip-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+    chip-row := HorizontalLayout {
+        padding-left: 6px * root.vs;
+        padding-right: 6px * root.vs;
+        spacing: 4px * root.vs;
+
+        Text {
+            text: root.label;
+            font-size: 12px * root.vs;
+            color: Theme.node-text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if root.removable : Rectangle {
+            width: 12px * root.vs;
+            height: 12px * root.vs;
+            background: transparent;
+            opacity: chip-ta.has-hover ? 1 : 0;
+            animate opacity {
+                duration: Theme.motion-select;
+                easing: ease-out;
+            }
+
+            Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.close;
+                fill: transparent;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                stroke: Theme.node-muted;
+            }
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                enabled: chip-ta.has-hover;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.removed();
+                }
+            }
+        }
+    }
+}
+
+// One row of the mention menu: preview box (36px, `bg-black/10`), label and the
+// muted second line; the active row uses `toolbar.activeBg`/`activeText`.
+component MentionItem inherits Rectangle {
+    in property <MentionRow> entry: {
+        index: 0,
+        label: "",
+        sub: "",
+        kind: "",
+        active: false,
+    };
+    in property <float> vs: 1;
+    callback clicked();
+
+    height: 44px * root.vs;
+    border-radius: Theme.radius-sm * root.vs;
+    background: root.entry.active ? Theme.toolbar-active-bg : entry-ta.has-hover ? Theme.toolbar-item-hover : transparent;
+    animate background {
+        duration: root.entry.active ? Theme.motion-select : Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    entry-ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    HorizontalLayout {
+        padding-left: 6px * root.vs;
+        padding-right: 6px * root.vs;
+        spacing: 8px * root.vs;
+        alignment: center;
+
+        Rectangle {
+            width: 36px * root.vs;
+            height: 36px * root.vs;
+            border-radius: Theme.radius-sm * root.vs;
+            background: Theme.mention-plate;
+
+            Path {
+                x: 10px * root.vs;
+                y: 10px * root.vs;
+                width: 16px * root.vs;
+                height: 16px * root.vs;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.kind-icon(root.entry.kind);
+                fill: transparent;
+                stroke-width: 2px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                stroke: root.entry.active ? Theme.toolbar-active-text : Theme.node-text;
+            }
+        }
+        VerticalLayout {
+            spacing: 0px;
+            alignment: center;
+
+            Text {
+                text: root.entry.label;
+                font-size: 13px * root.vs;
+                font-weight: 500;
+                color: root.entry.active ? Theme.toolbar-active-text : Theme.node-text;
+                animate color {
+                    duration: Theme.motion-select;
+                    easing: ease-out;
+                }
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                text: root.entry.sub;
+                font-size: 12px * root.vs;
+                color: Theme.node-muted;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+// `@` mention menu (web `MentionMenu`): 256px glass-raised card with
+// `toolbar.border`, opening below the composer field — so it plays
+// `canvas-popover-in` (160ms ease-out) downward, not upward like PopoverCard.
+export component MentionMenu inherits Rectangle {
+    in property <length> anchor-x: 0px;
+    in property <length> anchor-y: 0px;
+    in property <bool> shown: false;
+    in property <float> vs: 1;
+    in property <[MentionRow]> rows: [];
+    callback pick(int);
+
+    in-out property <float> reveal: root.shown ? 1 : 0;
+    animate reveal {
+        duration: Theme.motion-popover;
+        easing: ease-out;
+    }
+
+    x: root.anchor-x;
+    y: root.anchor-y + 4px * root.vs * (1 - root.reveal);
+    width: 256px * root.vs;
+    height: self.preferred-height;
+    opacity: root.reveal;
+    transform-scale-x: 98% + 2% * root.reveal;
+    transform-scale-y: 98% + 2% * root.reveal;
+    transform-origin: {
+        x: self.width / 2,
+        y: self.height / 2,
+    };
+    background: Theme.glass-panel-strong;
+    border-width: 1px;
+    border-color: Theme.glass-panel-border;
+    border-radius: Theme.radius-xl * root.vs;
+
+    VerticalLayout {
+        padding: 4px * root.vs;
+        spacing: 2px * root.vs;
+
+        for row in root.rows : MentionItem {
+            entry: row;
+            vs: root.vs;
+            clicked => {
+                root.pick(row.index);
+            }
+        }
+    }
+}
+
+// Screen-space path that must not be re-fitted (same contract as `ScreenPath`
+// in app.slint; component files cannot import the window).
+component ScreenBorder inherits Path {
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    fit: preserve;
+    fill: transparent;
+    stroke: Theme.canvas-selection-stroke;
+    stroke-width: 1.5px;
+    opacity: 0.55;
+}
+
+// Glyph of a floating-bar action: the image quick tools carry their own lucide
+// glyphs (chosen from the set `icons.slint` already transcribes), everything
+// else delegates to `Icons.hover-icon`.
+global HoverIcons {
+    public pure function tool-icon(id: string) -> string {
+        return id == "crop" ? Icons.maximize
+            : id == "mask" ? Icons.lasso
+            : id == "split" ? Icons.grid
+            : id == "resolution" ? Icons.zoom-in
+            : id == "analyze" ? Icons.wand
+            : id == "ocr" ? Icons.file-text
+            : id == "segment" ? Icons.pointer
+            : id == "angle" ? Icons.compass
+            : id == "copy" ? Icons.copy
+            : id == "download" ? Icons.download
+            : id == "free-resize" ? Icons.unlock
+            : Icons.hover-icon(id);
+    }
+}
+
+// Node hover toolbar (canvas-node-hover-toolbar.tsx): 44px bar under the node,
+// 8px below the card and centred on it. `anchor-y` is the bar's top edge in
+// canvas space; PopoverCard anchors its bottom, so the card is lifted by the bar
+// height. Hovering the bar keeps it alive (`onKeep`).
+export component HoverBar inherits Rectangle {
+    in property <length> anchor-x: 0px;
+    in property <length> anchor-y: 0px;
+    in property <length> canvas-width: root.width;
+    in property <length> canvas-height: root.height;
+    in property <float> scale: 1;
+    in property <[HoverAction]> actions: [];
+    callback action(string);
+    callback bar-hover(bool);
+    callback bar-press(bool);
+
+    // The bar is 44px tall and must stay inside the visible canvas with an
+    // 8px edge inset. The x anchor is the node centre, so the placed centre is
+    // clamped by half the bar's preferred width.
+    property <length> edge-inset: 8px;
+    property <length> placed-x: min(
+        max(root.anchor-x, bar-card.preferred-width / 2 + root.edge-inset),
+        root.canvas-width - bar-card.preferred-width / 2 - root.edge-inset
+    );
+    property <length> placed-y: max(
+        root.edge-inset,
+        min(root.anchor-y, root.canvas-height - 44px - root.edge-inset)
+    );
+
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    z: 70;
+
+    bar-card := PopoverCard {
+        anchor-x: root.placed-x;
+        anchor-y: root.placed-y + 44px;
+        shown: root.visible;
+        height: 44px;
+        width: self.preferred-width;
+
+        bar-ta := TouchArea {
+            width: 100%;
+            height: 100%;
+
+            changed has-hover => {
+                root.bar-hover(self.has-hover);
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: 6px;
+            padding-right: 6px;
+            spacing: 2px;
+
+            for action in root.actions : BarAction {
+                icon: HoverIcons.tool-icon(action.id);
+                danger: action.danger;
+                active: action.active;
+                clicked => {
+                    root.action(action.id);
+                }
+                hovered(state) => {
+                    root.bar-hover(state);
+                }
+                press-state(state) => {
+                    root.bar-press(state);
+                }
+            }
+        }
+    }
+
+    // Invisible hover bridge across the 8px gap between the node and the bar:
+    // the pointer crosses it on its way down to the bar, and it keeps the bar
+    // alive. A hidden bar is not hit-testable, so without this bridge the
+    // pointer could arrive at the bar's former position with nothing to hover.
+    gap-ta := Rectangle {
+        x: bar-card.x;
+        y: bar-card.y - 8px;
+        width: bar-card.width;
+        height: 8px;
+        background: transparent;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            changed has-hover => {
+                root.bar-hover(self.has-hover);
+            }
+        }
+    }
+}
+
+// Selection toolbar (canvas-selection-toolbar.tsx): dashed rounded bounds plus
+// the bar with the align/layout menus.
+export component SelectionToolbar inherits Rectangle {
+    in property <bool> bounds-visible: false;
+    in property <length> rect-x: 0px;
+    in property <length> rect-y: 0px;
+    in property <length> rect-width: 0px;
+    in property <length> rect-height: 0px;
+    in property <string> border: "";
+    in property <bool> bar-visible: false;
+    in property <length> bar-x: 0px;
+    in property <length> bar-y: 0px;
+    in property <bool> align-open: false;
+    in property <bool> layout-open: false;
+    in property <bool> distributable: false;
+    callback menu(string);
+    callback align(string);
+    callback delete-selection();
+
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    z: 65;
+
+    if root.bounds-visible : Rectangle {
+        x: root.rect-x;
+        y: root.rect-y;
+        width: root.rect-width;
+        height: root.rect-height;
+        border-radius: 16px;
+        background: Theme.canvas-selection-fill;
+    }
+    if root.bounds-visible : ScreenBorder {
+        commands: root.border;
+    }
+
+    bar := PopoverCard {
+        visible: root.bar-visible;
+        anchor-x: root.bar-x;
+        anchor-y: root.bar-y;
+        shown: root.bar-visible;
+        height: 44px;
+        width: self.preferred-width;
+        z: 70;
+
+        HorizontalLayout {
+            padding-left: 6px;
+            padding-right: 6px;
+            spacing: 2px;
+
+            BarAction {
+                icon: Icons.align-left;
+                active: root.align-open;
+                clicked => {
+                    root.menu("align");
+                }
+            }
+            BarAction {
+                icon: Icons.distribute-x;
+                active: root.layout-open;
+                clicked => {
+                    root.menu("layout");
+                }
+            }
+            BarDivider {
+            }
+            BarAction {
+                icon: Icons.trash;
+                danger: true;
+                clicked => {
+                    root.delete-selection();
+                }
+            }
+        }
+
+        if root.align-open : MenuCard {
+            anchor-x: bar.width / 2;
+            anchor-y: -8px;
+            shown: true;
+
+            MenuItem {
+                icon: Icons.align-left;
+                label: "Align left";
+                clicked => {
+                    root.align("left");
+                }
+            }
+            MenuItem {
+                icon: Icons.align-center-x;
+                label: "Center horizontally";
+                clicked => {
+                    root.align("center-x");
+                }
+            }
+            MenuItem {
+                icon: Icons.align-right;
+                label: "Align right";
+                clicked => {
+                    root.align("right");
+                }
+            }
+            MenuItem {
+                icon: Icons.align-top;
+                label: "Align top";
+                clicked => {
+                    root.align("top");
+                }
+            }
+            MenuItem {
+                icon: Icons.align-center-y;
+                label: "Center vertically";
+                clicked => {
+                    root.align("center-y");
+                }
+            }
+            MenuItem {
+                icon: Icons.align-bottom;
+                label: "Align bottom";
+                clicked => {
+                    root.align("bottom");
+                }
+            }
+        }
+        if root.layout-open : MenuCard {
+            anchor-x: bar.width / 2;
+            anchor-y: -8px;
+            shown: true;
+
+            MenuItem {
+                icon: Icons.distribute-x;
+                label: "Distribute horizontally";
+                enabled: root.distributable;
+                clicked => {
+                    root.align("distribute-x");
+                }
+            }
+            MenuItem {
+                icon: Icons.distribute-y;
+                label: "Distribute vertically";
+                enabled: root.distributable;
+                clicked => {
+                    root.align("distribute-y");
+                }
+            }
+        }
+    }
+}

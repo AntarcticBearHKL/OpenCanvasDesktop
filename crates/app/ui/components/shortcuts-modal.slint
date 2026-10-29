@@ -1,0 +1,16 @@
+import { ModalShell } from "modals.slint";
+import { ShortcutRows } from "shortcuts-list.slint";
+
+// Canvas shortcuts modal (canvas-toolbar.tsx:369-380). The rows live in the
+// shared `ShortcutRows` so the About tab renders the identical reference.
+export component ShortcutsModal inherits ModalShell {
+    body-height: 424px;
+
+    Flickable {
+        width: 100%;
+        height: 100%;
+
+        ShortcutRows {
+        }
+    }
+}

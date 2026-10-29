@@ -1,0 +1,33 @@
+[package]
+name = "open-canvas-cms"
+description = "Pure-Rust ICC v2/v4 colour management: profile parsing and writing, transforms, rendering intents, black point compensation"
+version.workspace = true
+# Vendored from PhotoCraft's edition-2024 workspace (let-chains in the sources).
+edition = "2024"
+license.workspace = true
+
+[lib]
+name = "open_canvas_cms"
+path = "src/lib.rs"
+
+[features]
+default = []
+# The surface nothing the app reaches: 3D LUT *files* for Color Lookup, the GPU
+# display LUT / matrix shaper, and the View › Gamut Warning checker. Off by
+# default so the app build compiles only what `color`/`ps` reach (see
+# docs/PROJECT_AUDIT.md §4.3); on for this crate's own tests and examples.
+extra-profiles = []
+
+[dependencies]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rayon = { workspace = true }
+
+[dev-dependencies]
+moxcms = { workspace = true }
+# The integration tests exercise the modules gated behind `extra-profiles`, so
+# they opt into it here: feature unification keeps `cargo test`/`--all-targets`
+# on the full surface while `cargo build --workspace` (which does not build
+# dev-dependencies) gets the gated subset. Same pattern as
+# `open-canvas-algo`'s `full` dev-dependency.
+open-canvas-cms = { path = ".", features = ["extra-profiles"] }

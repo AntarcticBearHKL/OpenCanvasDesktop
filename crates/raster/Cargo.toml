@@ -1,0 +1,23 @@
+[package]
+name = "open-canvas-raster"
+description = "Sparse, copy-on-write tiled surfaces in any pixel format (8/16-bit and 32-bit float)"
+version.workspace = true
+# Vendored from PhotoCraft's edition-2024 workspace (let-chains in the sources).
+edition = "2024"
+license.workspace = true
+
+[lib]
+name = "open_canvas_raster"
+path = "src/lib.rs"
+
+[dependencies]
+open-canvas-geom = { workspace = true }
+open-canvas-color = { workspace = true }
+serde = { workspace = true }
+
+# Native only: converting a region's tiles is independent per tile, so it runs on all cores.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rayon = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

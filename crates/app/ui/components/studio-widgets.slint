@@ -1,0 +1,491 @@
+// Small studio chrome widgets shared by the Image Studio panels and dialogs:
+// menu surface, chips, checkbox, labelled field, panel title, the shared
+// button/slider wrappers in the Photoshop chrome palette, and the swatch hex
+// helper.
+//
+// Every widget here reads `StudioTheme` (never `Theme`): the studio keeps its
+// dark Photoshop chrome whatever the app's light/dark toggle says.
+import { StudioTheme } from "../studio-theme.slint";
+import { IconButton, Slider, Button } from "widgets.slint";
+import { Icons } from "icons.slint";
+import { RulerTick, RulerTickImage } from "overlay-types.slint";
+
+// The panel's own title line. Photoshop writes it in sentence case, 11px
+// semibold, directly on the panel header tone.
+export component PanelTitle inherits Text {
+    in property <string> label: "";
+    horizontal-stretch: 1;
+    text: root.label;
+    font-size: 11px;
+    font-weight: 600;
+    color: StudioTheme.text;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+// A Photoshop options-bar toggle: square-ish, flat at rest, solid selection
+// blue while on.
+export component StudioChip inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> active: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: StudioTheme.space-6 - StudioTheme.space-1;
+    width: self.preferred-width;
+    opacity: root.enabled ? 1 : 0.45;
+    border-radius: 2px;
+    border-width: 1px;
+    border-color: root.active ? StudioTheme.selection : transparent;
+    background: root.active ? StudioTheme.selection : ta.has-hover ? StudioTheme.hover : transparent;
+    animate background {
+        duration: root.active ? StudioTheme.motion-select : StudioTheme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: StudioTheme.space-2;
+        padding-right: StudioTheme.space-2;
+        Text {
+            text: root.label;
+            font-size: 11px;
+            font-weight: root.active ? 600 : 400;
+            color: root.active ? StudioTheme.text-strong : StudioTheme.text-muted;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component StudioCheckbox inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> checked: false;
+    callback toggled();
+
+    height: StudioTheme.space-5;
+    width: 100%;
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.toggled();
+        }
+    }
+
+    HorizontalLayout {
+        spacing: StudioTheme.space-2;
+        cross-axis-alignment: center;
+
+        box := Rectangle {
+            width: 13px;
+            height: 13px;
+            border-radius: 2px;
+            border-width: 1px;
+            border-color: root.checked ? StudioTheme.selection : StudioTheme.control-border-strong;
+            background: root.checked ? StudioTheme.selection : StudioTheme.field;
+
+            Path {
+                visible: root.checked;
+                x: 2px;
+                y: 2px;
+                width: 9px;
+                height: 9px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.check;
+                fill: transparent;
+                stroke-width: 3px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                stroke: StudioTheme.text-strong;
+            }
+        }
+        Text {
+            text: root.label;
+            font-size: 12px;
+            color: StudioTheme.text;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// Small labelled text field (`InputNumber` stand-in) in the PS field chrome.
+export component StudioField inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> compact: false;
+    in-out property <string> value: "";
+    callback edited(string);
+
+    height: StudioTheme.control-h;
+    border-radius: 2px;
+    border-width: 1px;
+    border-color: input.has-focus ? StudioTheme.selection : StudioTheme.control-border-strong;
+    background: StudioTheme.field;
+    animate border-color {
+        duration: StudioTheme.motion-hover;
+        easing: ease-out;
+    }
+
+    HorizontalLayout {
+        padding-left: StudioTheme.space-2;
+        padding-right: StudioTheme.space-1;
+        spacing: StudioTheme.space-1;
+        cross-axis-alignment: center;
+
+        Text {
+            visible: root.label != "";
+            text: root.label;
+            font-size: 11px;
+            color: StudioTheme.text-muted;
+            vertical-alignment: center;
+        }
+        input := TextInput {
+            horizontal-stretch: 1;
+            text <=> root.value;
+            single-line: true;
+            font-size: 11px;
+            color: StudioTheme.text;
+            vertical-alignment: center;
+            edited => {
+                root.edited(root.value);
+            }
+        }
+    }
+}
+
+export component StudioMenuDivider inherits Rectangle {
+    // Pinned through the layout constraints: a child of a layout cannot set
+    // its own `height`, and an unpinned row would absorb the popup's spare
+    // space (the menu is measured from its content, so there is none left,
+    // but the divider must still declare its 5px row).
+    min-height: 5px;
+    max-height: 5px;
+    Rectangle {
+        y: 2px;
+        width: 100%;
+        height: 1px;
+        background: StudioTheme.separator;
+    }
+}
+
+export component StudioMenu inherits Rectangle {
+    in property <length> menu-width: 196px;
+
+    width: root.menu-width;
+    // Hug the rows instead of defaulting to the parent's full height: a menu
+    // that filled the window made the column layout stretch every row to an
+    // equal share of the popup (the "full-height menu item" bug).
+    height: menu-list.preferred-height;
+    background: StudioTheme.menu-surface;
+    border-radius: StudioTheme.radius-sm;
+    border-width: 1px;
+    border-color: StudioTheme.hairline;
+    z: 60;
+
+    menu-list := VerticalLayout {
+        padding: StudioTheme.space-1;
+        spacing: 0;
+        @children
+    }
+}
+
+// One menu row. Photoshop's menus highlight the hovered row in selection blue
+// with white ink and print the shortcut to the right. A `submenu` row prints a
+// chevron instead of a shortcut and stays tinted while its flyout is open
+// (`selected`); hovering it reports the row's y so the owner can anchor that
+// flyout beside the row.
+export component StudioMenuItem inherits Rectangle {
+    in property <string> label: "";
+    in property <string> shortcut: "";
+    // Non-empty means "checked": a checkmark is painted in the 14px gutter.
+    in property <string> check: "";
+    in property <string> note: "";
+    in property <bool> enabled: true;
+    // The row opens a flyout: chevron instead of shortcut, hover opens it.
+    in property <bool> submenu: false;
+    // The row's flyout is the open one (a tint, not the hover blue).
+    in property <bool> selected: false;
+    callback clicked();
+    // The pointer entered the row; `y` is the row's top in the menu's space.
+    callback hovered(length);
+
+    // A normal menu row is 28px; a row with a second (note) line is 38px.
+    // Layout children must pin min/max-height: `height` alone is overridden by
+    // the column layout, and a row with no constraints stretches to fill the
+    // popup.
+    property <length> row-height: root.note == "" ? 28px : 38px;
+    min-height: root.row-height;
+    max-height: root.row-height;
+    background: (ta.has-hover || root.selected) && root.enabled ? StudioTheme.selection : transparent;
+    animate background {
+        duration: StudioTheme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+        changed has-hover => {
+            if (self.has-hover && root.enabled) {
+                root.hovered(root.y);
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: StudioTheme.space-2;
+        padding-right: StudioTheme.space-3;
+        spacing: StudioTheme.space-2;
+        cross-axis-alignment: center;
+
+        // The check gutter. It is present on every row (checkable or not), so
+        // labels share one left edge. The mark is a designed stroke check, not
+        // a boxed glyph: 14px, 2px round caps, in the accent colour (white on
+        // the solid selection highlight, where the accent would disappear).
+        check-gutter := Rectangle {
+            min-width: 14px;
+            max-width: 14px;
+            min-height: 14px;
+            max-height: 14px;
+            background: transparent;
+
+            Path {
+                visible: root.check != "";
+                x: 0px;
+                y: 0px;
+                width: 14px;
+                height: 14px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: Icons.check;
+                fill: transparent;
+                // 3.4 / 24 * 14 = 2px on screen.
+                stroke-width: 3.4px;
+                stroke-line-cap: round;
+                stroke-line-join: round;
+                stroke: ta.has-hover ? StudioTheme.brand-foreground : StudioTheme.selection;
+                animate stroke {
+                    duration: StudioTheme.motion-hover;
+                    easing: ease-out;
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 0;
+            alignment: center;
+            Text {
+                text: root.label;
+                font-size: 12px;
+                color: !root.enabled ? StudioTheme.text-disabled : ta.has-hover ? StudioTheme.text-strong : StudioTheme.text;
+                vertical-alignment: center;
+                animate color {
+                    duration: StudioTheme.motion-hover;
+                    easing: ease-out;
+                }
+            }
+            Text {
+                visible: root.note != "";
+                text: root.note;
+                font-size: 9px;
+                color: ta.has-hover ? StudioTheme.text : StudioTheme.text-faint;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        // A submenu row points at its flyout; a plain row prints its shortcut.
+        Path {
+            visible: root.submenu;
+            width: 8px;
+            height: 8px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: Icons.chevron-right;
+            fill: transparent;
+            stroke-width: 2.2px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: ta.has-hover ? StudioTheme.text-strong : StudioTheme.text-muted;
+        }
+        Text {
+            visible: !root.submenu;
+            text: root.shortcut;
+            font-size: 11px;
+            color: ta.has-hover ? StudioTheme.text : StudioTheme.text-muted;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+            animate color {
+                duration: StudioTheme.motion-hover;
+                easing: ease-out;
+            }
+        }
+    }
+}
+
+// The shared 28px icon button in the studio's chrome palette. `IconButton`
+// (widgets.slint) draws from `Theme`, so every studio call site goes through
+// this wrapper instead: one place to keep the studio dark.
+export component StudioIconButton inherits IconButton {
+    variant: "studio";
+    size: 20px;
+    icon-size: 14px;
+    ink: StudioTheme.text-muted;
+    hover-ink: StudioTheme.text-strong;
+    active-ink: StudioTheme.text-strong;
+    label-ink: StudioTheme.text-muted;
+    active-label-ink: StudioTheme.text-strong;
+    hover-bg: StudioTheme.hover;
+    active-bg: StudioTheme.selection;
+    active-border: StudioTheme.selection;
+    danger-ink: StudioTheme.danger;
+    danger-hover-ink: StudioTheme.text-strong;
+    danger-hover-bg: StudioTheme.danger;
+    trailing-ink: StudioTheme.text-muted;
+    hover-motion: StudioTheme.motion-hover;
+}
+
+// A 24px tool-rail button (Photoshop's rail grid: 24px glyph box, no border).
+export component StudioToolButton inherits StudioIconButton {
+    variant: "rail";
+    size: StudioTheme.rail-button;
+    icon-size: 15px;
+    radius: 2px;
+    bordered: false;
+    pad: 0px;
+}
+
+// The shared slider in the PS palette: #4a4a4a track, selection-blue fill and
+// a light knob.
+export component StudioSlider inherits Slider {
+    track-color: StudioTheme.slider-track;
+    fill-color: StudioTheme.selection;
+    handle-color: StudioTheme.text;
+}
+
+// The shared button in the PS palette: the `soft` family is a flat #3c3c3c
+// well with a hairline, the `primary` family is the selection blue.
+export component StudioActionButton inherits Button {
+    ink: root.variant == "primary" ? StudioTheme.text-strong : StudioTheme.text;
+    active-ink: StudioTheme.text-strong;
+    hover-bg: root.variant == "primary" ? StudioTheme.selection-hover : StudioTheme.hover;
+    outline-color: StudioTheme.control-border;
+    danger-ink: StudioTheme.danger;
+    disabled-bg: StudioTheme.muted;
+}
+
+// The ruler band along the canvas's top and left edges: 20px top strip, 26px
+// left strip, both on the PS surround with the muted ruler ink. The ticks and
+// the pre-rasterised left labels are the same models the shared `Rulers`
+// component reads; only the surface colour differs (this band must stay dark
+// under the studio's chrome, whatever the app theme).
+export component StudioRulers inherits Rectangle {
+    in property <[RulerTick]> ticks-x: [];
+    in property <[RulerTickImage]> labels-y: [];
+    // Width of the vertical strip; the top strip starts right of it. The
+    // studio's guide-drag hit areas assume the same 20px / 26px bands.
+    out property <length> ruler-left-width: 26px;
+
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    z: 75;
+
+    // Left strip.
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.ruler-left-width;
+        height: 100%;
+        background: StudioTheme.rail;
+
+        Rectangle {
+            y: parent.height - 1px;
+            width: 100%;
+            height: 1px;
+            background: StudioTheme.hairline;
+        }
+
+        Rectangle {
+            x: parent.width - 1px;
+            width: 1px;
+            height: 100%;
+            background: StudioTheme.hairline;
+        }
+
+        for tick in root.labels-y : Image {
+            x: Math.round((26px - tick.label-width) / 2px) * 1px;
+            y: tick.label-y;
+            width: tick.label-width;
+            height: tick.label-height;
+            source: tick.image;
+            image-fit: fill;
+        }
+    }
+
+    // Top strip.
+    Rectangle {
+        x: root.ruler-left-width;
+        y: 0px;
+        width: parent.width - root.ruler-left-width;
+        height: 20px;
+        background: StudioTheme.rail;
+
+        Rectangle {
+            y: parent.height - 1px;
+            width: 100%;
+            height: 1px;
+            background: StudioTheme.hairline;
+        }
+
+        for tick in root.ticks-x : Text {
+            x: tick.pos - 16px;
+            y: 0px;
+            width: 60px;
+            height: 20px;
+            text: tick.label;
+            font-size: 10px;
+            font-weight: 400;
+            color: StudioTheme.text-muted;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// "#rrggbb" of a swatch colour for the pick callback (Slint has no hex
+// formatting builtin).
+export global StudioColorHex {
+    public pure function of(value: color) -> string {
+        return "#" + hex2(round(value.red * 255)) + hex2(round(value.green * 255)) + hex2(round(value.blue * 255));
+    }
+    pure function hex2(value: int) -> string {
+        return value < 16 ? "0" + hex1(value) : hex1(value / 16) + hex1(Math.mod(value, 16));
+    }
+    pure function hex1(value: int) -> string {
+        return value == 10 ? "a"
+            : value == 11 ? "b"
+            : value == 12 ? "c"
+            : value == 13 ? "d"
+            : value == 14 ? "e"
+            : value == 15 ? "f"
+            : "\{value}";
+    }
+}

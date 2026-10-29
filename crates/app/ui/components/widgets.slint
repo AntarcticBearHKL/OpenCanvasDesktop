@@ -1,0 +1,433 @@
+// The three shared widgets every studio and modal is built from:
+//
+//   Slider     - track + fill + handle + drag (formerly GlassSlider, AiSlider,
+//                TrackSlider, PixelSlider, ImageSettingsSlider, the inline zoom
+//                slider and TextureSliderRow's inner slider).
+//   IconButton - square icon button (formerly HoverButton, PixelIconButton,
+//                RowButton, MiniButton, WindowButton, RailButton,
+//                StudioMenuButton).
+//   Button     - text button (formerly PrimaryButton, GhostButton, SmallButton,
+//                ToolPrimary, ToolGhost, AiPrimary, AiGhost, StudioButton).
+//
+// Everything is tokens-only. `variant` carries the handful of look families
+// that existed before; any individual call site can still override a single
+// property, so every former site keeps its exact pixels.
+import { Theme } from "../theme.slint";
+
+// ---------------------------------------------------------------------------
+// Slider
+// ---------------------------------------------------------------------------
+// `height` is the root Rectangle's own property (a caller binding wins), so a
+// site sets `height: 24px` exactly like it used to. The fill always starts at
+// the track's LEFT edge (`x: 0px`, never an implicit centre), the handle rides
+// the fill's edge, the whole track is the drag surface, and `step > 0` snaps.
+export component Slider inherits Rectangle {
+    in-out property <float> value: 0;
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    // 0 = continuous; otherwise the value snaps to a multiple of `step`.
+    in property <float> step: 0;
+    in property <bool> enabled: true;
+    in property <length> track-height: 4px;
+    in property <length> track-radius: 2px;
+    in property <color> track-color: Theme.muted;
+    in property <color> fill-color: Theme.node-accent;
+    // The zoom slider paints a 4px minimum fill so 5% still reads as a bar.
+    in property <length> fill-min-width: 0px;
+    in property <length> handle-size: 12px;
+    in property <color> handle-color: Theme.node-accent;
+    in property <length> handle-border-width: 0px;
+    in property <color> handle-border-color: transparent;
+    // Zoom centres the handle on the fill edge and clamps it to the rail; the
+    // other sliders keep the handle fully inside the track.
+    in property <bool> handle-centred: false;
+    callback changed(float);
+
+    height: 20px;
+    opacity: root.enabled ? 1 : 0.45;
+
+    out property <float> ratio: min(1, max(0, (root.value - root.minimum) / max(0.0001, root.maximum - root.minimum)));
+
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        width: 100%;
+        height: root.track-height;
+        border-radius: root.track-radius;
+        background: root.track-color;
+
+        // Load-bearing `x: 0px`: a rectangle with an explicit width and no x is
+        // centred by Slint, which made the fill grow out of the middle.
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: max(root.fill-min-width, parent.width * root.ratio);
+            height: 100%;
+            border-radius: root.track-radius;
+            background: root.fill-color;
+        }
+    }
+
+    Rectangle {
+        x: root.handle-centred
+            ? min(parent.width - self.width, max(0px, parent.width * root.ratio - self.width / 2))
+            : (parent.width - self.width) * root.ratio;
+        y: (parent.height - self.height) / 2;
+        width: root.handle-size;
+        height: root.handle-size;
+        border-radius: root.handle-size / 2;
+        border-width: root.handle-border-width;
+        border-color: root.handle-border-color;
+        background: root.handle-color;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: root.enabled ? pointer : default;
+        pointer-event(e) => {
+            if (root.enabled && e.kind == PointerEventKind.down) {
+                root.apply(self.mouse-x);
+            }
+        }
+        moved => {
+            if (root.enabled && self.pressed) {
+                root.apply(self.mouse-x);
+            }
+        }
+    }
+
+    function apply(x: length) {
+        if (self.width <= 0px) {
+            return;
+        }
+        let ratio = min(1, max(0, x / self.width));
+        let raw = root.minimum + ratio * (root.maximum - root.minimum);
+        root.value = root.step > 0
+            ? min(root.maximum, max(root.minimum, root.minimum + round((raw - root.minimum) / root.step) * root.step))
+            : raw;
+        root.changed(root.value);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// IconButton
+// ---------------------------------------------------------------------------
+// Variant families (the looks the six former definitions had):
+//   "toolbar" - HoverButton (32px, 18px glyph, toolbar ink, brand active edge)
+//   "studio"  - PixelIconButton (28/20px, solid accent active block)
+//   "rail"    - RailButton (studio look, no hover ink, studio tooltip)
+//   "window"  - WindowButton (28px, danger wash on hover)
+//   "ghost"   - MiniButton (no border, muted glyph, optional label)
+//   "row"     - RowButton (24px, plain, ink follows the row state)
+//   "menu"    - StudioMenuButton (label + chevron, hug width)
+export component IconButton inherits Rectangle {
+    in property <string> variant: "toolbar";
+    in property <string> icon: "";
+    // Optional text: a label beside the glyph, or the centred content of a
+    // toolbar button (the zoom read-out).
+    in property <string> label: "";
+    in property <string> content: "";
+    in property <string> trailing-icon: "";
+    in property <length> size: root.variant == "studio" || root.variant == "rail" || root.variant == "window" || root.variant == "ghost" || root.variant == "menu" ? Theme.control-h : root.variant == "row" ? 24px : 32px;
+    in property <length> content-size: 12px;
+    in property <bool> active: false;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    in property <bool> bordered: root.variant == "ghost" || root.variant == "row" || root.variant == "menu" ? false : true;
+    in property <bool> compact: false;
+    in property <bool> hug-width: root.variant == "ghost" || root.variant == "menu";
+    in property <bool> at-least-size: root.variant == "ghost";
+    in property <length> radius: root.variant == "menu" ? Theme.radius-md : Theme.radius-sm;
+    in property <length> icon-size: root.compact ? 14px : root.variant == "toolbar" ? 18px : root.variant == "studio" || root.variant == "rail" ? 16px : 14px;
+    in property <length> stroke-width: root.variant == "toolbar" || root.variant == "window" ? 1.5px : root.variant == "studio" || root.variant == "rail" ? 1.8px : 2px;
+    in property <length> pad: Theme.space-2;
+    in property <length> spacing: Theme.space-1;
+    in property <length> font-size: root.variant == "ghost" ? 11px : 12px;
+    in property <int> font-weight: root.variant == "ghost" ? 600 : 400;
+    in property <color> ink: root.variant == "studio" || root.variant == "rail" || root.variant == "ghost" ? Theme.node-muted : root.variant == "row" ? Theme.node-text : Theme.toolbar-item;
+    in property <color> hover-ink: root.variant == "studio" ? Theme.foreground : root.variant == "rail" || root.variant == "ghost" ? Theme.node-muted : root.variant == "row" ? Theme.node-text : Theme.toolbar-active-text;
+    in property <color> active-ink: root.variant == "studio" || root.variant == "rail" ? Theme.brand-foreground : Theme.toolbar-active-text;
+    in property <color> danger-ink: root.variant == "window" ? Theme.toolbar-item : Theme.node-danger;
+    in property <color> danger-hover-ink: root.variant == "studio" ? Theme.brand-foreground : Theme.node-danger;
+    in property <color> label-ink: root.ink;
+    in property <color> active-label-ink: root.active-ink;
+    in property <color> hover-bg: Theme.hover;
+    in property <color> active-bg: root.variant == "studio" || root.variant == "rail" ? Theme.node-accent : Theme.toolbar-active-bg;
+    in property <color> danger-hover-bg: root.variant == "studio" ? Theme.node-danger : Theme.node-danger-soft;
+    in property <color> active-border: root.variant == "studio" || root.variant == "rail" ? Theme.node-accent : Theme.brand;
+    in property <color> trailing-ink: Theme.node-muted;
+    in property <length> trailing-size: 10px;
+    in property <float> disabled-opacity: root.variant == "row" ? 0.3 : 0.35;
+    // Press/hover motion: every variant presses to 0.97 and hovers on the
+    // shared 110ms step (a call site can still override either).
+    in property <bool> press-feedback: true;
+    in property <duration> hover-motion: Theme.motion-hover;
+    // Dock tooltip (`Theme.dock-request`): only when `tooltip-enabled`, so the
+    // buttons that never had one stay silent.
+    in property <bool> tooltip-enabled: false;
+    in property <string> tip: "";
+    // Revealed under the name after the second (longer) hover delay.
+    in property <string> tip-description: "";
+    in property <string> tip-studio: "";
+    in property <bool> tip-fallback-label: false;
+    callback clicked();
+
+    width: root.compact ? Theme.icon-layer
+        : root.hug-width ? (root.at-least-size ? max(root.size, self.preferred-width) : self.preferred-width)
+        : root.size;
+    height: root.compact ? Theme.icon-layer : root.size;
+    opacity: root.enabled ? 1 : root.disabled-opacity;
+    border-radius: root.radius;
+    border-width: root.bordered ? 1px : 0px;
+    border-color: root.active ? root.active-border
+        : ta.has-hover && root.enabled ? (root.bordered ? Theme.border-strong : transparent)
+        : transparent;
+    background: root.active ? root.active-bg
+        : ta.has-hover && root.enabled ? (root.danger ? root.danger-hover-bg : root.hover-bg)
+        : transparent;
+    transform-scale-x: ta.pressed && root.press-feedback ? 0.97 : 1.0;
+    transform-scale-y: ta.pressed && root.press-feedback ? 0.97 : 1.0;
+    animate transform-scale-x {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+    animate transform-scale-y {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+    animate background {
+        duration: root.hover-motion;
+        easing: ease-out;
+    }
+    animate border-color {
+        duration: root.hover-motion;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+        changed has-hover => {
+            if (root.tooltip-enabled) {
+                if (self.has-hover && (root.tip != "" || (root.tip-fallback-label && root.label != ""))) {
+                    Theme.dock-request(
+                        root.tip-studio,
+                        "tip.show",
+                        root.tip != "" ? root.tip : root.label,
+                        root.tip-description,
+                        self.absolute-position.x / 1px,
+                        (self.absolute-position.y + self.height) / 1px
+                    );
+                } else {
+                    Theme.dock-request(root.tip-studio, "tip.hide", "", "", 0, 0);
+                }
+            }
+        }
+    }
+
+    // Toolbar read-out mode: the label fills the button's box (the zoom "48%"
+    // used to sit off-baseline when it hugged its preferred size).
+    if root.label == "" && root.icon == "" : Text {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        text: root.content;
+        font-size: root.content-size;
+        color: root.active ? root.active-label-ink : root.danger ? root.danger-ink : root.label-ink;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    // Icon-only mode: the glyph is centred on the button's own box.
+    if root.icon != "" && root.label == "" : Path {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.icon-size;
+        height: root.icon-size;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: root.icon;
+        fill: transparent;
+        stroke-width: root.stroke-width;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+        stroke: root.active ? root.active-ink
+            : root.danger ? (ta.has-hover ? root.danger-hover-ink : root.danger-ink)
+            : ta.has-hover ? root.hover-ink
+            : root.ink;
+    }
+
+    // Labelled mode: leading glyph (optional), text, trailing glyph (optional).
+    if root.label != "" || root.trailing-icon != "" : HorizontalLayout {
+        padding-left: root.pad;
+        padding-right: root.pad;
+        spacing: root.spacing;
+        cross-axis-alignment: center;
+        alignment: root.trailing-icon == "" ? center : start;
+
+        if root.icon != "" : Path {
+            width: root.icon-size;
+            height: root.icon-size;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.icon;
+            fill: transparent;
+            stroke-width: root.stroke-width;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: root.active ? root.active-ink
+                : root.danger ? (ta.has-hover ? root.danger-hover-ink : root.danger-ink)
+                : ta.has-hover ? root.hover-ink
+                : root.ink;
+        }
+        Text {
+            text: root.label;
+            font-size: root.font-size;
+            font-weight: root.font-weight;
+            color: root.active ? root.active-label-ink : root.danger ? root.danger-ink : root.label-ink;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if root.trailing-icon != "" : Path {
+            width: root.trailing-size;
+            height: root.trailing-size;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.trailing-icon;
+            fill: transparent;
+            stroke-width: 2.5px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: root.trailing-ink;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Button
+// ---------------------------------------------------------------------------
+// Variant families:
+//   "primary" - filled brand (SmallButton primary, PrimaryButton, ToolPrimary,
+//               AiPrimary)
+//   "ghost"   - outlined transparent (SmallButton, GhostButton, ToolGhost,
+//               AiGhost, the plugin-manager SmallButton)
+//   "soft"    - borderless toolbar button with an active state (StudioButton)
+export component Button inherits Rectangle {
+    in property <string> variant: "primary";
+    in property <string> label: "";
+    in property <string> icon: "";
+    in property <bool> enabled: true;
+    in property <bool> active: false;
+    in property <bool> danger: false;
+    // Armed (confirm) state of the plugin manager's uninstall button.
+    in property <bool> armed: false;
+    in property <length> radius: root.variant == "primary" ? Theme.radius-md : root.variant == "soft" ? Theme.radius-md : Theme.radius-md;
+    in property <length> pad: root.variant == "soft" ? Theme.space-2 : root.variant == "ghost" ? 12px : Theme.space-4;
+    in property <length> spacing: Theme.space-2;
+    in property <length> font-size: root.variant == "primary" ? 13px : root.variant == "soft" ? 12px : 12px;
+    in property <length> icon-size: 14px;
+    in property <int> font-weight: root.variant == "primary" ? 600 : root.variant == "soft" ? 400 : 500;
+    in property <float> disabled-opacity: root.variant == "primary" ? 0.55 : root.variant == "soft" ? 0.35 : 0.5;
+    in property <color> ink: root.variant == "primary" ? Theme.brand-foreground : root.variant == "soft" ? Theme.toolbar-item : Theme.foreground;
+    in property <color> active-ink: root.variant == "soft" ? Theme.toolbar-active-text : root.ink;
+    in property <color> danger-ink: Theme.node-danger;
+    in property <color> hover-bg: root.variant == "primary" ? Theme.node-accent : root.variant == "soft" ? Theme.hover : Theme.hover;
+    in property <color> outline-color: Theme.border;
+    in property <bool> danger-border: false;
+    // A danger button hover wash: on by default for the ghost family, except
+    // the plugin manager's uninstall button which keeps the neutral wash.
+    in property <bool> danger-wash: root.variant == "ghost";
+    in property <bool> bordered: root.variant != "primary" && root.variant != "soft";
+    in property <color> disabled-bg: root.variant == "primary" ? Theme.muted : transparent;
+    // Dock tooltip (`Theme.dock-request`) for the studio toolbar's soft buttons.
+    in property <bool> tooltip-enabled: false;
+    in property <string> tip: "";
+    // Revealed under the name after the second (longer) hover delay.
+    in property <string> tip-description: "";
+    in property <string> tip-studio: "";
+    in property <bool> tip-fallback-label: false;
+    callback clicked();
+
+    height: root.variant == "soft" ? 28px : 32px;
+    width: self.preferred-width;
+    border-radius: root.radius;
+    border-width: root.bordered ? 1px : 0px;
+    border-color: root.danger && root.danger-border ? Theme.node-danger-soft : root.outline-color;
+    opacity: root.enabled ? 1 : root.disabled-opacity;
+    background: !root.enabled ? root.disabled-bg
+        : root.armed ? Theme.node-danger-soft
+        : root.active ? Theme.toolbar-active-bg
+        : root.variant == "primary" ? (ta.has-hover ? Theme.node-accent : Theme.brand)
+        : ta.has-hover ? (root.danger && root.danger-wash ? Theme.node-danger-soft : root.hover-bg)
+        : transparent;
+    animate background {
+        duration: root.active ? Theme.motion-select : root.variant == "soft" ? 0ms : Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate opacity {
+        duration: root.variant == "soft" ? 0ms : Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+        changed has-hover => {
+            if (root.tooltip-enabled) {
+                if (self.has-hover && (root.tip != "" || (root.tip-fallback-label && root.label != ""))) {
+                    Theme.dock-request(
+                        root.tip-studio,
+                        "tip.show",
+                        root.tip != "" ? root.tip : root.label,
+                        root.tip-description,
+                        self.absolute-position.x / 1px,
+                        (self.absolute-position.y + self.height) / 1px
+                    );
+                } else {
+                    Theme.dock-request(root.tip-studio, "tip.hide", "", "", 0, 0);
+                }
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: root.label == "" ? 8px : root.pad;
+        padding-right: root.label == "" ? 8px : root.pad;
+        spacing: root.spacing;
+        alignment: center;
+
+        if root.icon != "" : Path {
+            width: root.icon-size;
+            height: root.icon-size;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.icon;
+            fill: transparent;
+            stroke-width: 2px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: root.danger ? root.danger-ink : root.active ? root.active-ink : root.ink;
+        }
+        Text {
+            text: root.label;
+            font-size: root.font-size;
+            font-weight: root.font-weight;
+            color: root.active ? root.active-ink : root.danger && root.variant == "ghost" ? root.danger-ink : root.ink;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}

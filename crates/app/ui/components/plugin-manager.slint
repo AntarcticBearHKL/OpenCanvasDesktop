@@ -1,0 +1,390 @@
+import { Theme } from "../theme.slint";
+import { Button } from "widgets.slint";
+import { Icons } from "icons.slint";
+import { ModalShell } from "modals.slint";
+import { PluginManagerRow } from "overlay-types.slint";
+
+component TabButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> active: false;
+    callback clicked();
+
+    width: self.preferred-width;
+    height: Theme.header-h;
+    border-radius: Theme.radius-sm;
+    background: root.active ? Theme.card : ta.has-hover ? Theme.hover : transparent;
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Text {
+        text: root.label;
+        font-size: 13px;
+        font-weight: root.active ? 600 : 400;
+        color: Theme.node-text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+
+// Plugin manager modal (`canvas-plugin-manager-modal.tsx`): installed plugins
+// and the official registry across three tabs, enable/disable, uninstall and a
+// URL install field. Rust owns the rows and the state machine; the install is a
+// record-only flow (no network fetch, no dynamic import) — the hint line below
+// the field states it in the UI.
+export component PluginManagerModal inherits ModalShell {
+    in property <string> tab: "official";
+    in-out property <string> url: "";
+    in property <string> message: "";
+    in property <bool> message-error: false;
+    in property <[PluginManagerRow]> rows: [];
+    in property <bool> refreshing: false;
+    // Uninstall is arm-then-confirm (the library's delete pattern): the first
+    // click arms the row and relabels its button, the second one uninstalls.
+    // The state lives here because the row model has no armed field.
+    in-out property <string> armed-id: "";
+
+    callback tab-pick(string);
+    callback refresh();
+    callback url-edited(string);
+    callback install();
+    callback install-row(string);
+    callback toggle(string, bool);
+    callback uninstall(string);
+
+    body-height: 430px;
+    // The web row: `px-3 py-2.5` around a 36px icon → a 56px card.
+    property <length> row-h: Theme.space-8 + Theme.space-6;
+
+    VerticalLayout {
+        spacing: Theme.space-3;
+
+        HorizontalLayout {
+            height: Theme.header-h;
+            spacing: Theme.space-1;
+
+            TabButton {
+                label: "Official";
+                active: root.tab == "official";
+                clicked => {
+                    root.tab-pick("official");
+                }
+            }
+            TabButton {
+                label: "Local";
+                active: root.tab == "local";
+                clicked => {
+                    root.tab-pick("local");
+                }
+            }
+            TabButton {
+                label: "Third-party";
+                active: root.tab == "third-party";
+                clicked => {
+                    root.tab-pick("third-party");
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                background: transparent;
+            }
+            // Official-tab refresh with its short loading window.
+            if root.tab == "official" : Rectangle {
+                width: self.preferred-width;
+                height: Theme.control-h;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: refresh-ta.has-hover && !root.refreshing ? Theme.border-strong : transparent;
+                background: refresh-ta.has-hover && !root.refreshing ? Theme.hover : transparent;
+                opacity: root.refreshing ? 0.6 : 1;
+                animate background {
+                    duration: Theme.motion-hover;
+                    easing: ease-out;
+                }
+                animate border-color {
+                    duration: Theme.motion-hover;
+                    easing: ease-out;
+                }
+                animate opacity {
+                    duration: Theme.motion-hover;
+                    easing: ease-out;
+                }
+
+                refresh-ta := TouchArea {
+                    mouse-cursor: root.refreshing ? default : pointer;
+                    clicked => {
+                        if (!root.refreshing) {
+                            root.refresh();
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    padding-left: Theme.space-2;
+                    padding-right: Theme.space-2;
+                    spacing: Theme.space-1;
+                    alignment: center;
+
+                    Path {
+                        width: 13px;
+                        height: 13px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: Icons.refresh;
+                        fill: transparent;
+                        stroke-width: 2px;
+                        stroke-line-cap: round;
+                        stroke-line-join: round;
+                        stroke: Theme.node-muted;
+                    }
+                    Text {
+                        text: root.refreshing ? "Refreshing…" : "Refresh";
+                        font-size: 12px;
+                        color: Theme.node-muted;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // Amber untrusted-code banner for any non-official tab
+        // (`canvas-plugin-manager-modal.tsx` warning strip).
+        if root.tab != "official" : Rectangle {
+            height: 34px;
+            border-radius: Theme.radius-sm;
+            border-width: 1px;
+            border-color: Theme.node-warning;
+            background: Theme.node-warning-soft;
+
+            HorizontalLayout {
+                padding-left: Theme.space-3;
+                padding-right: Theme.space-3;
+                spacing: Theme.space-2;
+                cross-axis-alignment: center;
+
+                Path {
+                    width: 14px;
+                    height: 14px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: Icons.alert-triangle;
+                    fill: transparent;
+                    stroke-width: 2px;
+                    stroke-line-cap: round;
+                    stroke-line-join: round;
+                    stroke: Theme.node-warning;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: "Third-party plugins run untrusted code. Install only from sources you trust.";
+                    font-size: 11px;
+                    color: Theme.node-warning;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: root.rows.length * root.row-h;
+
+            VerticalLayout {
+                spacing: Theme.space-2;
+
+                if root.rows.length == 0 : Rectangle {
+                    height: root.row-h;
+                    background: transparent;
+
+                    Text {
+                        text: root.tab == "official" ? "No official plugins" : root.tab == "local" ? "No local plugins found" : "No third-party plugins installed";
+                        font-size: 13px;
+                        color: Theme.node-muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                for row in root.rows : Rectangle {
+                    height: root.row-h;
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.node-stroke;
+                    background: Theme.toolbar-panel;
+
+                    HorizontalLayout {
+                        padding-left: Theme.panel-pad;
+                        padding-right: Theme.panel-pad;
+                        padding-top: Theme.space-2;
+                        padding-bottom: Theme.space-2;
+                        spacing: Theme.space-3;
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: Theme.space-1;
+
+                            HorizontalLayout {
+                                height: Theme.space-5;
+                                spacing: Theme.space-2;
+
+                                Text {
+                                    text: row.name;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    color: Theme.node-text;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: "v" + row.version;
+                                    visible: !row.upgradable;
+                                    font-size: 12px;
+                                    color: Theme.node-muted;
+                                    vertical-alignment: center;
+                                }
+                                // Upgrade available: amber dot + old -> new.
+                                if row.upgradable : Rectangle {
+                                    width: 6px;
+                                    height: 6px;
+                                    border-radius: 3px;
+                                    background: Theme.node-warning;
+                                }
+                                if row.upgradable : Text {
+                                    text: "v" + row.version + " → v" + row.update-version;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    color: Theme.node-warning;
+                                    vertical-alignment: center;
+                                }
+                                Rectangle {
+                                    height: Theme.space-5;
+                                    width: self.preferred-width;
+                                    border-radius: Theme.space-3;
+                                    background: Theme.muted;
+
+                                    HorizontalLayout {
+                                        alignment: center;
+                                        padding-left: Theme.space-2;
+                                        padding-right: Theme.space-2;
+
+                                        Text {
+                                            text: row.badge;
+                                            font-size: 11px;
+                                            color: Theme.node-muted;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                            }
+                            Text {
+                                text: row.description;
+                                font-size: 12px;
+                                color: Theme.node-muted;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: row.source;
+                                font-size: 11px;
+                                color: Theme.node-faint;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+
+                        if row.installed : Button { variant: "ghost"; height: Theme.control-h; radius: Theme.radius-sm; pad: 12px; font-weight: 400; disabled-opacity: 0.35; outline-color: Theme.node-stroke; danger-border: true; danger-wash: false;
+                            label: row.enabled ? "Disable" : "Enable";
+                            clicked => {
+                                root.toggle(row.id, !row.enabled);
+                            }
+                        }
+                        if row.installed : Button { variant: "ghost"; height: Theme.control-h; radius: Theme.radius-sm; pad: 12px; font-weight: 400; disabled-opacity: 0.35; outline-color: Theme.node-stroke; danger-border: true; danger-wash: false;
+                            label: root.armed-id == row.id ? "Confirm uninstall" : "Uninstall";
+                            danger: true;
+                            armed: root.armed-id == row.id;
+                            clicked => {
+                                if (root.armed-id == row.id) {
+                                    root.armed-id = "";
+                                    root.uninstall(row.id);
+                                } else {
+                                    root.armed-id = row.id;
+                                }
+                            }
+                        }
+                        if !row.installed : Button { variant: "ghost"; height: Theme.control-h; radius: Theme.radius-sm; pad: 12px; font-weight: 400; disabled-opacity: 0.35; outline-color: Theme.node-stroke; danger-border: true; danger-wash: false;
+                            label: "Install";
+                            clicked => {
+                                root.install-row(row.url);
+                            }
+                        }
+                        if row.installed && row.upgradable : Button { variant: "ghost"; height: Theme.control-h; radius: Theme.radius-sm; pad: 12px; font-weight: 400; disabled-opacity: 0.35; outline-color: Theme.node-stroke; danger-border: true; danger-wash: false;
+                            label: "Update";
+                            clicked => {
+                                root.install-row(row.url);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            height: Theme.row-h-lg;
+            spacing: Theme.space-2;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: Theme.node-stroke;
+                background: Theme.card;
+
+                url-input := TextInput {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    height: parent.height;
+                    text <=> root.url;
+                    edited => {
+                        root.url-edited(self.text);
+                    }
+                    font-size: 12px;
+                    color: Theme.node-text;
+                    vertical-alignment: center;
+                }
+                if root.url == "" : Text {
+                    x: 8px;
+                    text: "https://example.com/plugin.js";
+                    font-size: 12px;
+                    color: Theme.node-faint;
+                    vertical-alignment: center;
+                }
+            }
+            Button { variant: "ghost"; height: Theme.control-h; radius: Theme.radius-sm; pad: 12px; font-weight: 400; disabled-opacity: 0.35; outline-color: Theme.node-stroke; danger-border: true; danger-wash: false;
+                label: "Install from URL";
+                clicked => {
+                    root.install();
+                }
+            }
+        }
+        Text {
+            visible: root.message != "";
+            height: 16px;
+            text: root.message;
+            font-size: 12px;
+            color: root.message-error ? Theme.node-danger : Theme.node-success;
+            vertical-alignment: center;
+        }
+        Text {
+            height: 16px;
+            text: "Install records the URL and its local source path; no network fetch or plugin code runs yet. Install, enable and uninstall state is saved for the next start.";
+            font-size: 11px;
+            color: Theme.node-faint;
+            vertical-alignment: center;
+        }
+    }
+}

@@ -1,0 +1,150 @@
+// Local models tab: what the optional on-device runtime is doing and where its
+// files live first, then the catalogue of known models with their real file
+// state. Presentation only — every value and callback is owned by Rust.
+
+import { Theme } from "../../theme.slint";
+import { I18n } from "../i18n.slint";
+import { Button } from "../widgets.slint";
+import { LocalModelRow } from "../overlay-types.slint";
+import {
+    SettingsCard, SettingsChip, SettingsDivider, SettingsEmptyState, SettingsPageHeader,
+    SettingsStatus,
+} from "settings-widgets.slint";
+
+export component LocalModelsTab inherits VerticalLayout {
+    in property <bool> local-runtime-available: false;
+    in property <[LocalModelRow]> local-models: [];
+    in property <string> local-models-dir: "";
+    callback local-refresh();
+    callback local-reveal();
+
+    spacing: 14px;
+
+    SettingsPageHeader {
+        title: I18n.config-local-title;
+        description: I18n.config-local-page-hint;
+    }
+
+    // 1. Is the runtime here, and where do model files go?
+    SettingsCard {
+        eyebrow: I18n.config-local-eyebrow-runtime;
+        title: I18n.config-local-runtime;
+        hint: I18n.config-local-runtime-hint;
+
+        SettingsStatus {
+            active: root.local-runtime-available;
+            label: root.local-runtime-available ? I18n.config-local-runtime-ready : I18n.config-local-runtime-missing;
+        }
+
+        Rectangle {
+            height: 42px;
+            border-radius: Theme.radius-sm;
+            background: Theme.muted;
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 6px;
+                spacing: 8px;
+                cross-axis-alignment: center;
+                Text {
+                    text: I18n.config-local-dir;
+                    font-size: 11px;
+                    color: Theme.muted-foreground;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: root.local-models-dir;
+                    font-size: 11px;
+                    font-family: "Cascadia Mono";
+                    color: Theme.node-muted;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                Button { variant: "ghost"; height: 28px; radius: Theme.radius-sm; font-size: 12px; font-weight: 600; pad: 10px; disabled-opacity: 0.5; disabled-bg: transparent;
+                    label: I18n.config-local-refresh;
+                    clicked => {
+                        root.local-refresh();
+                    }
+                }
+                Button { variant: "ghost"; height: 28px; radius: Theme.radius-sm; font-size: 12px; font-weight: 600; pad: 10px; disabled-opacity: 0.5; disabled-bg: transparent;
+                    label: I18n.config-local-reveal;
+                    clicked => {
+                        root.local-reveal();
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. The models themselves, one row each.
+    SettingsCard {
+        eyebrow: I18n.config-local-eyebrow-models;
+        title: I18n.config-local-models-title;
+
+        if root.local-models.length == 0 : SettingsEmptyState {
+            title: I18n.config-local-empty;
+            hint: I18n.config-local-empty-hint;
+        }
+
+        for model[index] in root.local-models : VerticalLayout {
+            spacing: 0px;
+
+            if index > 0 : SettingsDivider { }
+
+            HorizontalLayout {
+                min-height: 42px;
+                padding-top: 10px;
+                padding-bottom: 10px;
+                spacing: 12px;
+                cross-axis-alignment: center;
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 3px;
+                    Text {
+                        text: model.name;
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Theme.node-text;
+                        vertical-alignment: center;
+                    }
+                    if model.description != "" : Text {
+                        text: model.description;
+                        font-size: 12px;
+                        color: Theme.muted-foreground;
+                        wrap: word-wrap;
+                        max-lines: 2;
+                        overflow: elide;
+                    }
+                }
+
+                // Size over state chip; figures stay right-aligned and tabular.
+                VerticalLayout {
+                    spacing: 4px;
+                    cross-axis-alignment: end;
+                    Text {
+                        text: model.size;
+                        font-size: 12px;
+                        font-family: "Cascadia Mono";
+                        color: Theme.node-muted;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                    SettingsChip {
+                        on: model.installed;
+                        label: model.installed ? I18n.config-local-installed : I18n.config-local-missing;
+                    }
+                    // Only when the scan reports something the chip does not say.
+                    if model.status != "" && model.status != (model.installed ? I18n.config-local-installed : I18n.config-local-missing) : Text {
+                        text: model.status;
+                        font-size: 11px;
+                        color: Theme.muted-foreground;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}

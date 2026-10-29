@@ -1,0 +1,116 @@
+// Appearance tab: the theme single-select group and the window's two glass
+// settings (plate opacity and captured-desktop blur). Rust owns both values
+// (`src/appearance.rs`, persisted in `ui.json`); this file only renders them and
+// forwards each change.
+
+import { I18n } from "../i18n.slint";
+import { ConfigOptionRow } from "../overlay-types.slint";
+import { Theme } from "../../theme.slint";
+import { Slider } from "../widgets.slint";
+import { OptionGroup, SectionCard } from "settings-widgets.slint";
+
+export component AppearanceTab inherits VerticalLayout {
+    in property <[ConfigOptionRow]> appearance-theme: [];
+    // The persisted opacity (0–100) and blur (0–100) levels.
+    in property <float> plate-opacity: 80;
+    in property <float> backdrop-blur: 100;
+    callback option-pick(string, string);
+    callback opacity-changed(float);
+    callback blur-changed(float);
+
+    spacing: 14px;
+
+    SectionCard {
+        heading: I18n.config-appearance-theme;
+        OptionGroup {
+            options: root.appearance-theme;
+            pick(value) => {
+                root.option-pick("theme", value);
+            }
+        }
+    }
+
+    SectionCard {
+        heading: I18n.config-appearance-window;
+
+        VerticalLayout {
+            spacing: 12px;
+
+            // ---- Opacity: the window plate's alpha, live ----
+            VerticalLayout {
+                spacing: 6px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: I18n.config-appearance-opacity;
+                        horizontal-stretch: 1;
+                        font-size: 12px;
+                        font-weight: 500;
+                        color: Theme.node-text;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: round(root.plate-opacity) + "%";
+                        font-size: 12px;
+                        color: Theme.muted-foreground;
+                        vertical-alignment: center;
+                    }
+                }
+                Slider {
+                    value: root.plate-opacity;
+                    minimum: 0;
+                    maximum: 100;
+                    step: 1;
+                    changed(value) => {
+                        root.opacity-changed(value);
+                    }
+                }
+                Text {
+                    text: I18n.config-appearance-opacity-hint;
+                    font-size: 11px;
+                    color: Theme.muted-foreground;
+                    wrap: word-wrap;
+                }
+            }
+
+            // ---- Blur: the in-app Gaussian on the captured desktop, live ----
+            VerticalLayout {
+                spacing: 6px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: I18n.config-appearance-blur;
+                        horizontal-stretch: 1;
+                        font-size: 12px;
+                        font-weight: 500;
+                        color: Theme.node-text;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        // Blur 0 is the disabled state; above it the level
+                        // names the material the helper line documents.
+                        text: root.backdrop-blur <= 0 ? I18n.config-appearance-blur-off : round(root.backdrop-blur) + "%";
+                        font-size: 12px;
+                        color: Theme.muted-foreground;
+                        vertical-alignment: center;
+                    }
+                }
+                Slider {
+                    value: root.backdrop-blur;
+                    minimum: 0;
+                    maximum: 100;
+                    step: 1;
+                    changed(value) => {
+                        root.blur-changed(value);
+                    }
+                }
+                Text {
+                    text: I18n.config-appearance-blur-hint;
+                    font-size: 11px;
+                    color: Theme.muted-foreground;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}

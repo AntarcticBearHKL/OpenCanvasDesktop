@@ -1,0 +1,2396 @@
+import { Theme, ToastRow } from "theme.slint";
+import { I18n } from "components/i18n.slint";
+
+// Re-export the two singletons the Rust side drives (`ui.global::<Theme>()` /
+// `ui.global::<I18n>()`): only globals exported from this root document become
+// part of the generated public Rust API.
+export { Theme } from "theme.slint";
+export { I18n } from "components/i18n.slint";
+import { SidePanel } from "components/side-panel.slint";
+import { DockBar } from "components/toolbar.slint";
+import { Icons } from "components/icons.slint";
+import { NodeCard } from "components/node-card.slint";
+import { PointerIds } from "components/pointer-ids.slint";
+import { Rulers } from "components/rulers.slint";
+import { HoverBar, SelectionToolbar, MenuCard, MenuItem } from "components/floating.slint";
+import { TooltipLayer } from "components/dock.slint";
+import { ImagePreviewModal, ImageToolModal, NodeInfoModal } from "components/modals.slint";
+import { ExportImportModal, LibraryScreen } from "components/library.slint";
+import { NodeLayerPopover } from "components/node-list.slint";
+import { ShortcutsModal } from "components/shortcuts-modal.slint";
+import { PluginManagerModal } from "components/plugin-manager.slint";
+import { HoverAction, AssetItem, AssetTreeRow, ImageActionRow, ImageAdjustmentGroup, ImageAssetRow, ImageBrushRow, ImageChannelRow, ImageCurvePoint, ImageEditorRow, ImageFilterParam, ImageGradientRow, ImageGradientStopRow, ImageHistoryRow, ImageLayerRow, ImagePanels, ImageParamRow, ImagePathRow, ImagePatternRow, ImageStyleRow, ImageSwatchGroup, ImageToolRow, FilterMenuRow, InfoRow, LibraryGroupRow, RefImage, GenerationSettings, PluginManagerRow, ProjectListRow, RulerTick, RulerTickImage, SidePanelRow, StackImage, TextOptionRow, ConfigChannelRow } from "components/overlay-types.slint";
+import { ConfigModal } from "components/config-modal.slint";
+import { AttemptWorkbench } from "components/attempt-workbench.slint";
+import { ImageStudio } from "components/image.slint";
+import { ImageToolState, StackGalleryRow } from "components/overlay-types.slint";
+import { ImageAiModal, ImageAiState } from "components/image-ai-dialogs.slint";
+import { CostRecordRow, ConfigOptionRow, LocalModelRow, LogRow, StorageKindRow } from "components/overlay-types.slint";
+
+// Baloo 2 (wght 400-800, variable TTF) - embedded and registered at startup by
+// this import; see src/main.rs for why this is the Slint 1.18 registration API.
+import "../assets/fonts/Baloo2-Variable.ttf";
+
+// A canvas node row. World coordinates are pre-scale; the canvas layers map them
+// with a shared viewbox bound to `scale` / `vp-x` / `vp-y`, so pan and zoom only
+// touch three scalar properties (no model rebuild, no tween - motion-catalog ??).
+export struct NodeItem {
+    id: string,
+    kind: string,
+    title: string,
+    body: string,
+    body-size: length,
+    // Explicit text colour (`metadata.text_color`) plus its enable flag, so an
+    // unset colour falls back to the theme ink per theme.
+    body-color: color,
+    body-colored: bool,
+    media: bool,
+    world-x: length,
+    world-y: length,
+    width: length,
+    height: length,
+    selected: bool,
+    locked: bool,
+    enter: float,
+    // Plugin node content resolved by the host bridge (empty for built-ins).
+    plugin-kind: string,
+    plugin-text: string,
+    plugin-raw: string,
+    plugin-empty: bool,
+    plugin-editing: bool,
+    plugin-interactive: bool,
+    plugin-transparent: bool,
+    plugin-bg: color,
+    plugin-image: image,
+    plugin-palette-open: bool,
+    plugin-palette: [color],
+    has-source: bool,
+    has-target: bool,
+    // Media/content layer (`vm::node_row`): the decoded body bitmap (image
+    // content, video poster, stack cover), its fit and the empty flag.
+    content-image: image,
+    content-fit: string,
+    content-empty: bool,
+    // Status surface: "" | "loading" | "error" + the error detail line.
+    status: string,
+    error-text: string,
+    status-label: string,
+    // Media info bar (`MediaInfoBar`); `media-info` picks it over the title.
+    info: string,
+    media-info: bool,
+    // Image-stack contact sheet: decoded cover + backing rows (precomputed heap
+    // offsets) + the count chip.
+    stack-cover: image,
+    stack: [StackImage],
+    stack-count: int,
+    stack-count-label: string,
+    stack-cover-error: string,
+    // Assets list + footer.
+    assets: [AssetItem],
+    asset-count: int,
+    asset-count-label: string,
+    asset-source: string,
+    // Bound local folder (assets node): the rooted tree, the binding state, the
+    // folder path shown in the header and the error/status line.
+    asset-tree: [AssetTreeRow],
+    asset-bound: bool,
+    asset-folder: string,
+    asset-error: string,
+    // Video duration label (`"0:06"`).
+    duration: string,
+    // Batch text alternatives (`metadata.texts`).
+    batch-count: int,
+    batch-label: string,
+    batch: [TextOptionRow],
+    // Related/focus highlight (project.tsx relatedHighlight) and the body/title
+    // in-place editor state. There is deliberately no dim flag: selection never
+    // fades unrelated nodes.
+    related: bool,
+    editing: bool,
+    edit-text: string,
+    editing-title: bool,
+    title-draft: string,
+    // Video-prompt slots (`metadata.videoSlots`) and the active drop zone. The
+    // reference count is the card's editable N; `slot-refs` is replaced by
+    // `ref-slot-titles`, one title per reference slot.
+    slot-first: string,
+    slot-last: string,
+    ref-slot-count: int,
+    ref-slot-titles: [string],
+    slot-drop: string,
+    // Video-prompt generation mode (`metadata.videoMode`): "frames" | "reference".
+    video-mode: string,
+    // Prompt editor session of this row (double-click opens it).
+    prompt-caret: int,
+    prompt-caret-seq: int,
+    // True while this prompt body is in edit mode (double-click opened it).
+    prompt-editing: bool,
+    // Thumbnails of the image nodes connected into this prompt node.
+    ref-images: [RefImage],
+    // Generation card body: model, parameters and action state.
+    mode: string,
+    model: string,
+    // Provider brand letter of the selected model (the model row's badge).
+    model-brand: string,
+    settings-label: string,
+    generation-settings: GenerationSettings,
+    open-popover: string,
+    can-generate: bool,
+    running: bool,
+    attempt-version: int,
+    attempt-title: string,
+    attempt-frozen: bool,
+    attempt-run-count: int,
+    attempt-image-count: int,
+    attempt-trace-count: int,
+}
+
+// World-space path: `viewbox` slides over world coordinates and scales by k, so
+// stroke widths stay constant in screen pixels (femtovg strokes after fitting).
+component WorldPath inherits Path {
+    in property <float> viewport-scale: 1;
+    in property <length> viewport-x: 0px;
+    in property <length> viewport-y: 0px;
+
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    fit: fill;
+    fill: transparent;
+    // The grid and the wire layer are huge paths (thousands of dot segments).
+    // Without a cache, ANY overlay animation (the create menu's 160ms reveal,
+    // popovers, modals) re-rasterises them every frame, which made the
+    // right-click menu feel stuck. Slint invalidates the cache when the path
+    // or its viewport changes, so panning still updates 1:1.
+    cache-rendering-hint: true;
+    viewbox-x: -(self.viewport-x / 1px) / self.viewport-scale;
+    viewbox-y: -(self.viewport-y / 1px) / self.viewport-scale;
+    viewbox-width: (self.width / 1px) / self.viewport-scale;
+    viewbox-height: (self.height / 1px) / self.viewport-scale;
+}
+
+// Screen-space path (guides, marquee border, active connection): commands are
+// already in canvas pixels, so the natural size must not be re-fitted.
+component ScreenPath inherits Path {
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    fit: preserve;
+    fill: transparent;
+}
+
+// Shell blueprint: the home screen (folder rail + canvas table), the canvas
+// (side panel + edge-to-edge canvas section; the dock floats bottom-center) and
+// the Image Studio (its own menu and panels). The canvas section renders from
+// the Rust-owned model and forwards every pointer event upwards; P2 adds
+// pan/zoom, selection, node drag/resize, connections and shortcuts.
+export component AppWindow inherits Window {
+    title: "OpenCanvas";
+    // Frameless: the home screen's header carries the window controls, the
+    // canvas moves with a left-drag and the studio draws its own menu bar.
+    // Do NOT pin
+    // width/height here: a constant binding freezes Slint's surface size, so an
+    // OS resize leaves the layout drawn at the old size ??the initial size is
+    // pushed from Rust (`main.rs`) instead. A floor plus a resize border keep
+    // the frameless window resizable at its edges.
+    no-frame: true;
+    min-width: 1024px;
+    min-height: 640px;
+    // Transparent root: the captured, blurred desktop is painted by the
+    // `glass-backdrop` image below, and the plate paints the theme tint over
+    // it. The winit backend still creates the window transparent so the first
+    // frames (before the capture lands) show the live desktop instead of a
+    // black surface.
+    resize-border-width: 6px;
+    background: transparent;
+    // Web stack: "Baloo 2", "Resource Han Rounded SC", "Microsoft YaHei",
+    // system-ui, sans-serif. Slint's font-family takes a single family name and
+    // appends its generic fallbacks (SansSerif -> SystemUi) plus fontique's
+    // script fallback, which resolves CJK to the OS Han font.
+    default-font-family: "Baloo 2";
+
+    // ---- custom window chrome ---------------------------------------------
+    // True while the window is maximised: swaps the maximise glyph for restore.
+    in-out property <bool> window-maximized: false;
+    // True when the OS accepted the transparent-window request. The captured
+    // blurred desktop is the primary backdrop; this flag is only the fallback
+    // for the first frames before the capture lands.
+    in-out property <bool> backdrop: false;
+    // ---- captured frosted backdrop --------------------------------------
+    // The whole-desktop capture, blurred in Rust (`glass_capture.rs`) and
+    // pinned to the desktop: x/y are the capture origin minus the window
+    // origin, and w/h are the capture size, all in logical pixels. The image
+    // is declared before the root plate so it paints underneath the tint.
+    in property <image> glass-backdrop;
+    in property <bool> glass-backdrop-valid: false;
+    in property <length> glass-x: 0px;
+    in property <length> glass-y: 0px;
+    in property <length> glass-w: 0px;
+    in property <length> glass-h: 0px;
+    callback win-minimize();
+    callback win-maximize-toggle();
+    callback win-close();
+    // Manual window move (keeps the event loop running while the window moves;
+    // the home header, a left-drag on the canvas and the studio's own drag
+    // affordance all feed these three).
+    callback drag-begin();
+    callback drag-tick();
+    callback drag-end();
+
+    in-out property <[NodeItem]> nodes: [];
+    in-out property <string> wires: "";
+    // Dot-grid background.
+    //
+    // Shipped: `grid-tile` is a pre-rendered bitmap holding `grid-tile-w /
+    // grid-step` dots per axis, repeated by the `grid-indices` lattice below.
+    // The grid is screen-anchored: `grid-step` (the on-screen spacing) and the
+    // bitmap are constants, so zooming changes nothing here. Only the lattice
+    // offsets are bindings on `vp-x`/`vp-y`, so panning never rebuilds
+    // anything.
+    //
+    // Legacy (`legacy-grid`, `OC_LEGACY_GRID=1`): `grid` is the world-space
+    // command string of one dot segment per intersection, re-tessellated
+    // whenever the viewport moves. Kept for the before/after benchmark.
+    in-out property <string> grid: "";
+    in-out property <bool> legacy-grid: false;
+    in-out property <image> grid-tile;
+    in-out property <float> grid-step: 26;
+    in-out property <float> grid-tile-w: 416;
+    in-out property <float> grid-tile-h: 416;
+    in-out property <[int]> grid-indices: [0];
+    in-out property <int> grid-cols: 1;
+    in-out property <int> grid-rows: 1;
+    // Scroll phase of the tile lattice: one tile before the canvas, so a dot
+    // sits on the canvas origin at any pan offset. The pan is rounded to a
+    // whole pixel before the wrap: sampling the tile at a fractional position
+    // would resample the 2.5px dot (blur/shimmer while panning). `Math.mod` is
+    // Euclidean (`rem_euclid`), so the phase is in [0, tile].
+    out property <float> grid-phase-x: Math.round(Math.mod(root.vp-x / 1px - root.grid-step * 0.5, root.grid-tile-w));
+    out property <float> grid-phase-y: Math.round(Math.mod(root.vp-y / 1px - root.grid-step * 0.5, root.grid-tile-h));
+    in-out property <float> scale: 1;
+    in-out property <length> vp-x: 0px;
+    in-out property <length> vp-y: 0px;
+    in-out property <string> active-wire: "";
+    in-out property <string> guides: "";
+    in-out property <bool> marquee-visible: false;
+    in-out property <length> marquee-x: 0px;
+    in-out property <length> marquee-y: 0px;
+    in-out property <length> marquee-width: 0px;
+    in-out property <length> marquee-height: 0px;
+    in-out property <string> marquee-border: "";
+    in-out property <string> connect-target-id: "";
+    // Wire editing: selected wire path and the Ctrl+right cut stroke (both
+    // paths owned by Rust).
+    in-out property <string> selected-wire: "";
+    in-out property <string> cut-stroke: "";
+    // Selected-edge explanation: the agent-written reason/diff shown as a
+    // small pill at the edge midpoint. Edge metadata is persisted even when
+    // no pill is visible.
+    in-out property <bool> edge-reason-visible: false;
+    in-out property <string> edge-reason-text: "";
+    in-out property <length> edge-reason-x: 0px;
+    in-out property <length> edge-reason-y: 0px;
+    // Node-drop bindings: highlighted target + slot zone, and the drag ghost.
+    in-out property <string> drop-target-id: "";
+    in-out property <string> drop-slot: "";
+    in-out property <bool> can-undo: false;
+    in-out property <bool> can-redo: false;
+    in-out property <bool> has-selection: false;
+    in-out property <bool> space-held: false;
+    in-out property <bool> panning: false;
+    // True while a node card is being dragged. Clipping is disabled for the
+    // gesture so femtovg does not create a fresh clip layer per card on the
+    // first moving frame (the visible hitch at drag start).
+    in-out property <bool> drag-active: false;
+    // True only for the press that the Rust canvas handler classified as empty
+    // background (not a wire, not Shift+marquee). The background layer starts
+    // the manual window move when it sees this; nodes never reach it.
+    in-out property <bool> canvas-window-drag: false;
+    // Hold-to-home ring: visible while the right button is still on the canvas.
+    // `home-hold-x/y` are canvas-local pixels; the arc is a 24x24 SVG path
+    // generated by Rust (`app::home_hold_arc`) from 0..1 progress.
+    in-out property <bool> home-hold-visible: false;
+    in-out property <float> home-hold-progress: 0;
+    in-out property <length> home-hold-x: 0px;
+    in-out property <length> home-hold-y: 0px;
+    in-out property <string> home-hold-arc: "";
+
+    // Zoom read-out of the canvas overlay pill (`zoom-badge-visible` is the
+    // fade target Rust drives; the label is the formatted percentage).
+    in-out property <string> zoom-label: "100%";
+    in-out property <bool> zoom-badge-visible: false;
+    in-out property <bool> shortcuts-open: false;
+    // True while a wheel zoom is live. Cards keep their full content but use
+    // a fixed 1x inner layout and one transform, so zooming never re-lays out
+    // text/media and never swaps the visible subtree.
+    in-out property <bool> fast-zoom: false;
+    // Side panel width + open flag (persisted in `ui.json`; 220..480).
+    in-out property <bool> side-panel-open: true;
+    in-out property <length> side-panel-width: 280px;
+    in-out property <bool> side-panel-resizing: false;
+    in-out property <[RulerTick]> ruler-x: [];
+    in-out property <[RulerTickImage]> ruler-y: [];
+    // Node-level layer popover (the hover bar's `layers` action).
+    in-out property <bool> node-layer-open: false;
+    in-out property <string> node-layer-header: "";
+    in-out property <bool> node-layer-can-up: true;
+    in-out property <bool> node-layer-can-down: true;
+    in-out property <length> node-layer-x: 0px;
+    in-out property <length> node-layer-y: 0px;
+    // Plugin canvas integration (Rust owns the plugin host; src/plugin_host.rs).
+    // Node creation is the dock's per-type buttons; the plugin manager opens
+    // from the library top bar.
+    in-out property <bool> plugins-open: false;
+    in-out property <string> plugin-tab: "official";
+    in-out property <string> plugin-url: "";
+    in-out property <bool> plugin-refreshing: false;
+    in-out property <string> plugin-message: "";
+    in-out property <bool> plugin-message-error: false;
+    in-out property <[PluginManagerRow]> plugin-rows: [];
+    in-out property <bool> hover-bar-visible: false;
+    in-out property <length> hover-bar-x: 0px;
+    in-out property <length> hover-bar-y: 0px;
+    in-out property <[HoverAction]> hover-actions: [];
+    in-out property <bool> selection-visible: false;
+    in-out property <length> selection-x: 0px;
+    in-out property <length> selection-y: 0px;
+    in-out property <length> selection-width: 0px;
+    in-out property <length> selection-height: 0px;
+    in-out property <string> selection-border: "";
+    in-out property <bool> selection-bar-visible: false;
+    in-out property <length> selection-bar-x: 0px;
+    in-out property <length> selection-bar-y: 0px;
+    in-out property <bool> align-menu-open: false;
+    in-out property <bool> layout-menu-open: false;
+    in-out property <bool> distributable: false;
+    in-out property <bool> info-open: false;
+    in-out property <string> info-title: "";
+    in-out property <string> info-error: "";
+    in-out property <bool> info-json: false;
+    in-out property <string> info-json-text: "";
+    in-out property <[InfoRow]> info-rows: [];
+    in-out property <bool> preview-open: false;
+    in-out property <string> preview-title: "";
+    in-out property <bool> preview-stack: false;
+    // Preview media (`image_tools` / `canvas_content::preview_content`): the
+    // decoded bitmap, the media info line and the stack gallery rows.
+    in-out property <image> preview-image;
+    in-out property <string> preview-info: "";
+    in-out property <[StackGalleryRow]> preview-rows: [];
+    in-out property <int> preview-count: 0;
+    // Canvas media import prompt + the image quick-tool dialog
+    // (`image_tools::CanvasMedia`).
+    // Canvas image quick-tool dialog + the AI-backed image tools
+    // (`image_tools::CanvasMedia`).
+    in-out property <bool> image-tool-open: false;
+    in-out property <ImageToolState> image-tool-state;
+    // AI-backed image tools (`image_ai.rs`): OCR / multi-angle / AI upscale /
+    // segmentation share one dialog state, dispatched by `kind`.
+    in-out property <bool> image-ai-open: false;
+    in-out property <ImageAiState> image-ai-state;
+    in-out property <[string]> image-ai-variant-options: [];
+    in-out property <[string]> image-ai-variant-labels: [];
+    in-out property <[string]> image-ai-factor-options: [];
+    in-out property <[string]> image-ai-factor-labels: [];
+
+    // AI provider/model config (the settings modal's tabs).
+    in-out property <bool> config-open: false;
+    in-out property <string> config-tab: "providers";
+    in-out property <[ConfigChannelRow]> config-channels: [];
+    in-out property <[ConfigOptionRow]> appearance-theme: [];
+    in-out property <string> config-theme: "light";
+    // Image Attempt workbench (double-click an attempt card).
+    in-out property <bool> attempt-open: false;
+    in-out property <string> attempt-id: "";
+    in-out property <string> attempt-prompt: "";
+    in-out property <string> attempt-model: "";
+    in-out property <string> attempt-size: "";
+    in-out property <string> attempt-quality: "";
+    in-out property <int> attempt-count: 1;
+    in-out property <int> attempt-version: 1;
+    in-out property <string> attempt-intent: "";
+    in-out property <bool> attempt-frozen: false;
+    in-out property <int> attempt-run-count: 0;
+    in-out property <int> attempt-image-count: 0;
+    in-out property <image> attempt-image;
+    in-out property <bool> attempt-has-image: false;
+    in-out property <string> attempt-trace: "";
+    callback attempt-prompt-edited(string);
+    callback attempt-config-edited(string, string);
+    callback attempt-run();
+    callback attempt-duplicate();
+    callback attempt-extract();
+    callback attempt-close();
+    // The Appearance tab's window glass settings (0–100 each): the plate alpha
+    // and the captured-desktop blur strength. Rust restores them from `ui.json`
+    // and applies every change (`App::glass_setting`).
+    in-out property <float> glass-opacity: 80;
+    in-out property <float> glass-blur: 100;
+    in-out property <bool> local-runtime-available: false;
+    in-out property <[LocalModelRow]> local-models: [];
+    in-out property <string> local-models-dir: "";
+    in-out property <[StorageKindRow]> storage-rows: [];
+    in-out property <string> storage-summary: "";
+    in-out property <bool> storage-clear-armed: false;
+    in-out property <[CostRecordRow]> cost-rows: [];
+    in-out property <string> cost-summary: "";
+    in-out property <string> cost-generation-id: "";
+    in-out property <int> cost-priced-count: 0;
+    in-out property <[LogRow]> log-rows: [];
+    in-out property <string> logs-filter: "all";
+    in-out property <string> logs-category: "all";
+    in-out property <[string]> logs-categories: [];
+    in-out property <string> config-app-version: "";
+    // Navigation + library (Rust owns the state; see crates/app/src/library.rs).
+    in-out property <string> view: "library";
+    in-out property <[LibraryGroupRow]> library-groups: [];
+    in-out property <[ProjectListRow]> library-projects: [];
+    in-out property <[SidePanelRow]> side-rows: [];
+    in-out property <string> side-group: "";
+    in-out property <string> library-group-title: "No project";
+    in-out property <bool> library-has-group: false;
+    // Active toasts, newest last (`App::notices`). The Rust tick expires them;
+    // this list is the whole rendering contract (AntD `message` stacking).
+    in-out property <[ToastRow]> notices: [];
+    in-out property <bool> export-open: false;
+    in-out property <bool> export-import-mode: false;
+    in-out property <string> export-title: "";
+    in-out property <string> export-path: "";
+    in-out property <string> export-hint: "";
+    in-out property <string> export-message: "";
+    in-out property <bool> export-error: false;
+    // Image Studio workspace (Rust owns the state; see crates/app/src/image*.rs).
+    in-out property <image> image-canvas-image;
+    in-out property <string> image-checker: "";
+    in-out property <length> image-checker-x: 0px;
+    in-out property <length> image-checker-y: 0px;
+    in-out property <length> image-checker-w: 0px;
+    in-out property <length> image-checker-h: 0px;
+    in-out property <float> image-doc-w: 640;
+    in-out property <float> image-doc-h: 360;
+    in-out property <float> image-view-k: 1;
+    in-out property <length> image-view-x: 0px;
+    in-out property <length> image-view-y: 0px;
+    in-out property <string> image-grid: "";
+    in-out property <string> image-guides: "";
+    in-out property <string> image-ants: "";
+    in-out property <string> image-ants-alt: "";
+    in-out property <string> image-draft: "";
+    in-out property <string> image-snap-lines: "";
+    in-out property <string> image-path-overlay: "";
+    in-out property <string> image-transform: "";
+    in-out property <[RulerTick]> image-ruler-x: [];
+    in-out property <[RulerTickImage]> image-ruler-y: [];
+    in-out property <bool> image-show-rulers: false;
+    in-out property <bool> image-snap: true;
+    in-out property <[ImageToolRow]> image-tools: [];
+    in-out property <string> image-active-tool: "hand";
+    in-out property <[ImageLayerRow]> image-layers: [];
+    in-out property <[ImageHistoryRow]> image-history: [];
+    in-out property <[ImageSwatchGroup]> image-swatches: [];
+    in-out property <[ImageParamRow]> image-params: [];
+    in-out property <[ImageStyleRow]> image-styles: [];
+    in-out property <[string]> image-fonts: [];
+    in-out property <bool> image-can-undo: false;
+    in-out property <bool> image-can-redo: false;
+    in-out property <bool> image-has-selection: false;
+    in-out property <bool> image-pan-cursor: false;
+    in-out property <string> image-menu: "";
+    in-out property <ImagePanels> image-panels: {
+        layers: true,
+        fx: true,
+        history: true,
+        properties: true,
+        color: true,
+    };
+    in-out property <bool> image-settings-open: false;
+    in-out property <float> image-brush: 24;
+    in-out property <float> image-hardness: 80;
+    in-out property <float> image-opacity: 100;
+    in-out property <float> image-tolerance: 32;
+    in-out property <float> image-feather: 0;
+    in-out property <bool> image-contiguous: true;
+    in-out property <bool> image-sample-all: true;
+    in-out property <bool> image-antialias: true;
+    in-out property <bool> image-gradient-radial: false;
+    in-out property <bool> image-gradient-reverse: false;
+    in-out property <string> image-shape-kind: "rectangle";
+    in-out property <bool> image-shape-fill: true;
+    in-out property <float> image-stroke-width: 2;
+    in-out property <color> image-color: #000000;
+    in-out property <string> image-color-hex: "#000000";
+    in-out property <color> image-bg-color: #ffffff;
+    in-out property <string> image-bg-hex: "#ffffff";
+    in-out property <string> image-slot: "fg";
+    in-out property <float> image-hue: 0;
+    in-out property <float> image-sat: 0;
+    in-out property <float> image-val: 0;
+    in-out property <float> image-red: 0;
+    in-out property <float> image-green: 0;
+    in-out property <float> image-blue: 0;
+    in-out property <string> image-active-kind: "";
+    in-out property <string> image-layer-name: "";
+    in-out property <string> image-layer-x: "0";
+    in-out property <string> image-layer-y: "0";
+    in-out property <string> image-layer-w: "0";
+    in-out property <string> image-layer-h: "0";
+    in-out property <string> image-layer-rotation: "0";
+    in-out property <float> image-layer-opacity: 100;
+    in-out property <string> image-layer-blend: "normal";
+    in-out property <string> image-adjustment: "";
+    in-out property <string> image-text-content: "";
+    in-out property <string> image-text-family: "sans-serif";
+    in-out property <string> image-board: "640";
+    in-out property <string> image-board-h: "360";
+    in-out property <string> image-ratio: "16:9";
+    in-out property <string> image-resolution: "2k";
+    in-out property <string> image-background: "transparent";
+    in-out property <float> image-background-opacity: 100;
+    in-out property <bool> image-export-open: false;
+    in-out property <string> image-export-path: "";
+    in-out property <string> image-export-message: "";
+    in-out property <bool> image-export-error: false;
+    in-out property <string> image-guide-draft: "";
+    in-out property <string> image-transform-mode: "";
+    in-out property <bool> image-mask-view: false;
+    in-out property <bool> image-layer-has-mask: false;
+    in-out property <bool> image-layer-can-add-mask: false;
+    in-out property <bool> image-layer-can-apply-mask: false;
+    in-out property <bool> image-layer-mask-target: false;
+    in-out property <[ImageEditorRow]> image-text-rows: [];
+    in-out property <bool> image-text-edit-on: false;
+    in-out property <string> image-text-edit-draft: "";
+    in-out property <length> image-text-edit-x: 0px;
+    in-out property <length> image-text-edit-y: 0px;
+    in-out property <length> image-text-edit-w: 0px;
+    in-out property <length> image-text-edit-h: 0px;
+    in-out property <bool> image-import-open: false;
+    in-out property <string> image-import-path: "";
+    in-out property <string> image-import-message: "";
+    in-out property <bool> image-import-error: false;
+    in-out property <bool> image-psd-export-open: false;
+    in-out property <string> image-psd-export-path: "";
+    in-out property <string> image-psd-export-message: "";
+    in-out property <bool> image-psd-export-error: false;
+    in-out property <[ImageChannelRow]> image-channels: [];
+    in-out property <bool> image-channel-r: true;
+    in-out property <bool> image-channel-g: true;
+    in-out property <bool> image-channel-b: true;
+    in-out property <string> image-channel-view: "rgb";
+    in-out property <[ImagePathRow]> image-paths: [];
+    in-out property <bool> image-path-can-paint: false;
+    in-out property <[ImageActionRow]> image-actions: [];
+    in-out property <bool> image-recording: false;
+    in-out property <int> image-recorded: 0;
+    in-out property <[ImageAssetRow]> image-assets: [];
+    in-out property <string> image-asset-search: "";
+    in-out property <[ImageAdjustmentGroup]> image-adjustments: [];
+    in-out property <[ImageGradientRow]> image-gradients: [];
+    in-out property <[ImageGradientStopRow]> image-gradient-stops: [];
+    in-out property <[ImageGradientStopRow]> image-editor-stops: [];
+    in-out property <image> image-gradient-edit-strip;
+    in-out property <string> image-gradient-name: "";
+    in-out property <int> image-gradient-stop-selected: 0;
+    in-out property <[ImagePatternRow]> image-patterns: [];
+    in-out property <bool> image-pattern-can-define: false;
+    in-out property <[ImageBrushRow]> image-brushes: [];
+    in-out property <image> image-brush-preview;
+    in-out property <float> image-brush-spacing: 15;
+    in-out property <float> image-brush-scatter: 0;
+    in-out property <float> image-brush-angle: 0;
+    in-out property <float> image-brush-roundness: 100;
+    in-out property <float> image-brush-dynamics: 0;
+    in-out property <float> image-brush-texture: 0;
+    in-out property <bool> image-editor-visible: false;
+    in-out property <string> image-editor-title: "Adjustment";
+    in-out property <[ImageEditorRow]> image-editor-rows: [];
+    in-out property <[ImageCurvePoint]> image-curve-points: [];
+    in-out property <string> image-curve-path: "";
+    in-out property <image> image-editor-stops-strip;
+    in-out property <int> image-editor-stop-selected: 0;
+    in-out property <bool> image-filter-open: false;
+    in-out property <string> image-filter-label: "";
+    in-out property <[ImageFilterParam]> image-filter-params: [];
+    in-out property <image> image-filter-preview;
+    in-out property <string> image-filter-warning: "";
+    in-out property <bool> image-filter-liquify: false;
+    // The Filter menu's rows (headers + filters), built once by Rust.
+    in-out property <[FilterMenuRow]> filter-menu-rows: [];
+    in-out property <bool> image-modal-open: false;
+    in-out property <string> image-modal-mode: "image-size";
+    in-out property <string> image-modal-a: "";
+    in-out property <string> image-modal-b: "";
+    in-out property <bool> image-modal-constrain: true;
+    in-out property <string> image-modal-anchor: "middle-center";
+    in-out property <string> image-modal-angle: "0";
+    in-out property <string> image-modal-dx: "0";
+    in-out property <string> image-modal-dy: "0";
+    in-out property <string> image-modal-scale-x: "100";
+    in-out property <string> image-modal-scale-y: "100";
+    in-out property <string> image-modal-rotation: "0";
+    in-out property <string> image-modal-skew-x: "0";
+    in-out property <string> image-modal-skew-y: "0";
+    in-out property <string> image-modal-message: "";
+    // Canvas-area size polled by Rust (the hidden workspace has no size event).
+    out property <length> image-canvas-width: image-ws.canvas-w;
+    out property <length> image-canvas-height: image-ws.canvas-h;
+
+    // The creatable built-in types, as the dock's node buttons expose them.
+    out property <[string]> create-types: dock.create-types;
+
+    callback canvas-pointer(string, length, length, string, bool, bool);
+    callback canvas-scroll(length, length, float);
+    callback canvas-resized(length, length);
+    callback node-pointer(string, string, length, length, string, bool);
+    callback resize-pointer(string, string, string, length, length);
+    callback connect-pointer(string, string, string, length, length);
+    // Node-level layer popover: move one step, close.
+    callback node-layer-move(string);
+    callback node-layer-close();
+    // Plugin integration callbacks.
+    callback create-node(string);
+    callback open-plugins();
+    callback plugin-manager-close();
+    callback plugin-tab-pick(string);
+    callback plugin-url-edited(string);
+    callback plugin-refresh();
+    callback plugin-install();
+    callback plugin-install-row(string);
+    callback plugin-toggle(string, bool);
+    callback plugin-uninstall(string);
+    callback plugin-action(string, string);
+    callback plugin-text-edited(string, string);
+    callback plugin-palette-pick(string, int);
+    callback node-hover(string, bool);
+    callback node-double-click(string);
+    callback node-retry(string);
+    callback node-view-all(string);
+    callback node-info(string);
+    // Assets node folder binding: bind/rebind, expand, refresh and drag a file
+    // row out onto the canvas (the row passes its root-relative path).
+    callback node-asset-bind(string);
+    callback node-asset-toggle(string, string);
+    callback node-asset-refresh(string);
+    callback node-asset-drag(string, string);
+    callback node-asset-drag-start(string, string, length, length);
+    callback node-asset-drag-move(string, length, length);
+    callback node-asset-drag-end(string);
+    callback node-edit-begin(string, string);
+    callback node-edit-change(string, string);
+    callback node-edit-commit(string);
+    callback node-edit-cancel(string);
+    callback node-chip-remove(string, string);
+    // Reference chip dropped onto an Image Prompt's input. The prompt card
+    // never emits it (references are the wired chip row), but the callback is
+    // kept for the document-side handler and must stay a no-op for the text.
+    callback node-ref-insert(string, string, length, length, length, length);
+    callback bar-hover(bool);
+    callback bar-press(bool);
+    callback hover-action(string);
+    callback selection-menu(string);
+    callback align-action(string);
+    callback info-view(bool);
+    callback modal-close();
+    // Canvas media pipeline (`image_tools`): the image quick-tool dialog, the
+    // stack gallery actions and the preview modal.
+    callback image-tool-close();
+    callback image-tool-pick(string, string);
+    callback image-tool-field(string, string);
+    callback image-tool-pointer(string, float, float);
+    callback image-tool-suggest();
+    callback image-tool-reset();
+    callback image-tool-apply();
+    callback image-tool-ratio(string);
+    // AI-backed image tools (`image_ai.rs`).
+    callback image-ai-close();
+    callback image-ai-field(string, string);
+    callback image-ai-pick(string, string);
+    callback image-ai-apply();
+    callback image-ai-cancel();
+    callback node-video-mode(string, string);
+    callback node-video-slots(string, int);
+    callback stack-action(string, string);
+    callback preview-download(string);
+    callback preview-copy(string);
+    callback node-prompt-edited(string, string, int);
+    callback node-prompt-blur(string);
+    callback node-prompt-edit-cancel(string);
+    callback node-popover(string, string);
+    callback node-setting(string, string, string);
+    callback node-generate(string);
+    callback node-text-option(string, string, string);
+    callback node-ref-remove(string, string);
+    callback key-down(string, bool, bool);
+    callback key-up(string);
+    // Shortcuts modal (``?`` / the canvas shortcuts reference).
+    callback shortcuts-close();
+    // Side panel resize handle (canvas-side-panel.tsx). The open/close toggle
+    // lives in the dock bar (`toggle-panel`).
+    callback side-resize(string, length);
+    callback undo();
+    callback redo();
+    callback delete-selection();
+    callback toggle-panel();
+    // Dock-bar Home: saves the open project and returns to the library.
+    callback go-home();
+    callback library-create-group();
+    callback library-select-group(string);
+    callback library-group-action(string, string);
+    callback library-group-name-edited(string);
+    callback library-create-project();
+    callback library-project-action(string, string);
+    callback library-project-name-edited(string);
+    callback export-path-edited(string);
+    callback export-run();
+    callback export-close();
+    callback notice-dismiss(int);
+    callback side-panel-open-project(string);
+    callback side-panel-create-project();
+    // The app-level project-archive import action (wired in `library_wire.rs`).
+    // The canvas side panel no longer hosts an upload control for it.
+    callback side-panel-import();
+    callback side-panel-project-action(string, string);
+    callback side-panel-reorder(string, string);
+    callback open-config();
+    callback config-close();
+    callback config-tab-pick(string);
+    callback config-channel-field(string, string, string);
+    callback config-option-pick(string, string);
+    // Appearance tab sliders: "opacity" | "blur" plus the new 0–100 level.
+    callback glass-setting(string, float);
+
+    callback config-local-refresh();
+    callback config-local-reveal();
+    callback config-storage-refresh();
+    callback config-storage-reveal();
+    callback config-storage-clear();
+    callback config-cost-clear();
+    callback config-cost-id-edited(string);
+    callback config-cost-lookup();
+    callback config-logs-filter(string);
+    callback config-logs-category(string);
+    callback config-logs-toggle(string);
+    callback config-logs-copy();
+    callback config-logs-download();
+    callback config-logs-clear();
+
+    // Image Studio callbacks.
+    callback image-action(string);
+    callback image-tool(string);
+    callback image-toggle(string);
+    callback image-slider(string, float);
+    callback image-layer-pick(string);
+    callback image-layer-action(string, string);
+    callback image-layer-opacity-changed(float);
+    callback image-layer-blend-changed(string);
+    callback image-layer-name-edited(string);
+    callback image-history-pick(int);
+    callback image-color-field(string, string);
+    callback image-color-pick(string);
+    callback image-swatch-add();
+    callback image-swatch-remove(int);
+    callback image-color-swap();
+    callback image-color-reset();
+    callback image-slot-pick(string);
+    callback image-prop-field(string, string);
+    callback image-param-set(string, float);
+    callback image-shape-pick(string);
+    callback image-font-pick(string);
+    callback image-settings-pick(string, string);
+    callback image-board-apply();
+    callback image-canvas-pointer(string, length, length, string, bool, bool);
+    callback image-canvas-scroll(length, length, float);
+    callback image-canvas-double-click(length, length);
+    callback image-key(string, bool, bool);
+    callback image-key-up(string);
+    callback image-export();
+    callback image-export-path-edited(string);
+    callback image-export-run();
+    callback image-export-close();
+    callback image-guide-drag(string, length, length);
+    callback image-guide-move(length, length);
+    callback image-guide-drop(length, length);
+    callback image-mask-action(string);
+    callback image-mask-target(string, bool, bool);
+    callback image-text-set(string, float);
+    callback image-text-text(string, string);
+    callback image-text-option(string, string);
+    callback image-text-choice(string, int);
+    callback image-text-check(string, bool);
+    callback image-text-edit-changed(string);
+    callback image-text-edit-commit(string);
+    callback image-text-edit-cancel();
+    callback image-import-path-edited(string);
+    callback image-import-run();
+    callback image-import-close();
+    callback image-psd-export-path-edited(string);
+    callback image-psd-export-run();
+    callback image-psd-export-close();
+    callback image-channel-action(string, string);
+    callback image-path-action(string, string);
+    callback image-actions-panel(string, string);
+    callback image-asset-action(string, string);
+    callback image-asset-drop(string, length, length);
+    callback image-assets-refresh();
+    callback image-asset-search-edited(string);
+    callback image-panel-name-edited(string);
+    callback image-adjustment-create(string);
+    callback image-gradient-action(string, string);
+    callback image-pattern-action(string, string);
+    callback image-brush-action(string, string);
+    callback image-brush-slider(string, float);
+    callback image-editor-set(string, float);
+    callback image-editor-text(string, string);
+    callback image-editor-option(string, string);
+    callback image-editor-check(string, bool);
+    callback image-curve-add(float, float);
+    callback image-curve-move(int, float, float);
+    callback image-curve-delete(int);
+    callback image-editor-stop-add();
+    callback image-editor-stop-select(int);
+    callback image-editor-stop-remove(int);
+    callback image-editor-stop-color(int, string);
+    callback image-editor-stop-pos(int, float);
+    callback image-filter-param(string, float);
+    callback image-filter-param-text(string, string);
+    callback image-filter-reset();
+    callback image-filter-apply();
+    callback image-filter-cancel();
+    callback image-filter-push(float, float);
+    callback image-modal-field(string, string);
+    callback image-modal-toggle(string);
+    callback image-modal-run();
+    callback image-modal-close();
+
+    // The blurred desktop snapshot is the bottom layer; the plate below is
+    // the white frost over it. The image is a whole-desktop capture pinned by
+    // `glass-x/y`, so moving the window only changes this offset.
+    if root.glass-backdrop-valid : Image {
+        x: root.glass-x;
+        y: root.glass-y;
+        width: root.glass-w;
+        height: root.glass-h;
+        source: root.glass-backdrop;
+        image-fit: fill;
+    }
+
+    // Root surface: the frameless window is rounded by DWM (`glass::round_corners`),
+    // and this clipped surface keeps the content inside the same rounded edge.
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+        border-radius: Theme.radius-window;
+        clip: true;
+        // The window plate: the white frost over the captured, blurred
+        // desktop. Before the first capture (and when blur is off) the OS
+        // transparent-window fallback or the opaque base tone carries the
+        // window, so it can never become a black hole.
+        background: (root.glass-backdrop-valid || root.backdrop)
+            ? Theme.window-tint
+            : Theme.background;
+
+    VerticalLayout {
+        spacing: 0;
+
+        // No app title bar anywhere: the home screen's header carries the
+        // window controls (and is its drag surface), the canvas is edge-to-edge
+        // and the studio's own menu bar is its top row.
+        Rectangle {
+            vertical-stretch: 1;
+
+            LibraryScreen {
+                visible: root.view == "library";
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 100%;
+                groups: root.library-groups;
+                projects: root.library-projects;
+                group-title: root.library-group-title;
+                has-group: root.library-has-group;
+                maximized: root.window-maximized;
+                create-group => {
+                    root.library-create-group();
+                }
+                select-group(id) => {
+                    root.library-select-group(id);
+                }
+                group-action(id, action) => {
+                    root.library-group-action(id, action);
+                }
+                group-name-edited(text) => {
+                    root.library-group-name-edited(text);
+                }
+                create-project => {
+                    root.library-create-project();
+                }
+                project-action(id, action) => {
+                    root.library-project-action(id, action);
+                }
+                project-name-edited(text) => {
+                    root.library-project-name-edited(text);
+                }
+                settings => {
+                    root.open-config();
+                }
+                go-home => {
+                    root.go-home();
+                }
+                minimize => {
+                    root.win-minimize();
+                }
+                maximize-toggle => {
+                    root.win-maximize-toggle();
+                }
+                close => {
+                    root.win-close();
+                }
+                drag-begin => {
+                    root.drag-begin();
+                }
+                drag-tick => {
+                    root.drag-tick();
+                }
+                drag-end => {
+                    root.drag-end();
+                }
+            }
+
+            HorizontalLayout {
+                visible: root.view == "editor";
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 100%;
+                spacing: 0;
+
+                SidePanel {
+                    open: root.side-panel-open;
+                    panel-width: root.side-panel-width;
+                    resizing: root.side-panel-resizing;
+                    rows: root.side-rows;
+                    group-title: root.side-group;
+                    open-project(id) => {
+                        root.side-panel-open-project(id);
+                    }
+                    create-project => {
+                        root.side-panel-create-project();
+                    }
+                    go-home => {
+                        root.go-home();
+                    }
+                    right-click => {
+                        root.toggle-panel();
+                    }
+                    project-action(id, action) => {
+                        root.side-panel-project-action(id, action);
+                    }
+                    reorder(id, direction) => {
+                        root.side-panel-reorder(id, direction);
+                    }
+                    resize(kind, x) => {
+                        root.side-resize(kind, x);
+                    }
+                    // A left-drag on the panel background moves the window
+                    // through the same manual move as the canvas background.
+                    drag-begin => {
+                        root.drag-begin();
+                    }
+                    drag-tick => {
+                        root.drag-tick();
+                    }
+                    drag-end => {
+                        root.drag-end();
+                    }
+                }
+            canvas-area := Rectangle {
+                horizontal-stretch: 1;
+                background: Theme.glass-content;
+                clip: true;
+                // True between a left-button press on empty background and its
+                // release: the window follows the pointer (see `bg-hit`).
+                property <bool> window-dragging: false;
+                changed width => {
+                    root.canvas-resized(self.width, self.height);
+                }
+                changed height => {
+                    root.canvas-resized(self.width, self.height);
+                }
+
+                // Background interaction layer: wheel zoom, middle/right-drag
+                // pan, left-drag window move (Shift keeps the marquee and
+                // Ctrl+right the cut stroke) and the plain click-to-deselect.
+                bg-hit := TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    mouse-cursor: root.panning ? grabbing : root.space-held ? grab : default;
+                    scroll-event(e) => {
+                        root.canvas-scroll(self.mouse-x, self.mouse-y, e.delta-y / 1px);
+                        accept
+                    }
+                    double-clicked => {
+                        // Background double-click does nothing: nodes are
+                        // created from the dock's node-type buttons.
+                    }
+                    pointer-event(e) => {
+                        let kind = PointerIds.kind-id(e.kind);
+                        if (kind == "down") {
+                            shortcut-focus.focus();
+                        }
+                        // The canvas has no title strip: left-drag moves the
+                        // window through the same manual move as the top bar.
+                        // The Rust handler classifies the press first and sets
+                        // `canvas-window-drag` only for empty background, so a
+                        // wire click, Shift+left marquee and the middle/right
+                        // pan (or Ctrl+right cut) never move the window.
+                        root.canvas-pointer(kind, self.mouse-x, self.mouse-y, PointerIds.button-id(e.button), e.modifiers.shift, e.modifiers.control);
+                        if (e.button == PointerEventButton.left && root.canvas-window-drag && kind == "down") {
+                            canvas-area.window-dragging = true;
+                            root.drag-begin();
+                        } else if (e.button == PointerEventButton.left && canvas-area.window-dragging && kind == "move") {
+                            root.drag-tick();
+                        } else if ((kind == "up" || kind == "cancel") && canvas-area.window-dragging) {
+                            canvas-area.window-dragging = false;
+                            root.drag-end();
+                        }
+                    }
+                }
+
+                // 1. canvas background: the dot grid, then 2. the wires.
+                //
+                // The grid is a pre-rendered tile (`grid-tile`: `grid-tile-w /
+                // grid-step` dots per axis, rasterised once in Rust from
+                // `Theme.canvas-dot` at 2.5px) repeated over the canvas by a
+                // small lattice of Image elements. The lattice covers one whole
+                // tile past every edge, so `Math.mod` returning [0, tile] is
+                // always enough. Panning only moves these elements (bindings on
+                // `vp-x`/`vp-y`) and zooming does not touch them at all: the
+                // spacing is a fixed screen constant, so the dots neither
+                // spread nor tighten with the zoom.
+                //
+                // Dots are 2.5px circles in `Theme.canvas-dot` at the 0.65
+                // opacity the old path layer drew at (baked into the tile
+                // alpha); the phase snaps to whole pixels, so the dots never
+                // shimmer while panning.
+                for index in root.grid-indices : Image {
+                    visible: !root.legacy-grid;
+                    x: (root.grid-phase-x + (Math.mod(index, root.grid-cols) - 1) * root.grid-tile-w) * 1px;
+                    y: (root.grid-phase-y + (Math.floor(index / root.grid-cols) - 1) * root.grid-tile-h) * 1px;
+                    width: root.grid-tile-w * 1px;
+                    height: root.grid-tile-h * 1px;
+                    source: root.grid-tile;
+                    image-fit: fill;
+                }
+                // Legacy dot grid: one world-space Path, re-tessellated on
+                // every viewport change (`OC_LEGACY_GRID=1`; the perf tests
+                // measure this against the tiled background).
+                WorldPath {
+                    visible: root.legacy-grid;
+                    commands: root.grid;
+                    stroke: Theme.canvas-dot;
+                    stroke-width: 2.5px;
+                    stroke-line-cap: round;
+                    opacity: 0.65;
+                    viewport-scale: root.scale;
+                    viewport-x: root.vp-x;
+                    viewport-y: root.vp-y;
+                }
+                WorldPath {
+                    commands: root.wires;
+                    stroke: Theme.node-faint;
+                    stroke-width: 2px;
+                    opacity: 0.82;
+                    viewport-scale: root.scale;
+                    viewport-x: root.vp-x;
+                    viewport-y: root.vp-y;
+                }
+                // Selected wire (canvas-connections.tsx:44-51: activeStroke at 3px).
+                WorldPath {
+                    commands: root.selected-wire;
+                    stroke: Theme.node-active-stroke;
+                    stroke-width: 3px;
+                    viewport-scale: root.scale;
+                    viewport-x: root.vp-x;
+                    viewport-y: root.vp-y;
+                }
+                // Selected edge explanation pill. It sits in screen space so
+                // its text stays legible at every zoom.
+                if root.edge-reason-visible : Rectangle {
+                    x: root.edge-reason-x;
+                    y: root.edge-reason-y;
+                    width: edge-label.preferred-width + 20px;
+                    height: 30px;
+                    border-radius: Theme.radius-md;
+                    background: Theme.glass-panel;
+                    border-width: 1px;
+                    border-color: Theme.glass-panel-border;
+                    z: 20;
+
+                    edge-label := Text {
+                        x: 10px;
+                        y: 0px;
+                        width: parent.width - 20px;
+                        height: 100%;
+                        text: root.edge-reason-text;
+                        font-size: 11px;
+                        color: Theme.node-text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+
+                // 3. active connection (screen space, under the nodes like the
+                //    web's SVG layer)
+                ScreenPath {
+                    commands: root.active-wire;
+                    stroke: Theme.node-active-stroke;
+                    stroke-width: 2px;
+                }
+
+                // Cut-tool stroke (project.tsx:1911-1912: selectionStroke, 2px).
+                ScreenPath {
+                    commands: root.cut-stroke;
+                    stroke: Theme.canvas-selection-stroke;
+                    stroke-width: 2px;
+                }
+
+                // 4. nodes
+                for node in root.nodes : NodeCard {
+                    node-id: node.id;
+                    kind: node.kind;
+                    title: node.title;
+                    body: node.body;
+                    body-size: node.body-size;
+                    body-color: node.body-color;
+                    body-colored: node.body-colored;
+                    media: node.media;
+                    plugin-kind: node.plugin-kind;
+                    plugin-text: node.plugin-text;
+                    plugin-raw: node.plugin-raw;
+                    plugin-empty: node.plugin-empty;
+                    plugin-editing: node.plugin-editing;
+                    plugin-interactive: node.plugin-interactive;
+                    plugin-transparent: node.plugin-transparent;
+                    plugin-bg: node.plugin-bg;
+                    plugin-image: node.plugin-image;
+                    plugin-palette-open: node.plugin-palette-open;
+                    plugin-palette: node.plugin-palette;
+                    has-source: node.has-source;
+                    has-target: node.has-target;
+                    content-image: node.content-image;
+                    content-fit: node.content-fit;
+                    content-empty: node.content-empty;
+                    status: node.status;
+                    error-text: node.error-text;
+                    status-label: node.status-label;
+                    info: node.info;
+                    media-info: node.media-info;
+                    stack-cover: node.stack-cover;
+                    stack: node.stack;
+                    stack-count: node.stack-count;
+                    stack-count-label: node.stack-count-label;
+                    stack-cover-error: node.stack-cover-error;
+                    assets: node.assets;
+                    asset-count: node.asset-count;
+                    asset-count-label: node.asset-count-label;
+                    asset-source: node.asset-source;
+                    asset-tree: node.asset-tree;
+                    asset-bound: node.asset-bound;
+                    asset-folder: node.asset-folder;
+                    asset-error: node.asset-error;
+                    duration: node.duration;
+                    batch-count: node.batch-count;
+                    batch-label: node.batch-label;
+                    batch: node.batch;
+                    related: node.related;
+                    editing: node.editing;
+                    edit-text: node.edit-text;
+                    editing-title: node.editing-title;
+                    title-draft: node.title-draft;
+                    // Viewport culling: off-screen cards skip layout and paint.
+                    // The margin keeps the title slot and shadows alive at the
+                    // edge while the card itself is just outside.
+                    visible: node.world-x * root.scale + root.vp-x < canvas-area.width + 120px
+                        && (node.world-x + node.width) * root.scale + root.vp-x > -120px
+                        && node.world-y * root.scale + root.vp-y < canvas-area.height + 120px
+                        && (node.world-y + node.height) * root.scale + root.vp-y > -120px;
+                    canvas-x: node.world-x * root.scale + root.vp-x;
+                    canvas-y: node.world-y * root.scale + root.vp-y;
+                    // Keep the same NodeCard and its content in both modes:
+                    // only the geometry changes. During a wheel zoom the card
+                    // is laid out at 1x and scaled as one transform; the cold
+                    // pass restores per-card layout for crisp text.
+                    card-width: root.fast-zoom ? node.width : node.width * root.scale;
+                    card-height: root.fast-zoom ? node.height : node.height * root.scale;
+                    scale: root.fast-zoom ? 1.0 : root.scale;
+                    transform-scale-x: root.fast-zoom ? root.scale : 1.0;
+                    transform-scale-y: root.fast-zoom ? root.scale : 1.0;
+                    transform-origin: {
+                        x: 0px,
+                        y: 0px,
+                    };
+                    enter: node.enter;
+                    selected: node.selected;
+                    locked: node.locked;
+                    drag-active: root.drag-active;
+                    connect-target: root.connect-target-id == node.id;
+                    drop-target: root.drop-target-id == node.id;
+                    slot-drop: root.drop-target-id == node.id ? root.drop-slot : "";
+                    slot-first: node.slot-first;
+                    slot-last: node.slot-last;
+                    ref-slot-count: node.ref-slot-count;
+                    ref-slot-titles: node.ref-slot-titles;
+                    video-mode: node.video-mode;
+                    prompt-caret: node.prompt-caret;
+                    prompt-caret-seq: node.prompt-caret-seq;
+                    prompt-editing: node.prompt-editing;
+                    ref-images: node.ref-images;
+                    mode: node.mode;
+                    model: node.model;
+                    model-brand: node.model-brand;
+                    settings-label: node.settings-label;
+                    generation-settings: node.generation-settings;
+                    open-popover: node.open-popover;
+                    can-generate: node.can-generate;
+                    running: node.running;
+                    attempt-version: node.attempt-version;
+                    attempt-title: node.attempt-title;
+                    attempt-frozen: node.attempt-frozen;
+                    attempt-run-count: node.attempt-run-count;
+                    attempt-image-count: node.attempt-image-count;
+                    attempt-trace-count: node.attempt-trace-count;
+                    plugin-text-edited(id, text) => {
+                        root.plugin-text-edited(id, text);
+                    }
+                    plugin-palette-pick(id, index) => {
+                        root.plugin-palette-pick(id, index);
+                    }
+                    node-pointer(id, kind, x, y, button, shift) => {
+                        if (kind == "down") {
+                            shortcut-focus.focus();
+                        }
+                        root.node-pointer(id, kind, x, y, button, shift);
+                    }
+                    node-scroll(id, x, y, delta-y) => {
+                        root.canvas-scroll(x, y, delta-y);
+                    }
+                    resize-pointer(corner, kind, x, y) => {
+                        root.resize-pointer(node.id, corner, kind, x, y);
+                    }
+                    connect-pointer(handle, kind, x, y) => {
+                        root.connect-pointer(node.id, handle, kind, x, y);
+                    }
+                    node-hover(id, hovered) => {
+                        root.node-hover(id, hovered);
+                    }
+                    node-double-click(id) => {
+                        root.node-double-click(id);
+                    }
+                    node-retry(id) => {
+                        root.node-retry(id);
+                    }
+                    node-view-all(id) => {
+                        root.node-view-all(id);
+                    }
+                    node-info(id) => {
+                        root.node-info(id);
+                    }
+                    node-asset-bind(id) => {
+                        root.node-asset-bind(id);
+                    }
+                    node-asset-toggle(id, path) => {
+                        root.node-asset-toggle(id, path);
+                    }
+                    node-asset-refresh(id) => {
+                        root.node-asset-refresh(id);
+                    }
+                    node-asset-drag(id, path) => {
+                        root.node-asset-drag(id, path);
+                    }
+                    node-asset-drag-start(id, path, x, y) => {
+                        root.node-asset-drag-start(id, path, x, y);
+                    }
+                    node-asset-drag-move(id, x, y) => {
+                        root.node-asset-drag-move(id, x, y);
+                    }
+                    node-asset-drag-end(id) => {
+                        root.node-asset-drag-end(id);
+                    }
+                    node-edit-begin(id, target) => {
+                        root.node-edit-begin(id, target);
+                    }
+                    node-edit-change(id, text) => {
+                        root.node-edit-change(id, text);
+                    }
+                    node-edit-commit(id) => {
+                        root.node-edit-commit(id);
+                    }
+                    node-edit-cancel(id) => {
+                        root.node-edit-cancel(id);
+                    }
+                    node-video-mode(id, mode) => {
+                        root.node-video-mode(id, mode);
+                    }
+                    node-video-slots(id, delta) => {
+                        root.node-video-slots(id, delta);
+                    }
+                    node-prompt-edited(id, text, caret) => {
+                        root.node-prompt-edited(id, text, caret);
+                    }
+                    node-prompt-blur(id) => {
+                        root.node-prompt-blur(id);
+                    }
+                    node-prompt-edit-cancel(id) => {
+                        root.node-prompt-edit-cancel(id);
+                    }
+                    node-popover(id, kind) => {
+                        root.node-popover(id, kind);
+                    }
+                    node-setting(id, key, value) => {
+                        root.node-setting(id, key, value);
+                    }
+                    node-generate(id) => {
+                        root.node-generate(id);
+                    }
+                    node-text-option(id, option, action) => {
+                        root.node-text-option(id, option, action);
+                    }
+                    node-ref-remove(id, image) => {
+                        root.node-ref-remove(id, image);
+                    }
+                }
+
+                // 5. snap guides (z-45) and 6. the dock (z-50)
+                ScreenPath {
+                    commands: root.guides;
+                    stroke: Theme.selection-blue;
+                    stroke-width: 1px;
+                }
+
+                dock := DockBar {
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height - self.height - 20px;
+                    z: 50;
+                    can-undo: root.can-undo;
+                    can-redo: root.can-redo;
+                    has-selection: root.has-selection;
+                    panel-open: root.side-panel-open;
+                    toggle-panel => {
+                        root.toggle-panel();
+                    }
+                    create-node(type-id) => {
+                        root.create-node(type-id);
+                    }
+                    undo => {
+                        root.undo();
+                    }
+                    redo => {
+                        root.redo();
+                    }
+                    delete-selection => {
+                        root.delete-selection();
+                    }
+                }
+
+                // Zoom read-out: bare text in the canvas' bottom-right corner,
+                // with the same 16px padding on the right and the bottom edges
+                // (no plate, no border, no shadow - it is an indicator, not a
+                // control). Rust raises it on every zoom change and drops it
+                // again after ~900ms, so the two animated opacities are a 120ms
+                // fade-in and a 400ms fade-out. It takes no pointer events.
+                Rectangle {
+                    x: parent.width - self.width - 16px;
+                    y: parent.height - self.height - 16px;
+                    width: zoom-pill-text.preferred-width;
+                    height: 20px;
+                    z: 55;
+                    background: transparent;
+                    opacity: root.zoom-badge-visible ? 1 : 0;
+                    animate opacity {
+                        // 110ms in / 420ms out on the shared motion steps.
+                        duration: root.zoom-badge-visible ? Theme.motion-hover : Theme.motion-enter;
+                        easing: ease-out;
+                    }
+
+                    zoom-pill-text := Text {
+                        width: 100%;
+                        text: root.zoom-label;
+                        font-size: 15px;
+                        font-weight: 500;
+                        color: Theme.node-muted;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+
+                Rulers {
+                    ticks-x: root.ruler-x;
+                    labels-y: root.ruler-y;
+                }
+
+                // Selection bounds (z-65) and the floating bars (z-70).
+                SelectionToolbar {
+                    bounds-visible: root.selection-visible;
+                    rect-x: root.selection-x;
+                    rect-y: root.selection-y;
+                    rect-width: root.selection-width;
+                    rect-height: root.selection-height;
+                    border: root.selection-border;
+                    bar-visible: root.selection-bar-visible;
+                    bar-x: root.selection-bar-x;
+                    bar-y: root.selection-bar-y;
+                    align-open: root.align-menu-open;
+                    layout-open: root.layout-menu-open;
+                    distributable: root.distributable;
+                    menu(id) => {
+                        root.selection-menu(id);
+                    }
+                    align(axis) => {
+                        root.align-action(axis);
+                    }
+                    delete-selection => {
+                        root.delete-selection();
+                    }
+                }
+
+                HoverBar {
+                    visible: root.hover-bar-visible;
+                    anchor-x: root.hover-bar-x;
+                    anchor-y: root.hover-bar-y;
+                    canvas-width: canvas-area.width;
+                    canvas-height: canvas-area.height;
+                    scale: root.scale;
+                    actions: root.hover-actions;
+                    action(id) => {
+                        root.hover-action(id);
+                    }
+                    bar-hover(hovered) => {
+                        root.bar-hover(hovered);
+                    }
+                    bar-press(pressed) => {
+                        root.bar-press(pressed);
+                    }
+                }
+
+                // Node-level layer popover (hover bar `layers`): layer count and
+                // the node's own z-order moves, hanging under the bar (z-75).
+                NodeLayerPopover {
+                    visible: root.node-layer-open;
+                    anchor-x: root.node-layer-x;
+                    anchor-y: root.node-layer-y;
+                    canvas-width: canvas-area.width;
+                    canvas-height: canvas-area.height;
+                    header: root.node-layer-header;
+                    can-up: root.node-layer-can-up;
+                    can-down: root.node-layer-can-down;
+                    z: 75;
+                    move(direction) => {
+                        root.node-layer-move(direction);
+                    }
+                    close => {
+                        root.node-layer-close();
+                    }
+                }
+
+                // 8. marquee (z-100, above every overlay in the web)
+                Rectangle {
+                    visible: root.marquee-visible;
+                    x: root.marquee-x;
+                    y: root.marquee-y;
+                    width: root.marquee-width;
+                    height: root.marquee-height;
+                    background: Theme.canvas-selection-fill;
+                    z: 100;
+                }
+                ScreenPath {
+                    commands: root.marquee-border;
+                    stroke: Theme.canvas-selection-stroke;
+                    stroke-width: 1px;
+                    opacity: 0.55;
+                    z: 100;
+                }
+
+                // Hold-to-home: a Zelda-stamina ring at the press point. The
+                // track is always drawn; the accent arc fills clockwise from
+                // 12 o'clock and completes at HOME_HOLD_MS (900ms).
+                if root.home-hold-visible : Rectangle {
+                    x: root.home-hold-x - 26px;
+                    y: root.home-hold-y - 26px;
+                    width: 52px;
+                    height: 52px;
+                    z: 120;
+                    background: transparent;
+
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        border-radius: 26px;
+                        background: Theme.foreground.with-alpha(0.08 + 0.04 * root.home-hold-progress);
+                    }
+                    Rectangle {
+                        x: 5px;
+                        y: 5px;
+                        width: 42px;
+                        height: 42px;
+                        border-radius: 21px;
+                        background: transparent;
+                        border-width: 3px;
+                        border-color: Theme.foreground.with-alpha(0.22 + 0.10 * root.home-hold-progress);
+                    }
+                    Path {
+                        x: 5px;
+                        y: 5px;
+                        width: 42px;
+                        height: 42px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: root.home-hold-arc;
+                        fill: transparent;
+                        stroke-width: 2.6px;
+                        stroke-line-cap: round;
+                        stroke: Theme.node-accent;
+                    }
+                    Path {
+                        x: 18px;
+                        y: 18px;
+                        width: 16px;
+                        height: 16px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: Icons.home;
+                        fill: transparent;
+                        stroke-width: 2px;
+                        stroke-line-cap: round;
+                        stroke-line-join: round;
+                        stroke: Theme.foreground;
+                    }
+                }
+            }
+            }
+
+            // Image Studio workspace (view == "image"): own studio top bar,
+            // tool rail, dock columns and board; Rust owns every value.
+            image-ws := ImageStudio {
+                visible: root.view == "image";
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 100%;
+                canvas-image: root.image-canvas-image;
+                checker: root.image-checker;
+                checker-x: root.image-checker-x;
+                checker-y: root.image-checker-y;
+                checker-w: root.image-checker-w;
+                checker-h: root.image-checker-h;
+                doc-w: root.image-doc-w;
+                doc-h: root.image-doc-h;
+                view-k: root.image-view-k;
+                view-x: root.image-view-x;
+                view-y: root.image-view-y;
+                grid: root.image-grid;
+                guides: root.image-guides;
+                ants: root.image-ants;
+                ants-alt: root.image-ants-alt;
+                draft: root.image-draft;
+                snap-lines: root.image-snap-lines;
+                path-overlay: root.image-path-overlay;
+                transform-handles: root.image-transform;
+                ruler-x: root.image-ruler-x;
+                ruler-y: root.image-ruler-y;
+                show-rulers: root.image-show-rulers;
+                snap: root.image-snap;
+                tools: root.image-tools;
+                active-tool: root.image-active-tool;
+                layers: root.image-layers;
+                history: root.image-history;
+                swatches: root.image-swatches;
+                params: root.image-params;
+                styles: root.image-styles;
+                fonts: root.image-fonts;
+                can-undo: root.image-can-undo;
+                can-redo: root.image-can-redo;
+                has-selection: root.image-has-selection;
+                pan-cursor: root.image-pan-cursor;
+                menu: root.image-menu;
+                panels: root.image-panels;
+                settings-open: root.image-settings-open;
+                brush: root.image-brush;
+                hardness: root.image-hardness;
+                brush-opacity: root.image-opacity;
+                tolerance: root.image-tolerance;
+                feather: root.image-feather;
+                contiguous: root.image-contiguous;
+                sample-all: root.image-sample-all;
+                antialias: root.image-antialias;
+                gradient-radial: root.image-gradient-radial;
+                gradient-reverse: root.image-gradient-reverse;
+                shape-kind: root.image-shape-kind;
+                shape-fill: root.image-shape-fill;
+                stroke-width: root.image-stroke-width;
+                fg-color: root.image-color;
+                bg-color: root.image-bg-color;
+                fg-hex: root.image-color-hex;
+                bg-hex: root.image-bg-hex;
+                slot: root.image-slot;
+                hue: root.image-hue;
+                sat: root.image-sat;
+                val: root.image-val;
+                red: root.image-red;
+                green: root.image-green;
+                blue: root.image-blue;
+                active-kind: root.image-active-kind;
+                layer-name: root.image-layer-name;
+                layer-x: root.image-layer-x;
+                layer-y: root.image-layer-y;
+                layer-w: root.image-layer-w;
+                layer-h: root.image-layer-h;
+                layer-rotation: root.image-layer-rotation;
+                layer-opacity: root.image-layer-opacity;
+                layer-blend: root.image-layer-blend;
+                adjustment: root.image-adjustment;
+                text-content: root.image-text-content;
+                text-family: root.image-text-family;
+                board-w: root.image-board;
+                board-h: root.image-board-h;
+                ratio: root.image-ratio;
+                resolution: root.image-resolution;
+                board-background: root.image-background;
+                background-opacity: root.image-background-opacity;
+                export-open: root.image-export-open;
+                export-path: root.image-export-path;
+                export-message: root.image-export-message;
+                export-error: root.image-export-error;
+                guide-draft: root.image-guide-draft;
+                transform-mode: root.image-transform-mode;
+                mask-view: root.image-mask-view;
+                layer-has-mask: root.image-layer-has-mask;
+                layer-can-add-mask: root.image-layer-can-add-mask;
+                layer-can-apply-mask: root.image-layer-can-apply-mask;
+                layer-mask-target: root.image-layer-mask-target;
+                text-rows: root.image-text-rows;
+                text-edit-on: root.image-text-edit-on;
+                text-edit-draft: root.image-text-edit-draft;
+                text-edit-x: root.image-text-edit-x;
+                text-edit-y: root.image-text-edit-y;
+                text-edit-w: root.image-text-edit-w;
+                text-edit-h: root.image-text-edit-h;
+                import-open: root.image-import-open;
+                import-path: root.image-import-path;
+                import-message: root.image-import-message;
+                import-error: root.image-import-error;
+                psd-export-open: root.image-psd-export-open;
+                psd-export-path: root.image-psd-export-path;
+                psd-export-message: root.image-psd-export-message;
+                psd-export-error: root.image-psd-export-error;
+                channels: root.image-channels;
+                channel-r: root.image-channel-r;
+                channel-g: root.image-channel-g;
+                channel-b: root.image-channel-b;
+                channel-view: root.image-channel-view;
+                paths: root.image-paths;
+                path-can-paint: root.image-path-can-paint;
+                actions: root.image-actions;
+                recording: root.image-recording;
+                recorded: root.image-recorded;
+                assets: root.image-assets;
+                asset-search: root.image-asset-search;
+                adjustments: root.image-adjustments;
+                gradients: root.image-gradients;
+                gradient-stops: root.image-gradient-stops;
+                editor-stops: root.image-editor-stops;
+                gradient-edit-strip: root.image-gradient-edit-strip;
+                gradient-name: root.image-gradient-name;
+                gradient-stop-selected: root.image-gradient-stop-selected;
+                patterns: root.image-patterns;
+                pattern-can-define: root.image-pattern-can-define;
+                brushes: root.image-brushes;
+                brush-preview: root.image-brush-preview;
+                brush-spacing: root.image-brush-spacing;
+                brush-scatter: root.image-brush-scatter;
+                brush-angle: root.image-brush-angle;
+                brush-roundness: root.image-brush-roundness;
+                brush-dynamics: root.image-brush-dynamics;
+                brush-texture: root.image-brush-texture;
+                editor-visible: root.image-editor-visible;
+                editor-title: root.image-editor-title;
+                editor-rows: root.image-editor-rows;
+                curve-points: root.image-curve-points;
+                curve-path: root.image-curve-path;
+                editor-stops-strip: root.image-editor-stops-strip;
+                editor-stop-selected: root.image-editor-stop-selected;
+                filter-open: root.image-filter-open;
+                filter-label: root.image-filter-label;
+                filter-params: root.image-filter-params;
+                filter-preview: root.image-filter-preview;
+                filter-warning: root.image-filter-warning;
+                filter-liquify: root.image-filter-liquify;
+                filter-menu-rows: root.filter-menu-rows;
+                modal-open: root.image-modal-open;
+                modal-mode: root.image-modal-mode;
+                modal-a: root.image-modal-a;
+                modal-b: root.image-modal-b;
+                modal-constrain: root.image-modal-constrain;
+                modal-anchor: root.image-modal-anchor;
+                modal-angle: root.image-modal-angle;
+                modal-dx: root.image-modal-dx;
+                modal-dy: root.image-modal-dy;
+                modal-scale-x: root.image-modal-scale-x;
+                modal-scale-y: root.image-modal-scale-y;
+                modal-rotation: root.image-modal-rotation;
+                modal-skew-x: root.image-modal-skew-x;
+                modal-skew-y: root.image-modal-skew-y;
+                modal-message: root.image-modal-message;
+                home => {
+                    root.go-home();
+                }
+                drag-begin => {
+                    root.drag-begin();
+                }
+                drag-tick => {
+                    root.drag-tick();
+                }
+                drag-end => {
+                    root.drag-end();
+                }
+                action(id) => {
+                    root.image-action(id);
+                }
+                tool(id) => {
+                    root.image-tool(id);
+                }
+                toggle(id) => {
+                    root.image-toggle(id);
+                }
+                slider(key, value) => {
+                    root.image-slider(key, value);
+                }
+                layer-pick(id) => {
+                    root.image-layer-pick(id);
+                }
+                layer-action(action, id) => {
+                    root.image-layer-action(action, id);
+                }
+                layer-opacity-changed(value) => {
+                    root.image-layer-opacity-changed(value);
+                }
+                blend-changed(id) => {
+                    root.image-layer-blend-changed(id);
+                }
+                layer-name-edited(text) => {
+                    root.image-layer-name-edited(text);
+                }
+                history-pick(index) => {
+                    root.image-history-pick(index);
+                }
+                color-field(key, value) => {
+                    root.image-color-field(key, value);
+                }
+                color-pick(hex) => {
+                    root.image-color-pick(hex);
+                }
+                swatch-add => {
+                    root.image-swatch-add();
+                }
+                swatch-remove(index) => {
+                    root.image-swatch-remove(index);
+                }
+                color-swap => {
+                    root.image-color-swap();
+                }
+                color-reset => {
+                    root.image-color-reset();
+                }
+                slot-pick(id) => {
+                    root.image-slot-pick(id);
+                }
+                prop-field(key, value) => {
+                    root.image-prop-field(key, value);
+                }
+                param-set(key, value) => {
+                    root.image-param-set(key, value);
+                }
+                shape-pick(id) => {
+                    root.image-shape-pick(id);
+                }
+                font-pick(family) => {
+                    root.image-font-pick(family);
+                }
+                settings-pick(key, value) => {
+                    root.image-settings-pick(key, value);
+                }
+                board-apply => {
+                    root.image-board-apply();
+                }
+                canvas-pointer(kind, x, y, button, shift, alt) => {
+                    root.image-canvas-pointer(kind, x, y, button, shift, alt);
+                }
+                canvas-scroll(x, y, delta) => {
+                    root.image-canvas-scroll(x, y, delta);
+                }
+                canvas-double-click(x, y) => {
+                    root.image-canvas-double-click(x, y);
+                }
+                key(text, ctrl, shift) => {
+                    root.image-key(text, ctrl, shift);
+                }
+                key-up(text) => {
+                    root.image-key-up(text);
+                }
+                export => {
+                    root.image-export();
+                }
+                export-path-edited(path) => {
+                    root.image-export-path-edited(path);
+                }
+                export-run => {
+                    root.image-export-run();
+                }
+                export-close => {
+                    root.image-export-close();
+                }
+                guide-drag(axis, x, y) => {
+                    root.image-guide-drag(axis, x, y);
+                }
+                guide-move(x, y) => {
+                    root.image-guide-move(x, y);
+                }
+                guide-drop(x, y) => {
+                    root.image-guide-drop(x, y);
+                }
+                mask-action(action) => {
+                    root.image-mask-action(action);
+                }
+                mask-target(layer, target, view) => {
+                    root.image-mask-target(layer, target, view);
+                }
+                text-set(key, value) => {
+                    root.image-text-set(key, value);
+                }
+                text-text(key, value) => {
+                    root.image-text-text(key, value);
+                }
+                text-option(key, value) => {
+                    root.image-text-option(key, value);
+                }
+                text-choice(key, index) => {
+                    root.image-text-choice(key, index);
+                }
+                text-check(key, value) => {
+                    root.image-text-check(key, value);
+                }
+                text-edit-changed(text) => {
+                    root.image-text-edit-changed(text);
+                }
+                text-edit-commit(text) => {
+                    root.image-text-edit-commit(text);
+                }
+                text-edit-cancel => {
+                    root.image-text-edit-cancel();
+                }
+                import-path-edited(path) => {
+                    root.image-import-path-edited(path);
+                }
+                import-run => {
+                    root.image-import-run();
+                }
+                import-close => {
+                    root.image-import-close();
+                }
+                psd-export-path-edited(path) => {
+                    root.image-psd-export-path-edited(path);
+                }
+                psd-export-run => {
+                    root.image-psd-export-run();
+                }
+                psd-export-close => {
+                    root.image-psd-export-close();
+                }
+                channel-action(action, id) => {
+                    root.image-channel-action(action, id);
+                }
+                path-action(action, id) => {
+                    root.image-path-action(action, id);
+                }
+                actions-panel(action, id) => {
+                    root.image-actions-panel(action, id);
+                }
+                asset-action(action, id) => {
+                    root.image-asset-action(action, id);
+                }
+                asset-drop(id, x, y) => {
+                    root.image-asset-drop(id, x, y);
+                }
+                assets-refresh => {
+                    root.image-assets-refresh();
+                }
+                asset-search-edited(text) => {
+                    root.image-asset-search-edited(text);
+                }
+                panel-name-edited(text) => {
+                    root.image-panel-name-edited(text);
+                }
+                adjustment-create(id) => {
+                    root.image-adjustment-create(id);
+                }
+                gradient-action(action, id) => {
+                    root.image-gradient-action(action, id);
+                }
+                pattern-action(action, id) => {
+                    root.image-pattern-action(action, id);
+                }
+                brush-action(action, id) => {
+                    root.image-brush-action(action, id);
+                }
+                brush-slider(key, value) => {
+                    root.image-brush-slider(key, value);
+                }
+                editor-set(key, value) => {
+                    root.image-editor-set(key, value);
+                }
+                editor-text(key, value) => {
+                    root.image-editor-text(key, value);
+                }
+                editor-option(key, value) => {
+                    root.image-editor-option(key, value);
+                }
+                editor-check(key, value) => {
+                    root.image-editor-check(key, value);
+                }
+                curve-add(x, y) => {
+                    root.image-curve-add(x, y);
+                }
+                curve-move(index, x, y) => {
+                    root.image-curve-move(index, x, y);
+                }
+                curve-delete(index) => {
+                    root.image-curve-delete(index);
+                }
+                editor-stop-add => {
+                    root.image-editor-stop-add();
+                }
+                editor-stop-select(index) => {
+                    root.image-editor-stop-select(index);
+                }
+                editor-stop-remove(index) => {
+                    root.image-editor-stop-remove(index);
+                }
+                editor-stop-color(index, hex) => {
+                    root.image-editor-stop-color(index, hex);
+                }
+                editor-stop-pos(index, value) => {
+                    root.image-editor-stop-pos(index, value);
+                }
+                filter-param(key, value) => {
+                    root.image-filter-param(key, value);
+                }
+                filter-param-text(key, value) => {
+                    root.image-filter-param-text(key, value);
+                }
+                filter-reset => {
+                    root.image-filter-reset();
+                }
+                filter-apply => {
+                    root.image-filter-apply();
+                }
+                filter-cancel => {
+                    root.image-filter-cancel();
+                }
+                filter-push(x, y) => {
+                    root.image-filter-push(x, y);
+                }
+                modal-field(key, value) => {
+                    root.image-modal-field(key, value);
+                }
+                modal-toggle(key) => {
+                    root.image-modal-toggle(key);
+                }
+                modal-run => {
+                    root.image-modal-run();
+                }
+                modal-close => {
+                    root.image-modal-close();
+                }
+            }
+        }
+    }
+
+    // Toasts (AntD `message`): the stack Rust owns (`App::notices`), newest at
+    // the bottom, each auto-dismissed by the Rust tick and dismissable here.
+    // `z: 130` keeps the stack above every workspace (the studios are declared
+    // after this block); modals carry a higher `z` and still win.
+    if root.notices.length > 0 : VerticalLayout {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 96px;
+        width: max(200px, toast-column.preferred-width);
+        spacing: 6px;
+        alignment: center;
+        z: 130;
+
+        toast-column := VerticalLayout {
+            width: 100%;
+            spacing: 6px;
+            alignment: center;
+
+            for toast in root.notices : toast-card := Rectangle {
+                width: toast-row.preferred-width + 16px;
+                height: 36px;
+                border-radius: Theme.radius-md;
+                border-width: 1px;
+                border-color: toast.error ? Theme.node-danger : Theme.glass-panel-border;
+                background: Theme.glass-panel-strong;
+                // AntD message enter: fade + 4px slide-down. The exit is owned
+                // by Rust (the row leaves the model on its deadline), so it
+                // cannot animate here.
+                property <bool> shown: false;
+                opacity: toast-card.shown ? 1 : 0;
+                animate opacity {
+                    duration: Theme.motion-popover;
+                    easing: ease-out;
+                }
+                init => {
+                    toast-card.shown = true;
+                }
+
+                toast-row := HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 4px;
+                    spacing: 6px;
+                    alignment: center;
+                    cross-axis-alignment: center;
+
+                    Text {
+                        text: toast.text;
+                        font-size: 12px;
+                        font-weight: 500;
+                        color: toast.error ? Theme.node-danger : Theme.foreground;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: Theme.radius-sm;
+                        border-width: 1px;
+                        border-color: toast-close.has-hover ? Theme.border-strong : transparent;
+                        background: toast-close.has-hover ? Theme.hover : transparent;
+                        animate background {
+                            duration: Theme.motion-hover;
+                            easing: ease-out;
+                        }
+                        animate border-color {
+                            duration: Theme.motion-hover;
+                            easing: ease-out;
+                        }
+
+                        toast-close := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.notice-dismiss(toast.id);
+                            }
+                        }
+                        Path {
+                            x: 6px;
+                            y: 6px;
+                            width: 12px;
+                            height: 12px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.close;
+                            fill: transparent;
+                            stroke-width: 2px;
+                            stroke-line-cap: round;
+                            stroke: Theme.node-muted;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Modal stack (AntD renders these at body level): scrim + panel above the
+    // whole shell, including the top bar.
+    if root.info-open : NodeInfoModal {
+        title: root.info-title;
+        rows: root.info-rows;
+        error: root.info-error;
+        json: root.info-json;
+        json-text: root.info-json-text;
+        set-json(value) => {
+            root.info-view(value);
+        }
+        close => {
+            root.modal-close();
+        }
+    }
+    if root.preview-open : ImagePreviewModal {
+        title: root.preview-title;
+        stack: root.preview-stack;
+        image: root.preview-image;
+        info: root.preview-info;
+        rows: root.preview-rows;
+        count: root.preview-count;
+        download(id) => {
+            root.preview-download(id);
+        }
+        copy(id) => {
+            root.preview-copy(id);
+        }
+        stack-action(id, action) => {
+            root.stack-action(id, action);
+        }
+        close => {
+            root.modal-close();
+        }
+    }
+    if root.image-tool-open : ImageToolModal {
+        state: root.image-tool-state;
+        pick(key, value) => {
+            if (key == "ratio" && root.image-tool-state.kind == "analysis") {
+                root.image-tool-ratio(value);
+            } else {
+                root.image-tool-pick(key, value);
+            }
+        }
+        field(key, value) => {
+            root.image-tool-field(key, value);
+        }
+        pointer(kind, x, y) => {
+            root.image-tool-pointer(kind, x, y);
+        }
+        suggest => {
+            root.image-tool-suggest();
+        }
+        reset => {
+            root.image-tool-reset();
+        }
+        apply => {
+            root.image-tool-apply();
+        }
+        close => {
+            root.image-tool-close();
+        }
+    }
+    // AI-backed image tools: OCR / multi-angle / AI upscale / segmentation.
+    if root.image-ai-open : ImageAiModal {
+        state: root.image-ai-state;
+        variant-options: root.image-ai-variant-options;
+        variant-labels: root.image-ai-variant-labels;
+        factor-options: root.image-ai-factor-options;
+        factor-labels: root.image-ai-factor-labels;
+        field(key, value) => {
+            root.image-ai-field(key, value);
+        }
+        pick(key, value) => {
+            root.image-ai-pick(key, value);
+        }
+        cancel => {
+            root.image-ai-cancel();
+        }
+        apply => {
+            root.image-ai-apply();
+        }
+        close => {
+            root.image-ai-close();
+        }
+    }
+    if root.export-open : ExportImportModal {
+        title: root.export-title;
+        import-mode: root.export-import-mode;
+        hint: root.export-hint;
+        path: root.export-path;
+        message: root.export-message;
+        error: root.export-error;
+        path-edited(path) => {
+            root.export-path-edited(path);
+        }
+        run => {
+            root.export-run();
+        }
+        close => {
+            root.export-close();
+        }
+    }
+
+    if root.config-open : ConfigModal {
+        tab: root.config-tab;
+        channels: root.config-channels;
+        appearance-theme: root.appearance-theme;
+        config-theme: root.config-theme;
+        glass-opacity: root.glass-opacity;
+        glass-blur: root.glass-blur;
+        local-runtime-available: root.local-runtime-available;
+        local-models: root.local-models;
+        local-models-dir: root.local-models-dir;
+        storage-rows: root.storage-rows;
+        storage-summary: root.storage-summary;
+        storage-clear-armed: root.storage-clear-armed;
+        cost-rows: root.cost-rows;
+        cost-summary: root.cost-summary;
+        cost-generation-id: root.cost-generation-id;
+        cost-priced-count: root.cost-priced-count;
+        log-rows: root.log-rows;
+        logs-filter: root.logs-filter;
+        logs-category: root.logs-category;
+        logs-categories: root.logs-categories;
+        app-version: root.config-app-version;
+        close => {
+            root.config-close();
+        }
+        tab-pick(tab) => {
+            root.config-tab-pick(tab);
+        }
+        channel-field(id, field, value) => {
+            root.config-channel-field(id, field, value);
+        }
+        option-pick(kind, value) => {
+            root.config-option-pick(kind, value);
+        }
+        glass-setting(kind, value) => {
+            root.glass-setting(kind, value);
+        }
+        local-refresh => {
+            root.config-local-refresh();
+        }
+        local-reveal => {
+            root.config-local-reveal();
+        }
+        storage-refresh => {
+            root.config-storage-refresh();
+        }
+        storage-reveal => {
+            root.config-storage-reveal();
+        }
+        storage-clear => {
+            root.config-storage-clear();
+        }
+        cost-clear => {
+            root.config-cost-clear();
+        }
+        cost-id-edited(value) => {
+            root.config-cost-id-edited(value);
+        }
+        cost-lookup => {
+            root.config-cost-lookup();
+        }
+        log-filter-pick(filter) => {
+            root.config-logs-filter(filter);
+        }
+        log-category-pick(category) => {
+            root.config-logs-category(category);
+        }
+        log-toggle(key) => {
+            root.config-logs-toggle(key);
+        }
+        logs-copy => {
+            root.config-logs-copy();
+        }
+        logs-download => {
+            root.config-logs-download();
+        }
+        logs-clear => {
+            root.config-logs-clear();
+        }
+        open-plugins => {
+            root.open-plugins();
+        }
+    }
+
+    if root.plugins-open : PluginManagerModal {
+        tab: root.plugin-tab;
+        url: root.plugin-url;
+        message: root.plugin-message;
+        message-error: root.plugin-message-error;
+        rows: root.plugin-rows;
+        refreshing: root.plugin-refreshing;
+        tab-pick(tab) => {
+            root.plugin-tab-pick(tab);
+        }
+        refresh => {
+            root.plugin-refresh();
+        }
+        url-edited(text) => {
+            root.plugin-url-edited(text);
+        }
+        install => {
+            root.plugin-install();
+        }
+        install-row(url) => {
+            root.plugin-install-row(url);
+        }
+        toggle(id, enabled) => {
+            root.plugin-toggle(id, enabled);
+        }
+        uninstall(id) => {
+            root.plugin-uninstall(id);
+        }
+        close => {
+            root.plugin-manager-close();
+        }
+    }
+
+    // Canvas shortcuts reference (canvas-toolbar.tsx:369-380): a body-level
+    // modal so it layers above the shell like the AntD original.
+    if root.shortcuts-open : ShortcutsModal {
+        title: I18n.dock-shortcuts;
+        close => {
+            root.shortcuts-close();
+        }
+    }
+
+    if root.attempt-open : AttemptWorkbench {
+        node-id: root.attempt-id;
+        prompt: root.attempt-prompt;
+        model: root.attempt-model;
+        size: root.attempt-size;
+        quality: root.attempt-quality;
+        count: root.attempt-count;
+        version: root.attempt-version;
+        intent: root.attempt-intent;
+        frozen: root.attempt-frozen;
+        run-count: root.attempt-run-count;
+        image-count: root.attempt-image-count;
+        image: root.attempt-image;
+        has-image: root.attempt-has-image;
+        trace: root.attempt-trace;
+        prompt-edited(text) => { root.attempt-prompt-edited(text); }
+        config-edited(key, value) => { root.attempt-config-edited(key, value); }
+        run => { root.attempt-run(); }
+        duplicate => { root.attempt-duplicate(); }
+        extract => { root.attempt-extract(); }
+        close => { root.attempt-close(); }
+    }
+
+    // Dock tooltips (`Theme.tooltip`): the button's name first, then one
+    // descriptive line if the pointer stays. Body-level so it layers above the
+    // canvas and the dock.
+    TooltipLayer {
+        z: 500;
+    }
+
+    // Keyboard focus for the canvas shortcuts (project.tsx:1192-1260).
+    shortcut-focus := FocusScope {
+        width: 100%;
+        height: 100%;
+        // The global shortcut scope spans the whole window, so click-to-focus
+        // would swallow the first pointer press of every workspace (the canvas
+        // area and each studio explicitly focus their own scope when clicked).
+        focus-on-click: false;
+        init => {
+            self.focus();
+        }
+        key-pressed(e) => {
+            root.key-down(e.text, e.modifiers.control, e.modifiers.shift);
+            accept
+        }
+        key-released(e) => {
+            root.key-up(e.text);
+            accept
+        }
+    }
+    }
+}

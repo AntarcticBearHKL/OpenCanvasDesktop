@@ -1,0 +1,162 @@
+import { Theme } from "../theme.slint";
+import { PointerIds } from "pointer-ids.slint";
+
+// Connection dots and the invisible corner resize zones (canvas-node.tsx:
+// 820-863). All coordinates are relative to the card box this layer covers.
+//
+// - left dot  = target handle, absent for image / image-stack
+// - right dot = source handle, absent for image / image-stack / assets /
+//   image-generation (builtin-nodes.tsx:20-33) — both 48px hit zones (size-12)
+//   at -24px, shown on hover, selection or while any connection drag is active.
+//   Display-only media (image / image-stack) renders no handles layer at all
+//   in `node-card.slint`; the kind defaults here keep standalone uses honest.
+// - corner zones: invisible 28px areas at -14px, unlocked nodes only. All
+//   four corners resize; there is deliberately no visible bottom-right grip,
+//   the transparent hit zone behaves like a window's resize edge.
+export component NodeHandles inherits Rectangle {
+    in property <string> kind: "";
+    in property <bool> locked: false;
+    in property <float> scale: 1;
+    in property <bool> show-dots: false;
+    // Handle presence resolved by the host bridge (`plugin_node_view`); the
+    // kind-based defaults keep the built-in behavior for standalone use.
+    in property <bool> has-source: root.kind != "image" && root.kind != "image-stack" && root.kind != "assets" && root.kind != "image-generation";
+    in property <bool> has-target: root.kind != "image" && root.kind != "image-stack";
+    in property <length> origin-x: 0px;
+    in property <length> origin-y: 0px;
+
+    callback resize-pointer(string, string, length, length);
+    callback connect-pointer(string, string, length, length);
+
+    width: 100%;
+    height: 100%;
+    background: transparent;
+
+    if root.has-target : Rectangle {
+        x: -24px * root.scale;
+        y: (root.height - 48px * root.scale) / 2;
+        width: 48px * root.scale;
+        height: 48px * root.scale;
+        // Slint's has-hover is per item (unlike CSS :hover on ancestors): while
+        // the pointer is on the dot itself, the card's has-hover is false — so
+        // the dot must keep itself visible once hovered, or it disappears under
+        // the cursor and the press falls through to the card.
+        visible: root.show-dots || target-hit.has-hover;
+        background: transparent;
+
+        target-hit := TouchArea {
+            width: 100%;
+            height: 100%;
+            mouse-cursor: crosshair;
+            pointer-event(e) => {
+                root.connect-pointer("target", PointerIds.kind-id(e.kind), root.origin-x - 24px * root.scale + self.mouse-x, root.origin-y + (root.height - 48px * root.scale) / 2 + self.mouse-y);
+            }
+        }
+
+        Rectangle {
+            x: (parent.width - 12px * root.scale) / 2;
+            y: (parent.height - 12px * root.scale) / 2;
+            width: 12px * root.scale;
+            height: 12px * root.scale;
+            border-radius: 6px * root.scale;
+            background: Theme.node-panel;
+            border-width: 2px * root.scale;
+            border-color: Theme.node-muted;
+        }
+    }
+
+    if root.has-source : Rectangle {
+        x: root.width - 24px * root.scale;
+        y: (root.height - 48px * root.scale) / 2;
+        width: 48px * root.scale;
+        height: 48px * root.scale;
+        visible: root.show-dots || source-hit.has-hover;
+        background: transparent;
+
+        source-hit := TouchArea {
+            width: 100%;
+            height: 100%;
+            mouse-cursor: crosshair;
+            pointer-event(e) => {
+                root.connect-pointer("source", PointerIds.kind-id(e.kind), root.origin-x + root.width - 24px * root.scale + self.mouse-x, root.origin-y + (root.height - 48px * root.scale) / 2 + self.mouse-y);
+            }
+        }
+
+        Rectangle {
+            x: (parent.width - 12px * root.scale) / 2;
+            y: (parent.height - 12px * root.scale) / 2;
+            width: 12px * root.scale;
+            height: 12px * root.scale;
+            border-radius: 6px * root.scale;
+            background: Theme.node-panel;
+            border-width: 2px * root.scale;
+            border-color: Theme.node-muted;
+        }
+    }
+
+    if !root.locked : Rectangle {
+        x: -14px * root.scale;
+        y: -14px * root.scale;
+        width: 28px * root.scale;
+        height: 28px * root.scale;
+        background: transparent;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            mouse-cursor: nwse-resize;
+            pointer-event(e) => {
+                root.resize-pointer("top-left", PointerIds.kind-id(e.kind), root.origin-x - 14px * root.scale + self.mouse-x, root.origin-y - 14px * root.scale + self.mouse-y);
+            }
+        }
+    }
+    if !root.locked : Rectangle {
+        x: root.width - 14px * root.scale;
+        y: -14px * root.scale;
+        width: 28px * root.scale;
+        height: 28px * root.scale;
+        background: transparent;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            mouse-cursor: nesw-resize;
+            pointer-event(e) => {
+                root.resize-pointer("top-right", PointerIds.kind-id(e.kind), root.origin-x + root.width - 14px * root.scale + self.mouse-x, root.origin-y - 14px * root.scale + self.mouse-y);
+            }
+        }
+    }
+    if !root.locked : Rectangle {
+        x: -14px * root.scale;
+        y: root.height - 14px * root.scale;
+        width: 28px * root.scale;
+        height: 28px * root.scale;
+        background: transparent;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            mouse-cursor: nesw-resize;
+            pointer-event(e) => {
+                root.resize-pointer("bottom-left", PointerIds.kind-id(e.kind), root.origin-x - 14px * root.scale + self.mouse-x, root.origin-y + root.height - 14px * root.scale + self.mouse-y);
+            }
+        }
+    }
+    if !root.locked : Rectangle {
+        x: root.width - 14px * root.scale;
+        y: root.height - 14px * root.scale;
+        width: 28px * root.scale;
+        height: 28px * root.scale;
+        background: transparent;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            mouse-cursor: nwse-resize;
+            pointer-event(e) => {
+                root.resize-pointer("bottom-right", PointerIds.kind-id(e.kind), root.origin-x + root.width - 14px * root.scale + self.mouse-x, root.origin-y + root.height - 14px * root.scale + self.mouse-y);
+            }
+        }
+    }
+
+}

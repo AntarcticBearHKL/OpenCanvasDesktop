@@ -1,0 +1,217 @@
+// Lucide-style icon set (24×24 viewbox, stroke-only). The web loads lucide SVG
+// components; Slint cannot render SVG here, so the same shapes are re-expressed
+// as Slint Path command strings. Font glyphs were the first attempt and turned
+// into tofu (no Windows symbol font resolved for ✥/⌫/▦…), so icons are drawn.
+export global Icons {
+    out property <string> download: "M 21 15 L 21 19 L 3 19 L 3 15 M 7 9 L 12 14 L 17 9 M 12 2 L 12 14";
+    out property <string> upload: "M 21 15 L 21 19 L 3 19 L 3 15 M 7 9 L 12 4 L 17 9 M 12 4 L 12 16";
+    out property <string> swap: "M 4 8 L 15 8 M 12 5 L 15 8 L 12 11 M 20 16 L 9 16 M 12 13 L 9 16 L 12 19";
+    out property <string> flatten: "M 4 4 L 20 4 M 8 9 L 16 9 M 10.5 14 L 13.5 14 M 4 19 L 20 19";
+    out property <string> move: "M 12 2 L 15 5 M 12 2 L 9 5 M 12 22 L 15 19 M 12 22 L 9 19 M 2 12 L 5 15 M 2 12 L 5 9 M 22 12 L 19 15 M 22 12 L 19 9 M 12 2 L 12 22 M 2 12 L 22 12";
+    out property <string> pointer: "M 5 3 L 5 19 L 9.5 14.5 L 12.5 21 L 15.5 19.5 L 12.5 13 L 18 13 Z";
+    out property <string> undo: "M 9 14 L 4 9 L 9 4 M 4 9 L 14.5 9 A 5.5 5.5 0 0 1 14.5 20 L 11 20";
+    out property <string> redo: "M 15 14 L 20 9 L 15 4 M 20 9 L 9.5 9 A 5.5 5.5 0 0 0 9.5 20 L 13 20";
+    out property <string> folder: "M 3 5 L 9 5 L 11 8 L 20 8 L 20 19 L 3 19 Z M 12 11 L 12 16 M 9.5 13.5 L 12 16 L 14.5 13.5";
+    out property <string> pencil: "M 3 21 L 3.7 16.6 L 16.6 3.7 L 20.3 7.4 L 7.4 20.3 Z M 14.5 5.8 L 18.2 9.5";
+    out property <string> sparkles: "M 12 3 L 13.7 9.3 L 20 11 L 13.7 12.7 L 12 19 L 10.3 12.7 L 4 11 L 10.3 9.3 Z";
+    // Five-point star (lucide `Star`): the texture type browser's favorite
+    // toggle (`type-browser.tsx:118-129`).
+    out property <string> star: "M 12 2.5 L 14.35 8.76 L 21.03 9.06 L 15.8 13.24 L 17.58 19.69 L 12 16 L 6.42 19.69 L 8.2 13.24 L 2.97 9.06 L 9.65 8.76 Z";
+    out property <string> grid: "M 3 3 L 10 3 L 10 10 L 3 10 Z M 14 3 L 21 3 L 21 10 L 14 10 Z M 3 14 L 10 14 L 10 21 L 3 21 Z M 14 14 L 21 14 L 21 21 L 14 21 Z";
+    out property <string> layers: "M 12 2 L 2 7 L 12 12 L 22 7 Z M 2 12 L 12 17 L 22 12 M 2 17 L 12 22 L 22 17";
+    out property <string> trash: "M 3 6 L 21 6 M 8 6 L 8 4 L 16 4 L 16 6 M 5 6 L 6 21 L 18 21 L 19 6 M 10 10 L 10 17 M 14 10 L 14 17";
+    out property <string> panel-left: "M 3 4 L 21 4 L 21 20 L 3 20 Z M 9 4 L 9 20";
+    out property <string> home: "M 3 11 L 12 3 L 21 11 M 5 10 L 5 21 L 19 21 L 19 10 M 10 21 L 10 15 L 14 15 L 14 21";
+    out property <string> moon: "M 21 12.8 A 9 9 0 1 1 11.2 3 A 7 7 0 0 0 21 12.8 Z";
+    // Settings reads as TWO slider tracks with knobs. Three tracks + three
+    // knobs (the previous glyph) collapsed into a blob at 18px; two read as
+    // sliders at every size.
+    out property <string> settings: "M 4 8.5 L 20 8.5 M 4 15.5 L 20 15.5 M 9 8.5 m -2 0 a 2 2 0 1 0 4 0 a 2 2 0 1 0 -4 0 M 15 15.5 m -2 0 a 2 2 0 1 0 4 0 a 2 2 0 1 0 -4 0";
+    out property <string> compass: "M 12 2 A 10 10 0 1 1 11.99 2 Z M 16.2 7.8 L 14.2 14.2 L 7.8 16.2 L 9.8 9.8 Z";
+    out property <string> chevron-up: "M 6 15 L 12 9 L 18 15";
+    out property <string> chevron-down: "M 6 9 L 12 15 L 18 9";
+    out property <string> lock: "M 4 11 L 20 11 L 20 21 L 4 21 Z M 7 11 L 7 7 A 5 5 0 0 1 17 7 L 17 11";
+    out property <string> unlock: "M 4 11 L 20 11 L 20 21 L 4 21 Z M 7 11 L 7 7 A 5 5 0 0 1 17 7";
+    out property <string> eye: "M 2 12 A 10 6 0 0 1 22 12 A 10 6 0 0 1 2 12 Z M 13.5 12 A 1.5 1.5 0 1 1 13.49 12 Z";
+    out property <string> eye-off: "M 3 3 L 21 21 M 10.6 6.3 A 10 6 0 0 1 22 12 A 15 9 0 0 1 18.5 16.4 M 5.4 7.2 A 15 9 0 0 0 2 12 A 10 6 0 0 0 14 17.2";
+    out property <string> file-text: "M 14 2 L 6 2 L 6 22 L 18 22 L 18 6 Z M 14 2 L 14 6 L 18 6 M 9 12 L 15 12 M 9 16 L 13 16";
+    out property <string> message-square-text: "M 4 4 L 20 4 L 20 16 L 12 16 L 7 21 L 7 16 L 4 16 Z M 8 9 L 16 9 M 8 12 L 13 12";
+    out property <string> clapperboard: "M 3 9 L 21 9 L 21 20 L 3 20 Z M 3 9 L 20 4 L 21 8 M 8.5 9 L 10.5 4 M 14 9 L 16 4";
+    out property <string> image: "M 3 4 L 21 4 L 21 20 L 3 20 Z M 3 16 L 9 11 L 14 16 L 17 13 L 21 16 M 9 9.4 A 1.4 1.4 0 1 1 8.99 9.4 Z";
+    out property <string> images: "M 6 3 L 19 3 L 19 16 M 3 6 L 16 6 L 16 19 L 3 19 Z M 3 15.5 L 7 12 L 10 14.5 L 12 12.5 L 16 15.5";
+    // Smart Canvas: a framed board with a sparkle (the card owns an Image
+    // Studio project it previews).
+    out property <string> smart-canvas: "M 3 6 L 21 6 L 21 20 L 3 20 Z M 3 16.5 L 8.5 11.5 L 13.5 16 L 16.5 13 L 21 17 M 18.5 2 L 19.3 4.2 L 21.5 5 L 19.3 5.8 L 18.5 8 L 17.7 5.8 L 15.5 5 L 17.7 4.2 Z";
+    out property <string> video: "M 3 7 L 15 7 L 15 17 L 3 17 Z M 15 10 L 21 7 L 21 17 L 15 14 Z";
+    out property <string> folder-input: "M 3 5 L 9 5 L 11 8 L 20 8 L 20 19 L 3 19 Z M 9 14 L 15 14 M 12 11 L 15 14 L 12 17";
+    // Missing-plugin / unknown-type glyph (crates/plugins `MISSING_PLUGIN_ICON`).
+    out property <string> puzzle: "M 4 4 L 9 4 A 3 3 0 0 1 15 4 L 20 4 L 20 9 A 3 3 0 0 1 20 15 L 20 20 L 4 20 Z";
+    // Plugin-contributed node types: a small gallery of node shapes.
+    out property <string> plugin-types: "M 3 4 L 10 4 L 10 11 L 3 11 Z M 17.5 4 A 3.5 3.5 0 1 1 17.49 4 Z M 6.5 17.5 A 3.5 3.5 0 1 1 6.49 17.5 Z M 14 14 L 21 14 L 21 21 L 14 21 Z";
+
+    // Node-type icon used by the node-list rows (builtin-nodes.tsx:21-29) and
+    // the dock create menu (plugin types use their native equivalents).
+    public pure function kind-icon(kind: string) -> string {
+        return kind == "text" ? file-text
+            : kind == "prompt" ? message-square-text
+            : kind == "video-prompt" ? clapperboard
+            : kind == "image" ? image
+            : kind == "image-stack" ? images
+            : kind == "image-generation" || kind == "image-attempt" ? sparkles
+            : kind == "video" || kind == "video-generation" ? video
+            : kind == "assets" ? folder-input
+            : kind == "smart-canvas" ? smart-canvas
+            : kind == "html:render" || kind == "markdown:doc" ? file-text
+            : kind == "svg:vector" ? image
+            : kind == "sticky-note:note" ? layers
+            : kind == "panorama:viewer" ? compass
+            : folder;
+    }
+
+    // Lucide key -> path for the plugin-types menu rows (keys come from the
+    // registry definitions through `plugin_views::type_icon`).
+    public pure function menu-icon(icon: string) -> string {
+        return icon == "file-text" ? file-text
+            : icon == "message-square-text" ? message-square-text
+            : icon == "clapperboard" ? clapperboard
+            : icon == "image" ? image
+            : icon == "images" ? images
+            : icon == "video" ? video
+            : icon == "sparkles" ? sparkles
+            : icon == "folder-input" ? folder-input
+            : icon == "smart-canvas" ? smart-canvas
+            : icon == "layers" ? layers
+            : icon == "compass" ? compass
+            : icon == "puzzle" ? puzzle
+            : folder;
+    }
+
+    /// Name of a creatable built-in node type (dock tooltip + aria-ish label).
+    public pure function type-name(type-id: string) -> string {
+        return type-id == "text" ? "Text"
+            : type-id == "prompt" ? "Image Prompt"
+            : type-id == "video-prompt" ? "Video prompt"
+            : type-id == "image-generation" || type-id == "image-attempt" ? "Image attempt"
+            : type-id == "video-generation" ? "Video generation"
+            : type-id == "image" ? "Image"
+            : type-id == "image-stack" ? "Image stack"
+            : type-id == "assets" ? "Assets"
+            : type-id == "smart-canvas" ? "Smart Canvas"
+            : "Node";
+    }
+
+    /// One-line description of a creatable built-in node type.
+    public pure function type-description(type-id: string) -> string {
+        return type-id == "text" ? "Add a note of plain text to the canvas"
+            : type-id == "prompt" ? "Collect references and write an image prompt"
+            : type-id == "video-prompt" ? "Write a prompt with keyframes for a video"
+            : type-id == "image-generation" || type-id == "image-attempt" ? "One prompt/config version with its generated images"
+            : type-id == "video-generation" ? "Generate a video from a connected prompt"
+            : type-id == "image" ? "Display and manage a single image"
+            : type-id == "image-stack" ? "Group several images; drop images onto it"
+            : type-id == "assets" ? "Collect image assets for downstream nodes"
+            : type-id == "smart-canvas" ? "Create a card backed by an Image Studio project"
+            : "Add a node to the canvas";
+    }
+
+    /// Glyph for a floating-bar action id.
+    public pure function hover-icon(id: string) -> string {
+        return id == "info" ? info
+            : id == "duplicate" ? copy
+            : id == "font-down" ? minus
+            : id == "font-up" ? plus
+            : id == "layers" ? layers
+            : id == "plugin-interact" ? pointer
+            : id == "plugin-palette" ? gradient-square
+            : id == "plugin-generate" ? sparkles
+            : id == "plugin-reset" ? image
+            : trash;
+    }
+
+    // Studio tool glyph (`TOOLS`, the web's tool rail).
+    public pure function tool-icon(tool: string) -> string {
+        return tool == "pencil" ? pencil
+            : tool == "eraser" ? eraser
+            : tool == "bucket" ? bucket
+            : tool == "line" ? minus
+            : tool == "rect" ? square
+            : tool == "ellipse" ? circle
+            : tool == "eyedropper" ? pipette
+            : tool == "select" ? select
+            : tool == "move" ? move
+            : hand;
+    }
+    out property <string> arrow-down: "M 12 5 L 12 19 M 5 12 L 12 19 L 19 12";
+    out property <string> info: "M 12 2.4 A 9.6 9.6 0 1 1 11.99 2.4 Z M 12 6.4 A 1.6 1.6 0 1 1 11.99 6.4 Z M 12 10.6 L 12 17.6";
+    out property <string> copy: "M 9 9 L 21 9 L 21 21 L 9 21 Z M 5 15 L 3 15 L 3 3 L 15 3 L 15 5";
+    out property <string> minus: "M 5 12 L 19 12";
+    out property <string> plus: "M 12 5 L 12 19 M 5 12 L 19 12";
+    out property <string> close: "M 6 6 L 18 18 M 18 6 L 6 18";
+    // Window chrome (custom title bar): the three window buttons. `maximize`
+    // above is the canvas "fit" corner-bracket glyph, so the title bar gets its
+    // own square pair here.
+    out property <string> win-minimize: "M 5 12 L 19 12";
+    out property <string> win-maximize: "M 5 5 L 19 5 L 19 19 L 5 19 Z";
+    out property <string> win-restore: "M 8 8 L 8 4 L 20 4 L 20 16 L 16 16 M 4 8 L 16 8 L 16 20 L 4 20 Z";
+    out property <string> check: "M 5 13 L 10 18 L 19 7";
+    out property <string> clock: "M 12 12 L 12 7 M 12 3 A 9 9 0 1 1 11.99 3 Z";
+    out property <string> folder-plus: "M 3 5 L 9 5 L 11 8 L 20 8 L 20 19 L 3 19 Z M 11.5 11 L 11.5 16 M 9 13.5 L 14 13.5";
+    out property <string> arrow-up: "M 12 19 L 12 5 M 5 12 L 12 5 L 19 12";
+    out property <string> play: "M 7 4 L 20 12 L 7 20 Z";
+    out property <string> stop-square: "M 6 6 L 18 6 L 18 18 L 6 18 Z";
+    out property <string> loader: "M 12 3 A 9 9 0 0 1 21 12 M 21 12 A 9 9 0 0 1 12 21";
+    // Lucide `RefreshCw` (the error state's retry control, canvas-node.tsx:544).
+    out property <string> refresh: "M 3 12 A 9 9 0 0 1 18.4 5.6 L 21 8 M 21 3 L 21 8 L 16 8 M 21 12 A 9 9 0 0 1 5.6 18.4 L 3 16 M 3 21 L 3 16 L 8 16";
+    // Lucide `TriangleAlert` (untrusted-code banner).
+    out property <string> alert-triangle: "M10.29 3.86 L1.82 18 A2 2 0 0 0 3.53 21 H20.47 A2 2 0 0 0 22.18 18 L13.71 3.86 A2 2 0 0 0 10.29 3.86 Z M12 9 V13 M12 17 H12.01";
+    out property <string> sliders: "M 4 7 L 20 7 M 4 17 L 20 17 M 9 4 L 9 10 M 15 14 L 15 20";
+    out property <string> align-left: "M 3 3 L 3 21 M 6 6 L 20 6 L 20 11 L 6 11 Z M 6 13 L 15 13 L 15 18 L 6 18 Z";
+    out property <string> align-center-x: "M 12 3 L 12 21 M 5 6 L 19 6 L 19 11 L 5 11 Z M 8 13 L 16 13 L 16 18 L 8 18 Z";
+    out property <string> align-right: "M 21 3 L 21 21 M 4 6 L 18 6 L 18 11 L 4 11 Z M 9 13 L 18 13 L 18 18 L 9 18 Z";
+    out property <string> align-top: "M 3 3 L 21 3 M 6 6 L 11 6 L 11 20 L 6 20 Z M 13 6 L 18 6 L 18 15 L 13 15 Z";
+    out property <string> align-center-y: "M 3 12 L 21 12 M 6 5 L 11 5 L 11 19 L 6 19 Z M 13 8 L 18 8 L 18 16 L 13 16 Z";
+    out property <string> align-bottom: "M 3 21 L 21 21 M 6 4 L 11 4 L 11 18 L 6 18 Z M 13 9 L 18 9 L 18 18 L 13 18 Z";
+    out property <string> distribute-x: "M 3 4 L 8 4 L 8 20 L 3 20 Z M 16 4 L 21 4 L 21 20 L 16 20 Z M 10 9 L 14 9 L 14 15 L 10 15 Z";
+    out property <string> distribute-y: "M 4 3 L 20 3 L 20 8 L 4 8 Z M 4 16 L 20 16 L 20 21 L 4 21 Z M 9 10 L 15 10 L 15 14 L 9 14 Z";
+
+    // Pixel Studio icons (lucide shapes, 24x24 stroke-only).
+    out property <string> eraser: "M 3 20 L 21 20 M 8 20 L 4 16 L 13.5 6.5 L 18.5 11.5 L 10 20 M 13.5 6.5 L 16 4 L 21 9 L 18.5 11.5";
+    out property <string> bucket: "M 11 4 L 19 12 L 11.5 19.5 A 2 2 0 0 1 8.7 19.5 L 4 14.8 A 2 2 0 0 1 4 12 L 11 4 Z M 8 7 L 15 7";
+    out property <string> square: "M 4 4 L 20 4 L 20 20 L 4 20 Z";
+    out property <string> circle: "M 12 3 A 9 9 0 1 1 11.99 3 Z";
+    out property <string> pipette: "M 14 5 L 7 12 L 4 20 L 12 17 L 19 10 M 14 5 L 16 3 A 2.8 2.8 0 0 1 21 8 L 19 10 Z";
+    out property <string> select: "M 4 4 L 8 4 M 12 4 L 16 4 M 20 4 L 20 8 M 20 12 L 20 16 M 20 20 L 16 20 M 12 20 L 8 20 M 4 20 L 4 16 M 4 12 L 4 8";
+    out property <string> hand: "M 8 12 L 8 5 A 1.5 1.5 0 0 1 11 5 L 11 11 M 11 11 L 11 4 A 1.5 1.5 0 0 1 14 4 L 14 11 M 14 11 L 14 5 A 1.5 1.5 0 0 1 17 5 L 17 14 A 7 7 0 0 1 10 21 A 7 7 0 0 1 3 14 L 3 12 A 1.5 1.5 0 0 1 6 12 L 6 13";
+    out property <string> zoom-in: "M 11 4 A 7 7 0 1 1 10.99 4 Z M 16 16 L 21 21 M 8 11 L 14 11 M 11 8 L 11 14";
+    out property <string> zoom-out: "M 11 4 A 7 7 0 1 1 10.99 4 Z M 16 16 L 21 21 M 8 11 L 14 11";
+    out property <string> maximize: "M 8 3 L 3 3 L 3 8 M 21 8 L 21 3 L 16 3 M 3 16 L 3 21 L 8 21 M 16 21 L 21 21 L 21 16";
+    // "Fit to content" (four corner brackets around the framed content).
+    out property <string> chevron-right: "M 9 6 L 15 12 L 9 18";
+
+    // Image Studio tool glyphs (lucide shapes, 24x24 stroke-only).
+    out property <string> pen: "M 12 19 L 5 19 L 5 12 L 13.5 3.5 A 2.1 2.1 0 0 1 16.5 6.5 L 12 19 Z M 12 19 L 16 15 M 11 10 L 14 13";
+    out property <string> lasso: "M 7 5 A 6.5 5 0 1 1 6.9 5 Z M 6 14 C 5 17 5.5 19 7 20 M 7 20 A 2 2 0 1 0 7.01 20 Z";
+    out property <string> wand: "M 15 4 L 15 7 M 13.5 5.5 L 16.5 5.5 M 6 15 L 13 8 M 14 9 L 17.5 12.5 M 9 19 L 5 15 M 5 15 L 3 21 L 9 19 Z";
+    out property <string> gradient-square: "M 4 4 L 20 4 L 20 20 L 4 20 Z M 4 20 L 20 4";
+    out property <string> shape-tools: "M 4 4 L 10 4 L 10 10 L 4 10 Z M 14 14 L 20 14 L 20 20 L 14 20 Z M 17 4 L 20 7 M 20 4 L 17 7";
+    out property <string> quick-select: "M 5 19 C 5 13 9 9 15 9 M 15 9 A 3 3 0 1 0 15.01 9 Z M 4 4 L 7 4 M 12 4 L 15 4 M 4 4 L 4 7 M 4 12 L 4 15";
+
+    // Image Studio rail glyph (`TOOLS`, image-studio.tsx:99).
+    public pure function image-tool-icon(tool: string) -> string {
+        return tool == "move" ? move
+            : tool == "hand" ? hand
+            : tool == "pen" ? pen
+            : tool == "direct-select" ? pointer
+            : tool == "marquee" ? select
+            : tool == "ellipse-marquee" ? circle
+            : tool == "lasso" ? lasso
+            : tool == "polygon-lasso" ? lasso
+            : tool == "wand" ? wand
+            : tool == "quick-select" ? quick-select
+            : tool == "brush" ? pencil
+            : tool == "eraser" ? eraser
+            : tool == "bucket" ? bucket
+            : tool == "gradient" ? gradient-square
+            : tool == "shape" ? shape-tools
+            : pipette;
+    }}

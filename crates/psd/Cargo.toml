@@ -1,0 +1,36 @@
+[package]
+name = "open-canvas-psd"
+description = "Faithful, lossless reader and writer for Adobe Photoshop PSD (v1) and PSB (v2) files (vendored PSD codec)"
+version.workspace = true
+# The vendored codec is written in edition 2024 (let-chains); the rest of the
+# workspace stays on 2021.
+edition = "2024"
+license.workspace = true
+
+[lib]
+name = "open_canvas_psd"
+path = "src/lib.rs"
+
+[features]
+default = []
+serde = ["dep:serde"]
+# Test-data generator (`src/fixtures.rs`, `src/testgen.rs`, `tests`, examples).
+testgen = []
+# Standalone readers the PSD import/export path never calls: `abr`, `aco`,
+# `act`, `ase`, `atn`, `grd`, `shc`, `tiff`, `slices`, `patterns`, `metadata`,
+# `hdr` (`lib.rs` has the list). Off for the app build; this crate's own tests
+# and examples opt in through the dev-dependency below.
+extra-formats = []
+
+[dependencies]
+thiserror = { workspace = true }
+flate2 = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest = "1"
+# The tests and examples use the `testgen` fixtures and the `extra-formats`
+# readers; the self dev-dependency turns both on for `cargo test`/`--all-targets`
+# without enabling them for the app build (`cargo build --workspace` does not
+# build dev-dependencies).
+open-canvas-psd = { path = ".", features = ["testgen", "extra-formats"] }

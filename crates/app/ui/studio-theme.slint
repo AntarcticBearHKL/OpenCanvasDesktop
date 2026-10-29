@@ -1,0 +1,143 @@
+// Image Studio chrome palette: a thin mapping over the app's `Theme`.
+//
+// The studio is not a separate world: it follows the app's light/dark toggle
+// and paints the same translucent glass tiers as the rest of the window. No
+// colour below is a literal; every value is read from `Theme`, so the frost,
+// the ink and the accent move together with the library and the canvas.
+//
+// Two families of names live here:
+//   * the PS chrome tokens the bands read (`menu-bar`, `panel-header`,
+//     `panel-body`, `selection`, `hairline`, ...) — one surface, one Theme
+//     value;
+//   * the studio token names the panels were written against (`card`,
+//     `node-text`, `toolbar-item`, ...), carrying the same roles in the same
+//     palette. Keeping them means every panel, dock and dialog restyles
+//     through this one global instead of a per-file hand sweep.
+//
+// Lengths and motion stay the studio's own scale (the 40px menu bar and the
+// 34/30px bands, near-square radii): only colours come from `Theme`.
+import { Theme } from "theme.slint";
+
+export global StudioTheme {
+    // ---- chrome surfaces ---------------------------------------------------
+    // 40px menu bar, status bar and the tool rail share the strong glass tier
+    // (0.80 light / 0.82 dark over the window tint): frosted, never opaque, so
+    // the OS blur reads through every studio band. Panel headers sit one step
+    // softer, panel bodies / tabs on the strong tier; the floating tool-options
+    // card (`image-panels.slint`) also paints `glass-panel-strong`. No studio
+    // chrome surface is a literal or an opaque `Theme.card`/`Theme.background`.
+    out property <color> menu-bar: Theme.glass-panel-strong;
+    out property <color> options-bar: Theme.glass-panel-strong;
+    out property <color> rail: Theme.glass-panel-strong;
+    out property <color> panel-header: Theme.glass-panel;
+    out property <color> panel-tab: Theme.glass-panel-strong;
+    out property <color> panel-body: Theme.glass-panel-strong;
+    out property <color> status-bar: Theme.glass-panel-strong;
+    out property <color> menu-surface: Theme.glass-panel-strong;
+    // The document surround is the studio's canvas field: it keeps the opaque
+    // `canvas-background` reference tone (the document and its checkerboard are
+    // painted opaquely over it, so the exported art never depends on the frost).
+    out property <color> canvas-surround: Theme.canvas-background;
+    // The 1px rule between every chrome band and panel.
+    out property <color> hairline: Theme.toolbar-border;
+    out property <color> separator: Theme.toolbar-border;
+
+    // ---- ink ---------------------------------------------------------------
+    out property <color> text: Theme.node-text;
+    out property <color> text-strong: Theme.node-text;
+    out property <color> text-muted: Theme.node-muted;
+    out property <color> text-faint: Theme.node-muted;
+    // `disabled` is the one extra step below `faint` the studio needs.
+    out property <color> text-disabled: Theme.node-faint;
+
+    // ---- interaction states ------------------------------------------------
+    out property <color> selection: Theme.brand;
+    out property <color> selection-hover: Theme.brand;
+    out property <color> selection-soft: Theme.node-accent-soft;
+    out property <color> hover: Theme.hover;
+    out property <color> control: Theme.card;
+    out property <color> control-border: Theme.toolbar-border;
+    out property <color> control-border-strong: Theme.border-strong;
+    out property <color> field: Theme.muted;
+    out property <color> slider-track: Theme.border;
+    out property <color> danger: Theme.node-danger;
+    out property <color> danger-soft: Theme.node-danger-soft;
+
+    // ---- studio token names (same roles, Theme values) ---------------------
+    out property <color> background: Theme.background;
+    out property <color> border: Theme.toolbar-border;
+    out property <color> border-strong: Theme.border-strong;
+    out property <color> foreground: Theme.foreground;
+    out property <color> muted: Theme.muted;
+    out property <color> brand-foreground: Theme.brand-foreground;
+    out property <color> glass-panel-strong: Theme.glass-panel-strong;
+    out property <color> node-text: Theme.node-text;
+    out property <color> node-label: Theme.node-label;
+    out property <color> node-muted: Theme.node-muted;
+    out property <color> node-faint: Theme.node-muted;
+    out property <color> node-accent: Theme.brand;
+    out property <color> node-accent-soft: Theme.node-accent-soft;
+    out property <color> node-active-stroke: Theme.node-active-stroke;
+    out property <color> node-danger: Theme.node-danger;
+    out property <color> node-success: Theme.node-success;
+    out property <color> node-info: Theme.node-info;
+    out property <color> node-info-soft: Theme.node-info-soft;
+    out property <color> toolbar-border: Theme.toolbar-border;
+    out property <color> toolbar-item: Theme.toolbar-item;
+    out property <color> toolbar-item-hover: Theme.toolbar-item-hover;
+    out property <color> toolbar-active-bg: Theme.toolbar-active-bg;
+    out property <color> toolbar-active-text: Theme.toolbar-active-text;
+
+    // ---- canvas-surface values (shared, theme-independent) -----------------
+    // The document, its checkerboard and the overlay inks keep the shared
+    // canvas values: only the chrome around them follows the app theme.
+    out property <color> image-checker-light: Theme.image-checker-light;
+    out property <color> image-checker-dark: Theme.image-checker-dark;
+    out property <color> image-ants-dark: Theme.image-ants-dark;
+    out property <color> image-ants-light: Theme.image-ants-light;
+    out property <color> image-guide: Theme.image-guide;
+    out property <color> image-snap-line: Theme.image-snap-line;
+    out property <color> image-path-line: Theme.image-path-line;
+    out property <color> image-draft: Theme.image-draft;
+    out property <color> image-transform: Theme.image-transform;
+    out property <brush> image-sv-white: Theme.image-sv-white;
+    out property <brush> image-sv-black: Theme.image-sv-black;
+    out property <brush> image-hue-strip: Theme.image-hue-strip;
+    out property <color> picker-handle: Theme.picker-handle;
+
+    // ---- band heights ------------------------------------------------------
+    out property <length> menu-bar-h: 40px;
+    out property <length> options-bar-h: 34px;
+    out property <length> status-bar-h: 24px;
+    // The tool rail: 40px column, 24px buttons (Photoshop's 2/24/2 gutters).
+    out property <length> rail-w: 40px;
+    out property <length> rail-button: 24px;
+    out property <length> tab-strip-h: 30px;
+
+    // ---- layout scale ------------------------------------------------------
+    out property <length> space-1: 4px;
+    out property <length> space-2: 8px;
+    out property <length> space-3: 12px;
+    out property <length> space-4: 16px;
+    out property <length> space-5: 20px;
+    out property <length> space-6: 24px;
+    out property <length> panel-pad: 10px;
+    out property <length> panel-gap: 8px;
+    out property <length> row-h: 26px;
+    out property <length> row-h-lg: 30px;
+    out property <length> header-h: 28px;
+    out property <length> control-h: 24px;
+    out property <length> row-layer-height: 36px;
+    out property <length> icon-layer: 20px;
+    out property <length> text-panel-title: 12px;
+    out property <length> text-layer-name: 13px;
+    // Photoshop's radii are near-square: 3px on controls, 5px on menus.
+    out property <length> radius-sm: 3px;
+    out property <length> radius-md: 5px;
+    out property <length> radius-lg: 8px;
+
+    // Motion stays on the shared easing catalog (the source gate reads it).
+    out property <duration> motion-hover: Theme.motion-hover;
+    out property <duration> motion-press: Theme.motion-press;
+    out property <duration> motion-select: Theme.motion-select;
+}

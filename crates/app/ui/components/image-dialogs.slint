@@ -1,0 +1,550 @@
+// Image Studio dialogs: the filter dialog (`ps-filter-dialog.tsx`: preview,
+// parameters, liquify drag, reset, rasterize warning) and the menu modals from
+// `ps-menus.tsx` (Image Size / Canvas Size / Rotate / Numeric Transform).
+import { StudioTheme } from "../studio-theme.slint";
+import { Slider, Button } from "widgets.slint";
+import { ImageFilterParam } from "overlay-types.slint";
+
+import { StudioActionButton, StudioCheckbox, StudioChip, StudioField, StudioSlider } from "studio-widgets.slint";
+
+component DialogBackdrop inherits Rectangle {
+    in property <string> title: "";
+    width: 100%;
+    height: 100%;
+    background: StudioTheme.foreground.with-alpha(0.22);
+
+    // A plain Rectangle does not consume pointer events in Slint; without this
+    // the dialog's padding clicks fall through to the canvas/toolbars behind it
+    // (`card` is declared after, so its controls still receive their own).
+    TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    card := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(parent.width - 32px, self.preferred-width);
+        height: card-layout.preferred-height;
+        background: StudioTheme.glass-panel-strong;
+        border-radius: StudioTheme.radius-md;
+        border-width: 1px;
+        border-color: StudioTheme.toolbar-border;
+
+        // DialogHead idiom: a mono eyebrow over a display title.
+        Text {
+            x: 14px;
+            y: 9px;
+            text: "IMAGE STUDIO";
+            font-family: "Cascadia Mono";
+            font-size: 9.5px;
+            letter-spacing: 1.4px;
+            color: StudioTheme.node-faint;
+            vertical-alignment: center;
+        }
+        Text {
+            x: 14px;
+            y: 23px;
+            text: root.title;
+            font-family: "Cascadia Mono";
+            font-size: 12.5px;
+            letter-spacing: 0.6px;
+            font-weight: 600;
+            color: StudioTheme.foreground;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            x: 12px;
+            y: 42px;
+            width: parent.width - 24px;
+            height: 1px;
+            background: StudioTheme.border;
+        }
+        card-layout := VerticalLayout {
+            x: 12px;
+            y: 52px;
+            width: parent.width - 24px;
+            height: self.preferred-height;
+            spacing: StudioTheme.space-2;
+            @children
+        }
+    }
+}
+
+// A compact dropdown for engine `Choice` parameters. Picking an option fires
+// `picked`. The list expands inside the control (rather than floating over the
+// dialog) so it scrolls with the parameter area instead of being clipped.
+component FilterDropdown inherits Rectangle {
+    in property <string> value: "";
+    in property <[string]> options: [];
+    in-out property <bool> open: false;
+    callback picked(string);
+
+    height: root.open ? StudioTheme.control-h + root.options.length * 24px + 8px : StudioTheme.control-h;
+    border-radius: StudioTheme.radius-sm;
+    border-width: 1px;
+    border-color: root.open ? StudioTheme.node-accent : StudioTheme.border;
+    background: StudioTheme.panel-body;
+
+    head := HorizontalLayout {
+        x: 1px;
+        y: 1px;
+        width: root.width - 2px;
+        height: StudioTheme.control-h - 2px;
+        padding-left: StudioTheme.space-2;
+        padding-right: StudioTheme.space-2;
+        spacing: StudioTheme.space-1;
+        cross-axis-alignment: center;
+        Text {
+            horizontal-stretch: 1;
+            text: root.value;
+            font-size: 11px;
+            color: StudioTheme.node-text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Text {
+            text: "v";
+            font-family: "Cascadia Mono";
+            font-size: 9px;
+            color: StudioTheme.node-muted;
+            vertical-alignment: center;
+        }
+    }
+    TouchArea {
+        width: 100%;
+        height: StudioTheme.control-h;
+        mouse-cursor: pointer;
+        clicked => {
+            root.open = !root.open;
+        }
+    }
+
+    if root.open : Rectangle {
+        y: StudioTheme.control-h;
+        width: 100%;
+        height: choice-rows.preferred-height + 8px;
+        background: transparent;
+
+        choice-rows := VerticalLayout {
+            x: 4px;
+            y: 4px;
+            width: parent.width - 8px;
+            height: self.preferred-height;
+            spacing: 0;
+            for option in root.options : Rectangle {
+                height: 24px;
+                border-radius: 3px;
+                background: option-ta.has-hover ? StudioTheme.hover : transparent;
+                animate background {
+                    duration: StudioTheme.motion-hover;
+                    easing: ease-out;
+                }
+                Text {
+                    x: 6px;
+                    y: (parent.height - self.height) / 2;
+                    text: option;
+                    font-size: 11px;
+                    color: StudioTheme.node-text;
+                    vertical-alignment: center;
+                }
+                option-ta := TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.picked(option);
+                        root.open = false;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// `ps-filter-dialog.tsx`: 320px preview + parameters + reset/apply/cancel.
+export component ImageFilterDialog inherits Rectangle {
+    in property <string> label: "";
+    in property <[ImageFilterParam]> params: [];
+    in property <image> preview;
+    in property <string> warning: "";
+    in property <bool> liquify: false;
+    in-out property <bool> pressing: false;
+    callback param-set(string, float);
+    callback param-text(string, string);
+    callback reset();
+    callback apply();
+    callback cancel();
+    callback liquify-drag(float, float);
+
+    DialogBackdrop {
+        title: "Filter: " + root.label;
+        width: 100%;
+        height: 100%;
+
+        Rectangle {
+            min-width: 320px;
+            // The preview keeps its 320px square when the window has room and
+            // shrinks on short windows so the buttons stay reachable.
+            height: Math.min(320px, Math.max(140px, root.height - 430px));
+            background: StudioTheme.image-checker-light;
+            border-radius: 5px;
+            border-width: 1px;
+            border-color: StudioTheme.border;
+
+            preview-img := Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: min(parent.width - 8px, self.preferred-width);
+                height: min(parent.height - 8px, self.preferred-height);
+                source: root.preview;
+                image-fit: contain;
+            }
+            if root.liquify : TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: crosshair;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        root.pressing = true;
+                    }
+                    if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                        root.pressing = false;
+                    }
+                    if (e.kind == PointerEventKind.move && root.pressing) {
+                        root.liquify-drag(self.mouse-x / self.width, self.mouse-y / self.height);
+                    }
+                }
+            }
+        }
+
+        // Engine filters can have 20 parameters (Lighting Effects); the list
+        // scrolls so the dialog, the preview and the buttons stay on screen.
+        Rectangle {
+            width: 320px;
+            height: Math.min(param-list.preferred-height, 230px);
+            Flickable {
+                width: parent.width;
+                height: parent.height;
+                content-width: self.width;
+                content-height: param-list.preferred-height;
+                interactive: param-list.preferred-height > self.height;
+                param-list := VerticalLayout {
+                    width: parent.width;
+                    spacing: StudioTheme.space-2;
+                for param in root.params : HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    cross-axis-alignment: center;
+                    Text {
+                        width: 86px;
+                        text: param.label;
+                        font-size: 11px;
+                        color: StudioTheme.node-muted;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    if param.kind == "number" : StudioSlider {
+                        horizontal-stretch: 1;
+                        minimum: param.min;
+                        maximum: param.max;
+                        value: param.value;
+                        changed(value) => {
+                            root.param-set(param.key, value);
+                        }
+                    }
+                    if param.kind == "number" : Text {
+                        width: 44px;
+                        text: "\{Math.round(param.value * 100) / 100}";
+                        font-size: 11px;
+                        color: StudioTheme.node-muted;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                    if param.kind == "select" : HorizontalLayout {
+                        horizontal-stretch: 1;
+                        spacing: StudioTheme.space-1;
+                        for option in param.options : StudioChip {
+                            label: option;
+                            active: option == param.text;
+                            clicked => {
+                                root.param-text(param.key, option);
+                            }
+                        }
+                    }
+                    if param.kind == "choice" : FilterDropdown {
+                        horizontal-stretch: 1;
+                        value: param.text;
+                        options: param.options;
+                        picked(option) => {
+                            root.param-text(param.key, option);
+                        }
+                    }
+                    if param.kind == "check" : StudioCheckbox {
+                        horizontal-stretch: 1;
+                        label: "";
+                        checked: param.value > 0.5;
+                        toggled => {
+                            root.param-set(param.key, param.value > 0.5 ? 0 : 1);
+                        }
+                    }
+                    if param.kind == "text" || param.kind == "color" || param.kind == "numbers" : StudioField {
+                        horizontal-stretch: 1;
+                        value: param.text;
+                        edited(value) => {
+                            root.param-text(param.key, value);
+                        }
+                    }
+                }
+            }
+        }
+        }
+
+        if root.warning != "" : Text {
+            text: root.warning;
+            font-size: 10px;
+            color: StudioTheme.node-danger;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+        if root.liquify : Text {
+            text: "Drag on the preview to push pixels; the layer bitmap updates live.";
+            font-size: 10px;
+            color: StudioTheme.node-muted;
+            vertical-alignment: center;
+        }
+
+        HorizontalLayout {
+            spacing: StudioTheme.space-2;
+            alignment: end;
+            StudioChip {
+                label: "Reset";
+                clicked => {
+                    root.reset();
+                }
+            }
+            StudioChip {
+                label: "Cancel";
+                clicked => {
+                    root.cancel();
+                }
+            }
+            StudioActionButton { variant: "soft"; tooltip-enabled: true; tip-fallback-label: true;
+                label: "Apply";
+                clicked => {
+                    root.apply();
+                }
+            }
+        }
+    }
+}
+
+// `ps-menus.tsx` modals: image-size / canvas-size / rotate / numeric-transform.
+export component ImageTransformModal inherits Rectangle {
+    in property <string> mode: "image-size";
+    in property <string> field-a: "";
+    in property <string> field-b: "";
+    in property <bool> constrain: true;
+    in property <string> anchor: "center";
+    in property <string> angle: "0";
+    in property <string> dx: "0";
+    in property <string> dy: "0";
+    in property <string> sx: "100";
+    in property <string> sy: "100";
+    in property <string> rotate-deg: "0";
+    in property <string> skew-x: "0";
+    in property <string> skew-y: "0";
+    in property <string> message: "";
+    callback field(string, string);
+    callback toggle(string);
+    callback run();
+    callback close();
+
+    property <string> title: root.mode == "canvas-size" ? "Canvas Size" : root.mode == "rotate" ? "Rotate Canvas" : root.mode == "numeric" ? "Numeric Transform" : "Image Size";
+
+    DialogBackdrop {
+        title: root.title;
+        width: 100%;
+        height: 100%;
+
+        if root.mode == "image-size" || root.mode == "canvas-size" : HorizontalLayout {
+            spacing: StudioTheme.space-1;
+            cross-axis-alignment: center;
+            Text { width: 44px; text: "Width"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+            StudioField {
+                width: 66px;
+                value: root.field-a;
+                edited(value) => { root.field("a", value); }
+            }
+            Text { text: "Height"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+            StudioField {
+                width: 66px;
+                value: root.field-b;
+                edited(value) => { root.field("b", value); }
+            }
+        }
+        if root.mode == "image-size" : StudioCheckbox {
+            label: "Constrain proportions";
+            checked: root.constrain;
+            toggled => { root.toggle("constrain"); }
+        }
+        if root.mode == "canvas-size" : HorizontalLayout {
+            spacing: StudioTheme.space-1;
+            Text { width: 44px; text: "Anchor"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+            VerticalLayout {
+                spacing: StudioTheme.space-1;
+                for row in ["top", "middle", "bottom"] : HorizontalLayout {
+                    spacing: StudioTheme.space-1;
+                    for column in ["left", "center", "right"] : StudioChip {
+                        label: column == "center" ? "C" : column == "left" ? "L" : "R";
+                        active: root.anchor == row + "-" + column;
+                        clicked => { root.toggle(row + "-" + column); }
+                    }
+                }
+            }
+        }
+        if root.mode == "rotate" : HorizontalLayout {
+            spacing: StudioTheme.space-1;
+            cross-axis-alignment: center;
+            Text { width: 44px; text: "Angle"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+            StudioField {
+                width: 66px;
+                value: root.angle;
+                edited(value) => { root.field("angle", value); }
+            }
+            Text { text: "degrees (-180..180)"; font-size: 10px; color: StudioTheme.node-muted; vertical-alignment: center; }
+        }
+        if root.mode == "numeric" : VerticalLayout {
+            spacing: StudioTheme.space-1;
+            HorizontalLayout {
+                spacing: StudioTheme.space-1;
+                cross-axis-alignment: center;
+                Text { width: 44px; text: "Move"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                StudioField { width: 54px; value: root.dx; edited(value) => { root.field("dx", value); } }
+                StudioField { width: 54px; value: root.dy; edited(value) => { root.field("dy", value); } }
+            }
+            HorizontalLayout {
+                spacing: StudioTheme.space-1;
+                cross-axis-alignment: center;
+                Text { width: 44px; text: "Scale"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                StudioField { width: 54px; value: root.sx; edited(value) => { root.field("scale-x", value); } }
+                StudioField { width: 54px; value: root.sy; edited(value) => { root.field("scale-y", value); } }
+                Text { text: "%"; font-size: 10px; color: StudioTheme.node-muted; vertical-alignment: center; }
+            }
+            HorizontalLayout {
+                spacing: StudioTheme.space-1;
+                cross-axis-alignment: center;
+                Text { width: 44px; text: "Rotate"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                StudioField { width: 54px; value: root.rotate-deg; edited(value) => { root.field("rotation", value); } }
+                Text { text: "deg"; font-size: 10px; color: StudioTheme.node-muted; vertical-alignment: center; }
+            }
+            HorizontalLayout {
+                spacing: StudioTheme.space-1;
+                cross-axis-alignment: center;
+                Text { width: 44px; text: "Skew"; font-size: 11px; color: StudioTheme.node-muted; vertical-alignment: center; }
+                StudioField { width: 54px; value: root.skew-x; edited(value) => { root.field("skew-x", value); } }
+                StudioField { width: 54px; value: root.skew-y; edited(value) => { root.field("skew-y", value); } }
+            }
+        }
+
+        if root.message != "" : Text {
+            text: root.message;
+            font-size: 10px;
+            color: StudioTheme.node-danger;
+            vertical-alignment: center;
+        }
+
+        HorizontalLayout {
+            spacing: StudioTheme.space-2;
+            alignment: end;
+            StudioChip {
+                label: "Cancel";
+                clicked => { root.close(); }
+            }
+            StudioActionButton { variant: "soft"; tooltip-enabled: true; tip-fallback-label: true;
+                label: "Apply";
+                clicked => { root.run(); }
+            }
+        }
+    }
+}
+
+// The studio output modal (`studio-output-modal.tsx`): download the board PNG
+// or save the composite as a canvas Image node.
+export component ImageOutputModal inherits Rectangle {
+    in property <string> message: "";
+    callback output(string);
+
+    width: 100%;
+    height: 100%;
+    background: StudioTheme.foreground.with-alpha(0.22);
+    z: 90;
+
+    // Modal barrier: a plain Rectangle lets clicks reach the studio behind it.
+    TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 360px;
+        height: 168px;
+        border-radius: StudioTheme.radius-lg;
+        border-width: 1px;
+        border-color: StudioTheme.toolbar-border;
+        background: StudioTheme.glass-panel-strong;
+
+        VerticalLayout {
+            padding: StudioTheme.space-4;
+            spacing: StudioTheme.space-3;
+
+            Text {
+                text: "Output";
+                font-size: 13px;
+                font-weight: 700;
+                color: StudioTheme.foreground;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                height: 1px;
+                background: StudioTheme.border;
+            }
+            Text {
+                text: "Renders the board composite as a PNG at the project's export resolution. Download writes it beside the exports; Save to Canvas adds it as an Image node to the open canvas project.";
+                font-size: 12px;
+                color: StudioTheme.node-muted;
+                vertical-alignment: top;
+                wrap: word-wrap;
+                height: 48px;
+            }
+            Text {
+                visible: root.message != "";
+                text: root.message;
+                font-size: 12px;
+                color: StudioTheme.node-success;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                vertical-stretch: 1;
+                background: transparent;
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: StudioTheme.space-2;
+                StudioChip {
+                    label: "Close";
+                    clicked => { root.output("close"); }
+                }
+                StudioChip {
+                    label: "Download PNG";
+                    clicked => { root.output("download"); }
+                }
+                StudioChip {
+                    label: "Save to Canvas";
+                    clicked => { root.output("canvas"); }
+                }
+            }
+        }
+    }
+}

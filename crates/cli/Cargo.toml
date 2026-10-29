@@ -1,0 +1,41 @@
+[package]
+name = "open-canvas-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Headless CLI for OpenCanvas image tooling: convert/filter images, inspect PSD layers, batch-process directories"
+
+[[bin]]
+name = "open-canvas-cli"
+path = "src/main.rs"
+
+[lib]
+name = "open_canvas_cli"
+path = "src/lib.rs"
+
+[dependencies]
+open-canvas-ps = { path = "../ps" }
+# Raw PSD layer records for `inspect` (the same vendored codec `open-canvas-ps`
+# maps onto our document model).
+open-canvas-psd = { path = "../psd" }
+# Raster decode for PNG/JPEG/BMP input (the same `image` build `open-canvas-ps`
+# links); PSD comes from `open-canvas-ps`'s `psd_io` mapping.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+let_underscore_must_use = "deny"
+allow_attributes = "deny"

@@ -1,0 +1,36 @@
+[package]
+name = "open-canvas-ps"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "UI-agnostic Image Studio domain for the OpenCanvas desktop app: PS document model, raster compositor, layer/image ops, blend modes, color, transform, path, selection, adjustments and filters"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["png"] }
+# The PSD mapping (`psd_io`): the vendored clean-room codec, as in `crates/app`.
+open-canvas-psd = { path = "../psd" }
+# The filter engine bridge (`algo_bridge`): the vendored tile-aware filters and
+# the geometry/surface/pixel-format types it runs on.
+open-canvas-algo = { workspace = true }
+open-canvas-raster = { workspace = true }
+open-canvas-color = { workspace = true }
+open-canvas-geom = { workspace = true }
+
+# Same safety denies as the other library crates (see crates/ps): no
+# unwrap/expect/panic/todo. `clippy::pedantic` is intentionally NOT enabled.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+let_underscore_must_use = "deny"
+allow_attributes = "deny"

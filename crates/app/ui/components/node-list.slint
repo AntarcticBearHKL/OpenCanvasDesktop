@@ -1,0 +1,187 @@
+import { Theme } from "../theme.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "widgets.slint";
+
+
+// Node-level layer popover (`canvas-node-layer-popover.tsx`): the layer count
+// of one node plus its own z-order moves, anchored under the node's hover bar.
+// This is the node's own z-order control, not a list: the global node-list
+// panel and its filters/bulk rename are gone.
+component LayerMoveButton inherits Rectangle {
+    in property <string> label: "";
+    in property <string> icon: "";
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 30px;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: root.enabled && ta.has-hover ? Theme.border-strong : transparent;
+    background: root.enabled && ta.has-hover ? Theme.hover : Theme.toolbar-panel;
+    opacity: root.enabled ? 1 : 0.3;
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate opacity {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+    animate border-color {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+    transform-scale-x: ta.pressed && root.enabled ? 0.97 : 1.0;
+    transform-scale-y: ta.pressed && root.enabled ? 0.97 : 1.0;
+    animate transform-scale-x {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+    animate transform-scale-y {
+        duration: Theme.motion-press;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 5px;
+
+        Path {
+            width: 13px;
+            height: 13px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.icon;
+            fill: transparent;
+            stroke-width: 2px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: Theme.node-text;
+        }
+        Text {
+            text: root.label;
+            font-size: 12px;
+            color: Theme.node-text;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component NodeLayerPopover inherits Rectangle {
+    in property <length> anchor-x: 0px;
+    in property <length> anchor-y: 0px;
+    in property <length> canvas-width: root.width;
+    in property <length> canvas-height: root.height;
+    in property <string> header: "";
+    in property <bool> can-up: true;
+    in property <bool> can-down: true;
+    callback move(string);
+    callback close();
+
+    width: 198px;
+    height: self.preferred-height;
+    // `anchor-x` is the centred bar anchor and `anchor-y` is the popover's top
+    // edge: it hangs under the bar. Both stay inside the canvas with an 8px
+    // inset, so the popover follows a bar near the right or bottom edge.
+    x: min(max(root.anchor-x - self.width / 2, 8px), root.canvas-width - self.width - 8px);
+    y: max(8px, min(root.anchor-y, root.canvas-height - self.height - 8px));
+    border-radius: Theme.radius-xl;
+    border-width: 1px;
+    border-color: Theme.glass-panel-border;
+    background: Theme.glass-panel;
+    clip: false;
+
+    // Right-click anywhere on the popover background is "back".
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.up && e.button == PointerEventButton.right) {
+                root.close();
+            }
+        }
+    }
+
+    Rectangle {
+        y: 0px;
+        width: 100%;
+        height: 1px;
+        background: Theme.glass-panel-border;
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        width: 100%;
+        height: 1px;
+        background: Theme.glass-panel-border;
+    }
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            height: 18px;
+            spacing: 4px;
+            cross-axis-alignment: center;
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.header;
+                font-size: 13px;
+                font-weight: 500;
+                color: Theme.node-label;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            IconButton {
+                size: 18px;
+                icon: Icons.close;
+                clicked => {
+                    root.close();
+                }
+            }
+        }
+
+        HorizontalLayout {
+            height: 30px;
+            spacing: 6px;
+
+            LayerMoveButton {
+                horizontal-stretch: 1;
+                label: "Bring forward";
+                icon: Icons.chevron-up;
+                enabled: root.can-up;
+                clicked => {
+                    root.move("up");
+                }
+            }
+            LayerMoveButton {
+                horizontal-stretch: 1;
+                label: "Send backward";
+                icon: Icons.chevron-down;
+                enabled: root.can-down;
+                clicked => {
+                    root.move("down");
+                }
+            }
+        }
+
+        Text {
+            height: 15px;
+            text: "Same layer uses creation order";
+            font-size: 11px;
+            color: Theme.node-muted;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
