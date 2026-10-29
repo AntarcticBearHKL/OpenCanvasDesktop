@@ -133,8 +133,8 @@ pub fn hover_action_rows_with(
     let mut actions = vec![action("info", false), action("duplicate", false)];
     actions.extend(plugin_extras.iter().cloned());
     if is_image && has_content {
-        actions.push(action("download", false));
-        actions.push(action("copy", false));
+        // Download/Copy live in the focused image viewer, not on the canvas
+        // card's hover toolbar.
         actions.push(action("crop", false));
         actions.push(action("mask", false));
         actions.push(action("split", false));
@@ -566,8 +566,6 @@ mod tests {
             .map(|action| action.id.to_string())
             .collect();
         for tool in [
-            "download",
-            "copy",
             "crop",
             "mask",
             "split",
@@ -583,6 +581,10 @@ mod tests {
         assert!(
             !ids.contains(&"upload".to_string()),
             "content replaces upload"
+        );
+        assert!(
+            !ids.contains(&"download".to_string()) && !ids.contains(&"copy".to_string()),
+            "download/copy live in the focused image viewer"
         );
         // The free-resize toggle reflects the node's stored flag.
         let actions = hover_action_rows_with(&image, &[]);

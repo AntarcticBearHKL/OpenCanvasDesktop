@@ -14,7 +14,7 @@ import { PointerIds } from "components/pointer-ids.slint";
 import { Rulers } from "components/rulers.slint";
 import { HoverBar, SelectionToolbar, MenuCard, MenuItem } from "components/floating.slint";
 import { TooltipLayer } from "components/dock.slint";
-import { ImagePreviewModal, ImageToolModal, NodeInfoModal } from "components/modals.slint";
+import { ImageFocusModal, ImagePreviewModal, ImageToolModal, NodeInfoModal } from "components/modals.slint";
 import { ExportImportModal, LibraryScreen } from "components/library.slint";
 import { NodeLayerPopover } from "components/node-list.slint";
 import { ShortcutsModal } from "components/shortcuts-modal.slint";
@@ -2127,9 +2127,21 @@ export component AppWindow inherits Window {
             root.modal-close();
         }
     }
-    if root.preview-open : ImagePreviewModal {
+    if root.preview-open && !root.preview-stack : ImageFocusModal {
+        image: root.preview-image;
+        download(id) => {
+            root.preview-download(id);
+        }
+        copy(id) => {
+            root.preview-copy(id);
+        }
+        close => {
+            root.modal-close();
+        }
+    }
+    if root.preview-open && root.preview-stack : ImagePreviewModal {
         title: root.preview-title;
-        stack: root.preview-stack;
+        stack: true;
         image: root.preview-image;
         info: root.preview-info;
         rows: root.preview-rows;

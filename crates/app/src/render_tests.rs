@@ -557,3 +557,32 @@ fn attempt_workbench_renders_centered_prompt_config_and_trace() -> TestResult {
     assert_ne!(corner, centre, "the workbench panel is visible");
     Ok(())
 }
+
+#[test]
+fn image_focus_modal_renders_a_borderless_stage_and_floating_toolbar() -> TestResult {
+    init_backend()?;
+    let content = red_png_data_url()?;
+    let mut media = MediaCache::default();
+    let image = media.image(&content).ok_or("decode preview image")?;
+    let buffer = render_editor_shared(|ui, _app| {
+        ui.set_preview_open(true);
+        ui.set_preview_stack(false);
+        ui.set_preview_image(image);
+        ui.set_preview_title("Image".into());
+    })?;
+    assert!(buffer.width() > 0 && buffer.height() > 0);
+    let pixels: Vec<u8> = buffer
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(buffer.width(), buffer.height(), pixels)
+        .ok_or("focus snapshot size")?;
+    let path = std::env::temp_dir().join("open-canvas-image-focus.png");
+    image.save(&path)?;
+    // The stage is not a rounded card: the red bitmap reaches the middle of the
+    // focus area, while the bottom toolbar remains visible below it.
+    let centre = image.get_pixel(buffer.width() / 2, buffer.height() / 2);
+    assert!(centre.0[0] > 150, "the bitmap fills the focus stage");
+    Ok(())
+}
