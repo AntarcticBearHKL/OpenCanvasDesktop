@@ -930,6 +930,11 @@ export component ImageFocusModal inherits Rectangle {
             // surround, so the canvas behind can never zoom.
             accept
         }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.up && e.button == PointerEventButton.right) {
+                root.close();
+            }
+        }
     }
 
     close-hit := TouchArea {
@@ -1012,7 +1017,7 @@ export component ImageFocusModal inherits Rectangle {
             }
             pointer-event(e) => {
                 let kind = PointerIds.kind-id(e.kind);
-                if (kind == "down" && e.button == PointerEventButton.right) {
+                if (kind == "down" && e.button == PointerEventButton.left) {
                     stage.panning = true;
                     stage.drag-start-x = self.mouse-x;
                     stage.drag-start-y = self.mouse-y;
@@ -1023,6 +1028,9 @@ export component ImageFocusModal inherits Rectangle {
                     stage.pan-y = stage.pan-start-y + (self.mouse-y - stage.drag-start-y);
                 } else if (stage.panning && (kind == "up" || kind == "cancel")) {
                     stage.panning = false;
+                }
+                if (kind == "up" && e.button == PointerEventButton.right) {
+                    root.close();
                 }
             }
             double-clicked => {
