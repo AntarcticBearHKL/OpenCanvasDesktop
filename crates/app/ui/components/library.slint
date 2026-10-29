@@ -579,9 +579,12 @@ export component LibraryScreen inherits Rectangle {
                 // The home screen's wordmark. No Home button and no create
                 // affordance here: both live where their result appears.
                 HorizontalLayout {
+                    horizontal-stretch: 0;
+                    width: self.preferred-width;
+                    height: 44px;
                     spacing: 2px;
                     cross-axis-alignment: end;
-                    padding-bottom: 7px;
+                    padding-bottom: 8px;
 
                     Text {
                         text: "Canvas";

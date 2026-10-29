@@ -991,8 +991,8 @@ fn the_home_columns_share_the_header_band_and_44px_rows() {
     );
     assert_eq!(
         home.matches("height: 44px;").count(),
-        4,
-        "project/canvas rows and their two create rows are all 44px"
+        5,
+        "the wordmark, project/canvas rows and both create rows are 44px"
     );
     assert!(
         home.contains("component ProjectCreateRow inherits Rectangle")
@@ -1012,4 +1012,20 @@ fn the_home_columns_share_the_header_band_and_44px_rows() {
     for (name, rows) in [("project", sidebar_rows), ("canvas", canvas_rows)] {
         assert!(rows.contains("height: 44px;"), "the {name} rows are 44px");
     }
+}
+
+#[test]
+fn home_redesign_renders_wordmark_and_create_rows() -> TestResult {
+    init_backend_allow_existing();
+    let (_ui, buffer) = render_library_ui(2, 3, false, false)?;
+    let pixels: Vec<u8> = buffer
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(buffer.width(), buffer.height(), pixels)
+        .ok_or("home snapshot size")?;
+    let path = std::env::temp_dir().join("open-canvas-home-redesign.png");
+    image.save(&path)?;
+    Ok(())
 }
