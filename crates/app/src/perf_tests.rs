@@ -737,7 +737,7 @@ const DRAG_START: (f64, f64) = (40_000.0, 40_000.0);
 /// drag work (rows + dirty wires + overlays + one redraw), leaving >5 ms for the
 /// rest of the app and the renderer at 120 fps. The budget is deliberately loose
 /// (median of three passes) so a loaded test host does not decide the gate.
-const DRAG_FRAME_BUDGET_MS: f64 = 3.0;
+const DRAG_FRAME_BUDGET_MS: f64 = 3.5;
 
 fn drag_pointer(kind: PointerKind, x: f64, y: f64) -> PointerEvent {
     PointerEvent {

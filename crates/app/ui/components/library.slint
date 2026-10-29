@@ -81,8 +81,8 @@ component ProjectSidebarRow inherits Rectangle {
         y: parent.height - 1px;
         width: 100%;
         height: 1px;
-        background: Theme.border;
-        opacity: 0.55;
+        background: Theme.border-strong;
+        opacity: 0.7;
     }
 
     ta := TouchArea {
@@ -194,6 +194,74 @@ component ProjectSidebarRow inherits Rectangle {
 // column lines up exactly. A single click selects, a double-click opens; the
 // trailing cell carries rename / duplicate / delete, centred on the row. The row
 // sits directly on the one surface: hover wash, selected tint, one hairline.
+// A create affordance that lives at the bottom of its list: one centred plus,
+// no label. Clicking it creates the item and (for canvases) opens it.
+component ProjectCreateRow inherits Rectangle {
+    callback clicked();
+
+    height: 44px;
+    background: ta.has-hover ? Theme.hover : transparent;
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    Path {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: Icons.plus;
+        fill: transparent;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke: Theme.node-muted;
+    }
+}
+
+component CanvasCreateRow inherits Rectangle {
+    callback clicked();
+
+    height: 44px;
+    background: ta.has-hover ? Theme.hover : transparent;
+    animate background {
+        duration: Theme.motion-hover;
+        easing: ease-out;
+    }
+
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+    Path {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: Icons.plus;
+        fill: transparent;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        stroke: Theme.node-muted;
+    }
+}
+
 component CanvasRow inherits Rectangle {
     in property <string> title: "";
     in property <string> updated: "";
@@ -233,8 +301,8 @@ component CanvasRow inherits Rectangle {
         y: parent.height - 1px;
         width: 100%;
         height: 1px;
-        background: Theme.border;
-        opacity: 0.6;
+        background: Theme.border-strong;
+        opacity: 0.7;
     }
 
     ta := TouchArea {
@@ -445,12 +513,10 @@ export component LibraryScreen inherits Rectangle {
     property <length> title-band: 76px;
     // The one offset both home columns share below the app band: the sidebar's
     // list toolbar and the right pane's header stack are both this tall, so the
-    // two lists start on one y. `project-header-band` is the top part of the
-    // right stack (the project name and its `+`); the table column header takes
-    // the rest.
+    // two lists start on one y; the right pane now begins with the table
+    // column header.
     property <length> header-band: 44px;
-    property <length> project-header-band: 26px;
-    callback create-group();
+        callback create-group();
     callback select-group(string);
     callback group-action(string, string);
     callback group-name-edited(string);
@@ -510,29 +576,26 @@ export component LibraryScreen inherits Rectangle {
                 spacing: Theme.space-2;
                 cross-axis-alignment: center;
 
-                // The app-level title. It used to be the sidebar's 15px caps
-                // label; it is the biggest type on the screen now, and the
-                // project list starts below it instead of above it.
-                // Home replaces the old PROJECTS wordmark: the app title is
-                // the house, and the project rows below carry the names.
-                IconButton {
-                    icon: Icons.home;
-                    tooltip-enabled: true;
-                    tip: "Home";
-                    tip-description: "Save the open project and return to the library";
-                    clicked => {
-                        root.go-home();
-                    }
-                }
+                // The home screen's wordmark. No Home button and no create
+                // affordance here: both live where their result appears.
+                HorizontalLayout {
+                    spacing: 2px;
+                    cross-axis-alignment: end;
+                    padding-bottom: 7px;
 
-                // New Project sits beside Home; no project name is written to
-                // its left.
-                IconButton { variant: "ghost";
-                    icon: Icons.plus;
-                    tooltip-enabled: true;
-                    tip: I18n.library-new-project;
-                    clicked => {
-                        root.create-group();
+                    Text {
+                        text: "Canvas";
+                        font-size: 30px;
+                        font-weight: 800;
+                        letter-spacing: 0.6px;
+                        color: Theme.foreground;
+                        vertical-alignment: bottom;
+                    }
+                    Rectangle {
+                        width: 7px;
+                        height: 7px;
+                        border-radius: 3.5px;
+                        background: Theme.brand;
                     }
                 }
 
@@ -569,8 +632,8 @@ export component LibraryScreen inherits Rectangle {
                 y: parent.height - 1px;
                 width: 100%;
                 height: 1px;
-                background: Theme.border;
-                opacity: 0.5;
+                background: Theme.border-strong;
+                opacity: 0.8;
             }
         }
 
@@ -591,8 +654,8 @@ export component LibraryScreen inherits Rectangle {
                 x: parent.width - 1px;
                 width: 1px;
                 height: 100%;
-                background: Theme.border;
-                opacity: 0.75;
+                background: Theme.border-strong;
+                opacity: 0.9;
             }
 
             VerticalLayout {
@@ -625,16 +688,12 @@ export component LibraryScreen inherits Rectangle {
                         width: 100%;
                         height: 100%;
                         content-width: self.width;
-                        content-height: max(root.groups.length * 44px, self.height);
+                        content-height: max((root.groups.length + 1) * 44px, self.height);
 
                         VerticalLayout {
                             width: 100%;
                             padding-left: Theme.space-2;
                             padding-right: Theme.space-2;
-                            // No top padding: the first project row starts at
-                            // the content top, level with the right project
-                            // title. The 44px pitch then puts the second
-                            // project row on the first scene/canvas row.
                             spacing: 0px;
 
                             for group in root.groups : ProjectSidebarRow {
@@ -652,6 +711,12 @@ export component LibraryScreen inherits Rectangle {
                                     root.group-name-edited(t);
                                 }
                             }
+
+                            ProjectCreateRow {
+                                clicked => {
+                                    root.create-group();
+                                }
+                            }
                         }
                     }
                 }
@@ -667,54 +732,6 @@ export component LibraryScreen inherits Rectangle {
 
             VerticalLayout {
                 spacing: 0px;
-
-                // ---- the project header row (project name + New Canvas) ---
-                // The top half of the 44px header stack. The drag surface and
-                // the window controls are in the app band above; this row only
-                // names the selected project and offers its `+`.
-                Rectangle {
-                    height: root.project-header-band;
-                    background: transparent;
-
-                    HorizontalLayout {
-                        width: 100%;
-                        height: 100%;
-                        padding-left: Theme.space-5;
-                        padding-right: Theme.space-2;
-                        spacing: Theme.space-3;
-                        cross-axis-alignment: center;
-
-                        // No project name is written to the left of this +:
-                        // the selected project is already highlighted in the
-                        // sidebar. The button alone adds the canvas.
-                        IconButton { variant: "ghost";
-                            size: 24px;
-                            icon: Icons.plus;
-                            tooltip-enabled: true;
-                            tip: I18n.library-new-canvas;
-                            enabled: root.has-group;
-                            clicked => {
-                                root.create-project();
-                            }
-                        }
-
-                        Rectangle {
-                            horizontal-stretch: 1;
-                            height: 100%;
-                            background: transparent;
-                        }
-                    }
-
-                    // Hairline between the scene/project name and the column
-                    // labels: the title is a heading, the labels are the table.
-                    Rectangle {
-                        y: parent.height - 1px;
-                        width: 100%;
-                        height: 1px;
-                        background: Theme.border;
-                        opacity: 0.45;
-                    }
-                }
 
                 // ---- the canvas table area ---------------------------------
                 Rectangle {
@@ -785,7 +802,7 @@ export component LibraryScreen inherits Rectangle {
                             // row starts on the same y as the first project
                             // row in the sidebar.
                             Rectangle {
-                                height: root.header-band - root.project-header-band;
+                                height: root.header-band;
                                 background: transparent;
 
                                 HorizontalLayout {
@@ -858,8 +875,8 @@ export component LibraryScreen inherits Rectangle {
                                     y: parent.height - 1px;
                                     width: 100%;
                                     height: 1px;
-                                    background: Theme.border;
-                                    opacity: 0.6;
+                                    background: Theme.border-strong;
+                                    opacity: 0.8;
                                 }
                             }
 
@@ -869,59 +886,13 @@ export component LibraryScreen inherits Rectangle {
                                 background: transparent;
                                 clip: true;
 
-                                if root.projects.length == 0 : Rectangle {
-                                    width: 100%;
-                                    height: 100%;
-
-                                    VerticalLayout {
-                                        alignment: center;
-                                        cross-axis-alignment: center;
-                                        spacing: Theme.space-3;
-
-                                        Path {
-                                            width: 36px;
-                                            height: 36px;
-                                            viewbox-width: 24;
-                                            viewbox-height: 24;
-                                            commands: Icons.smart-canvas;
-                                            fill: transparent;
-                                            stroke-width: 1.5px;
-                                            stroke-line-cap: round;
-                                            stroke-line-join: round;
-                                            stroke: Theme.node-placeholder;
-                                        }
-                                        Text {
-                                            vertical-alignment: center;
-                                            text: I18n.library-empty-project;
-                                            font-size: 15px;
-                                            font-weight: 600;
-                                            color: Theme.foreground;
-                                            horizontal-alignment: center;
-                                        }
-                                        Text {
-                                            vertical-alignment: center;
-                                            text: I18n.library-empty-project-hint;
-                                            font-size: 13px;
-                                            color: Theme.node-muted;
-                                            horizontal-alignment: center;
-                                        }
-                                        Button { variant: "primary";
-                                            label: I18n.library-new-canvas;
-                                            clicked => {
-                                                root.create-project();
-                                            }
-                                        }
-                                    }
-                                }
-
                                 Flickable {
-                                    visible: root.projects.length > 0;
                                     x: 0px;
                                     y: 0px;
                                     width: 100%;
                                     height: 100%;
                                     content-width: self.width;
-                                    content-height: max(root.projects.length * 44px, self.height);
+                                    content-height: max((root.projects.length + 1) * 44px, self.height);
 
                                     VerticalLayout {
                                         width: 100%;
@@ -939,6 +910,12 @@ export component LibraryScreen inherits Rectangle {
                                             }
                                             title-edited(t) => {
                                                 root.project-name-edited(t);
+                                            }
+                                        }
+
+                                        CanvasCreateRow {
+                                            clicked => {
+                                                root.create-project();
                                             }
                                         }
                                     }

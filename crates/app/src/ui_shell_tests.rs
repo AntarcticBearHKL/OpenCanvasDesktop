@@ -784,47 +784,38 @@ fn the_home_screen_is_one_flat_surface() {
     );
     assert!(
         home.contains("width: 240px;")
-            && home.contains("icon: Icons.home;")
-            && !home.contains("I18n.library-projects-label"),
-        "the project sidebar is the 240px column under the Home button, not a PROJECTS wordmark"
+            && home.contains("text: \"Canvas\";")
+            && !home.contains("Icons.home;"),
+        "the 240px sidebar sits under the Canvas wordmark"
     );
     assert!(
-        home.contains("tip: I18n.library-new-project;"),
-        "the app band offers New Project"
+        home.contains("component ProjectCreateRow inherits Rectangle")
+            && home.contains("component CanvasCreateRow inherits Rectangle")
+            && home.contains("ProjectCreateRow {")
+            && home.contains("CanvasCreateRow {"),
+        "both lists end in a create row"
     );
     assert!(
-        home.contains("tip: I18n.library-new-canvas;"),
-        "the right pane header offers New Canvas"
+        !home.contains("tip: I18n.library-new-project;")
+            && !home.contains("tip: I18n.library-new-canvas;"),
+        "the old header + buttons are gone"
     );
 
-    // The app band: the drag surface, Home, New Project, then the gear and the
-    // window controls at the far right.
+    // The app band: drag surface, Canvas wordmark, gear, window controls.
     let drag_at = home.find("WindowDragArea {").unwrap_or(usize::MAX);
-    let home_at = home.find("icon: Icons.home;").unwrap_or(usize::MAX);
-    let new_project_at = home
-        .find("tip: I18n.library-new-project;")
-        .unwrap_or(usize::MAX);
+    let wordmark_at = home.find("text: \"Canvas\";").unwrap_or(usize::MAX);
     let gear_at = home.find("icon: Icons.settings;").unwrap_or(usize::MAX);
     let controls_at = home.find("WindowButtons {").unwrap_or(usize::MAX);
-    let new_canvas_at = home.find("tip: I18n.library-new-canvas;").unwrap_or(0);
     assert!(
-        drag_at < home_at
-            && home_at < new_project_at
-            && new_project_at < gear_at
-            && gear_at < controls_at,
-        "Home and New Project sit in the top band before the chrome controls"
-    );
-    assert!(
-        controls_at < new_canvas_at,
-        "the window drag/controls live above the project header row"
+        drag_at < wordmark_at && wordmark_at < gear_at && gear_at < controls_at,
+        "Canvas, gear and controls share the app band"
     );
     assert!(
         home.contains("property <length> title-band: 76px;")
             && home.contains("property <length> header-band: 44px;")
-            && home.contains("property <length> project-header-band: 26px;")
-            && home.matches("height: root.header-band;").count() == 0
-            && home.contains("height: root.header-band - root.project-header-band;"),
-        "a 76px app band sits above a 44px shared header stack (26px project row + 18px column header)"
+            && !home.contains("project-header-band")
+            && home.matches("height: root.header-band;").count() == 1,
+        "a 76px app band sits above the 44px table header"
     );
     assert!(
         home.contains("text: I18n.library-name-column;")
@@ -842,8 +833,8 @@ fn the_home_screen_is_one_flat_surface() {
     );
     assert!(
         home.contains("I18n.library-empty-no-projects")
-            && home.contains("I18n.library-empty-project"),
-        "both empty states exist (no project, empty project)"
+            && !home.contains("I18n.library-empty-project"),
+        "the empty-project state is replaced by the create row"
     );
 }
 

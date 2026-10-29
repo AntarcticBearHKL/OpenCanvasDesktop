@@ -405,16 +405,23 @@ fn the_home_source_has_the_project_sidebar_and_full_width_table() {
         "canvases are table rows"
     );
     assert!(
-        home.contains("icon: Icons.home;") && !home.contains("I18n.library-projects-label"),
-        "the sidebar starts with Home, not a PROJECTS wordmark"
+        home.contains("text: \"Canvas\";")
+            && !home.contains("Icons.home;")
+            && !home.contains("tip: I18n.library-new-project;"),
+        "the app band is the Canvas wordmark, without a Home or New Project button"
+    );
+    assert!(
+        home.contains("component ProjectCreateRow inherits Rectangle")
+            && home.contains("component CanvasCreateRow inherits Rectangle"),
+        "both lists end in a centred create row"
     );
     assert!(
         !home.contains("min(860px") && !home.contains("860px"),
         "the table is no longer capped at 860px"
     );
     assert!(
-        !home.contains("x: (parent.width - self.width) / 2;"),
-        "the table block is no longer centred in the pane"
+        home.contains("component CanvasCreateRow inherits Rectangle"),
+        "the table ends in a centred create row"
     );
     // The column share is identical in the header and in every row: the name
     // and last-edited cells are exact fractions of the shared block width, the
@@ -432,19 +439,11 @@ fn the_home_source_has_the_project_sidebar_and_full_width_table() {
     }
 }
 
-/// The home screen has three horizontal bands, in this order:
-///
-/// * the app band: PROJECTS at the far left, the settings gear and the three
-///   window controls at the far right, and the drag surface filling the middle;
-/// * the app band's ghost `+` New Project, beside the PROJECTS title;
-/// * the right pane's project header row (`Project 1` + its ghost `+`) above the
-///   table's column header.
+/// The home screen is the Canvas wordmark, a project list ending in a create
+/// row, and a full-width canvas table ending in a create row. There is no Home
+/// button, no New Project button in the title band, and no project-header row.
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    reason = "one test pins the app band, the project header and the sidebar chrome contract"
-)]
-fn the_app_band_carries_the_title_and_the_window_controls() {
+fn the_app_band_carries_the_wordmark_and_window_controls() {
     let home = include_str!("../ui/components/library.slint").replace("\r\n", "\n");
     let band_start = home
         .find("// 0. the app band")
@@ -454,22 +453,20 @@ fn the_app_band_carries_the_title_and_the_window_controls() {
         .expect("the sidebar follows the app band");
     let band = &home[band_start..band_end];
 
-    let home_icon = band
-        .find("icon: Icons.home;")
-        .expect("the app band starts with the Home house");
-    let settings = band
-        .find("icon: Icons.settings;")
-        .expect("the band carries the settings gear");
-    let controls = band
-        .find("WindowButtons {")
-        .expect("the band carries the window controls");
     assert!(
-        home_icon < settings && settings < controls,
-        "Home, then the gear, then minimise/maximise/close: one band in reading order"
+        band.contains("text: \"Canvas\";"),
+        "the title band carries the Canvas wordmark"
     );
     assert!(
-        !band.contains("I18n.library-projects-label"),
-        "the PROJECTS wordmark is gone from the app band"
+        !band.contains("Icons.home;") && !band.contains("I18n.library-new-project;"),
+        "no Home or New Project affordance sits in the title band"
+    );
+    let wordmark = band.find("text: \"Canvas\";").expect("wordmark");
+    let settings = band.find("icon: Icons.settings;").expect("settings");
+    let controls = band.find("WindowButtons {").expect("controls");
+    assert!(
+        wordmark < settings && settings < controls,
+        "wordmark, gear, then window controls"
     );
     assert!(
         band.contains("WindowDragArea {")
@@ -477,87 +474,34 @@ fn the_app_band_carries_the_title_and_the_window_controls() {
             && band.contains("root.drag-tick();")
             && band.contains("root.drag-end();")
             && band.contains("root.maximize-toggle();"),
-        "the band is the manual drag surface and double-clicks to maximise"
+        "the band is the manual drag surface"
     );
     assert!(
         band.contains("height: root.title-band;"),
-        "the band is the shared title-band token, not a stray literal"
+        "the band uses the title-band token"
     );
 
-    // The right pane's header: the ghost + alone. No project name is written
-    // to its left; the selected project is highlighted in the sidebar.
-    let header_start = home
-        .find("// ---- the project header row")
-        .expect("the right header marker");
-    let header_end = home
-        .find("// ---- the canvas table area")
-        .expect("the header row is followed by the table area");
-    let header = &home[header_start..header_end];
-    let plus = header
-        .find("tip: I18n.library-new-canvas;")
-        .expect("the header carries the New Canvas tooltip");
-    let create = header
-        .find("root.create-project();")
-        .expect("the header's + adds a canvas to the selected project");
+    let sidebar = &home[band_end..];
     assert!(
-        plus < create,
-        "the + is the header's only action; no project name sits to its left"
+        sidebar.contains("ProjectCreateRow {") && sidebar.contains("root.create-group();"),
+        "the project list ends with a create row"
     );
     assert!(
-        !header.contains("root.group-title") && !header.contains("I18n.library-no-project"),
-        "the project name is not repeated in the right header"
+        !sidebar.contains("tip: I18n.library-new-project;")
+            && !sidebar.contains("Icons.folder-plus;"),
+        "the old header + is gone"
+    );
+    let table_start = home
+        .find("// 2. the right pane")
+        .expect("right pane marker");
+    let table = &home[table_start..];
+    assert!(
+        table.contains("CanvasCreateRow {") && table.contains("root.create-project();"),
+        "the canvas table ends with a create row"
     );
     assert!(
-        !header.contains("WindowDragArea {")
-            && !header.contains("Icons.settings;")
-            && !header.contains("WindowButtons {"),
-        "the window drag/gear/controls live only in the app band"
-    );
-    assert!(
-        header.contains("height: root.project-header-band;"),
-        "the project title takes the 26px top half of the 44px header stack"
-    );
-
-    // New Project is beside the PROJECTS title in the app band; the sidebar
-    // no longer reserves a 44px empty toolbar for it.
-    let new_project = band
-        .find("tip: I18n.library-new-project;")
-        .expect("the app band offers New Project");
-    let project_block_start = band[..new_project]
-        .rfind("IconButton {")
-        .expect("New Project is an IconButton");
-    let project_block = &band[project_block_start..];
-    assert!(
-        project_block.contains("variant: \"ghost\"")
-            && project_block.contains("icon: Icons.plus;")
-            && project_block.contains("root.create-group();"),
-        "New Project is a ghost + icon button wired to create-group"
-    );
-    assert!(
-        home_icon < new_project && new_project < settings,
-        "Home, then New Project, then the gear: one reading order"
-    );
-    let sidebar = &home[band_end..header_start];
-    assert!(
-        !sidebar.contains("I18n.library-projects-label"),
-        "the PROJECTS label moved to the app band and is not duplicated in the sidebar"
-    );
-    assert!(
-        !sidebar.contains("tip: I18n.library-new-project;"),
-        "New Project moved out of the empty sidebar toolbar"
-    );
-    assert!(
-        !sidebar.contains("Icons.folder-plus"),
-        "the old folder-plus glyph is gone from the sidebar"
-    );
-    assert!(
-        !sidebar.contains("I18n.library-new-canvas") && !sidebar.contains("root.create-project()"),
-        "the sidebar never creates a canvas; that lives in the right pane"
-    );
-    // The create action is a plain ghost `+`, not a filled label button.
-    assert!(
-        !header.contains("label: I18n.library-new-canvas;"),
-        "the filled New Canvas button is gone from the header"
+        !table.contains("project-header-band") && table.contains("height: root.header-band;"),
+        "the table column header is the first row in the pane"
     );
 }
 
@@ -660,11 +604,11 @@ fn the_row_action_icons_share_the_row_centre_line() -> TestResult {
         }
     }
 
-    // The header strip: the ACTIONS label is centred in the 18px column-header
-    // band (102..120), exactly like the row icons are centred in theirs.
+    // The header strip: the ACTIONS label is centred in the 44px column-header
+    // band (76..120), exactly like the row icons are centred in theirs.
     let header_tone = surface_tone(&ui);
-    let header_centre = 102u32 + 9;
-    let span = ink_span(&buffer, (950, 1270), (103, 119), header_tone)
+    let header_centre = 98u32;
+    let span = ink_span(&buffer, (950, 1270), (78, 118), header_tone)
         .ok_or("the Actions header label paints")?;
     let centre = span_centre(span);
     let want = f32::from(u16::try_from(header_centre).unwrap_or(0));
@@ -758,46 +702,36 @@ fn the_row_action_list_drops_open_and_keeps_the_three_actions() {
     );
 }
 
-/// Both create affordances are borderless, backgroundless `+` icons: the
-/// sidebar header adds a project, the right pane header adds a canvas to the
-/// selected one.
+/// Both create affordances are a single centred plus at the bottom of their
+/// list: projects in the sidebar, canvases in the table.
 #[test]
-fn both_create_actions_are_ghost_plus_buttons() {
+fn both_create_actions_are_centred_plus_rows() {
     let home = include_str!("../ui/components/library.slint").replace("\r\n", "\n");
     let sidebar_end = home.find("// 2. the right pane").expect("sidebar block");
     let sidebar = &home[..sidebar_end];
     assert!(
-        sidebar.contains("icon: Icons.plus;")
-            && sidebar.contains("tip: I18n.library-new-project;")
-            && sidebar.contains("root.create-group();"),
-        "the PROJECTS header's + creates a project"
+        sidebar.contains("ProjectCreateRow {")
+            && sidebar.contains("root.create-group();")
+            && sidebar.contains("component ProjectCreateRow inherits Rectangle"),
+        "the project list ends in a create row"
     );
-    let header_end = home
-        .find("// ---- the canvas table area")
-        .expect("the header row");
-    let header = &home[sidebar_end..header_end];
+    let table = &home[sidebar_end..];
     assert!(
-        header.contains("icon: Icons.plus;")
-            && header.contains("tip: I18n.library-new-canvas;")
-            && header.contains("root.create-project();"),
-        "the project header's + adds a canvas to the selected project"
+        table.contains("CanvasCreateRow {")
+            && table.contains("root.create-project();")
+            && home.contains("component CanvasCreateRow inherits Rectangle"),
+        "the canvas table ends in a create row"
     );
-    // Ghost variant: `bordered: false` and a transparent resting background,
-    // so both + buttons are plain glyphs (the only wash is on hover).
+    assert!(
+        !sidebar.contains("I18n.library-new-project;")
+            && !table.contains("I18n.library-new-canvas;"),
+        "neither create affordance is a labelled header button"
+    );
     let widgets = include_str!("../ui/components/widgets.slint");
     assert!(
         widgets.contains("root.variant == \"ghost\" || root.variant == \"row\" || root.variant == \"menu\" ? false : true;"),
-        "the ghost variant is defined as borderless"
+        "the shared ghost button remains borderless"
     );
-    assert!(
-        widgets.contains(
-            ": ta.has-hover && root.enabled ? (root.danger ? root.danger-hover-bg : root.hover-bg)"
-        ) && widgets.contains(": transparent;"),
-        "the ghost button's resting background is transparent"
-    );
-
-    // Source-level: both buttons are ghost glyphs; no pixel probe depends on
-    // the removed project-name label in the header.
 }
 
 /// The two `+` callbacks reach the model: one adds a project, the other adds a
@@ -999,13 +933,13 @@ fn the_sidebar_label_and_the_first_rows_align_with_the_table() -> TestResult {
     let (ui, buffer) = render_library_ui(3, 3, false, false)?;
     let base = surface_tone(&ui);
 
-    // The table's column labels stay in the 102..120 column-header band.
+    // The table's column labels sit in the 44px header band (76..120).
     let columns =
-        ink_span(&buffer, (670, 930), (103, 119), base).ok_or("the table's column labels paint")?;
+        ink_span(&buffer, (670, 930), (78, 118), base).ok_or("the table's column labels paint")?;
     let columns_centre = span_centre(columns);
     assert!(
-        (columns_centre - 111.0).abs() <= 2.0,
-        "the column labels are centred in the 18px column-header band ({columns:?}, centre {columns_centre}, want 111)"
+        (columns_centre - 98.0).abs() <= 2.0,
+        "the column labels are centred in the 44px header band ({columns:?}, centre {columns_centre}, want 98)"
     );
 
     // With no empty sidebar toolbar, the first project row starts at the
@@ -1039,44 +973,31 @@ fn the_sidebar_label_and_the_first_rows_align_with_the_table() -> TestResult {
     Ok(())
 }
 
-/// Source guard for the alignment contract: the 76px app band sits above both
-/// columns, there is no empty sidebar toolbar, the right header stack is
-/// `header-band` (44px), its 26px project row plus the remaining column header
-/// add up to it exactly, and both row components are 44px. Changing one side
-/// alone breaks the pixel probe above.
+/// Source guard for the new home geometry: the 76px app band sits above both
+/// columns, the right pane starts with a 44px table header, and both lists end
+/// in a 44px create row.
 #[test]
-fn the_home_columns_share_equal_header_bands_and_44px_rows() {
+fn the_home_columns_share_the_header_band_and_44px_rows() {
     let home = include_str!("../ui/components/library.slint").replace("\r\n", "\n");
     assert!(
-        home.contains("property <length> title-band: 76px;"),
-        "the app band is a named 76px token"
+        home.contains("property <length> title-band: 76px;")
+            && home.contains("property <length> header-band: 44px;"),
+        "the 76px app band and 44px table header are named tokens"
     );
     assert!(
-        home.contains("property <length> header-band: 44px;")
-            && home.contains("property <length> project-header-band: 26px;"),
-        "the 44px header stack and its 26px project row are named tokens"
-    );
-    assert_eq!(
-        home.matches("height: root.header-band;").count(),
-        0,
-        "the empty sidebar toolbar is gone; the right header stack is the only 44px band"
-    );
-    assert!(
-        home.contains("tip: I18n.library-new-project;"),
-        "New Project lives in the app band"
-    );
-    assert!(
-        home.contains("height: root.header-band - root.project-header-band;"),
-        "the column header takes the rest of the 44px stack (44 - 26 = 18px)"
+        !home.contains("project-header-band")
+            && home.matches("height: root.header-band;").count() == 1,
+        "the table header is the first and only header band in the right pane"
     );
     assert_eq!(
         home.matches("height: 44px;").count(),
-        2,
-        "the project rows and the canvas rows are both 44px"
+        4,
+        "project/canvas rows and their two create rows are all 44px"
     );
     assert!(
-        !home.contains("height: 38px;") && !home.contains("table-header-band"),
-        "the old 38px label band is gone"
+        home.contains("component ProjectCreateRow inherits Rectangle")
+            && home.contains("component CanvasCreateRow inherits Rectangle"),
+        "both create rows exist"
     );
     let sidebar_rows = home
         .split("component ProjectSidebarRow inherits Rectangle")

@@ -567,11 +567,14 @@ fn the_native_caption_is_stripped_before_the_backdrop_and_guarded_every_tick() {
         "the app draws the window controls; there is no native frame to expect"
     );
     assert!(
-        home.find("icon: Icons.home;")
-            .zip(home.find("tip: I18n.library-new-project;"))
+        home.find("text: \"Canvas\";")
             .zip(home.find("WindowButtons {"))
-            .is_some_and(|((home, plus), controls)| home < plus && plus < controls),
-        "the home screen draws Home, New Project and its own window controls"
+            .is_some_and(|(wordmark, controls)| wordmark < controls),
+        "the home screen draws the Canvas wordmark and its own window controls"
+    );
+    assert!(
+        !home.contains("icon: Icons.home;") && !home.contains("tip: I18n.library-new-project;"),
+        "the old Home and New Project header buttons are gone"
     );
 
     // The trace names the bits before and after the re-apply.
