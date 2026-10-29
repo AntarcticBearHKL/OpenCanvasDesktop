@@ -882,6 +882,11 @@ export component ImageFocusModal inherits Rectangle {
         clicked => {
             root.close();
         }
+        scroll-event(e) => {
+            // The focus viewer owns the wheel everywhere, including the dark
+            // surround, so the canvas behind can never zoom.
+            accept
+        }
     }
 
     close-hit := TouchArea {
