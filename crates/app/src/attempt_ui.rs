@@ -134,7 +134,9 @@ Model: {}
         ui.set_attempt_id(id.into());
         let model = meta.model.clone().unwrap_or_default();
         let size = meta.size.clone().unwrap_or_else(|| "1:1".into());
+        let tabs = self.attempt_tabs(id);
         let model_options = self.attempt_model_options(&model);
+        ui.set_attempt_tabs(ModelRc::new(VecModel::from(tabs)));
         ui.set_attempt_prompt(meta.prompt.clone().unwrap_or_default().into());
         ui.set_attempt_model(model.into());
         let model_options: Vec<slint::SharedString> =
@@ -195,6 +197,52 @@ RAW
         self.attempt_modal = Some(id.to_string());
     }
 
+    fn attempt_tabs(&self, current: &str) -> Vec<crate::AttemptTabRow> {
+        let mut entries: Vec<(i64, String, String, bool)> = self
+            .doc
+            .nodes()
+            .iter()
+            .filter(|node| node.node_type == CanvasNodeType::ImageAttempt)
+            .map(|node| {
+                let meta = node.metadata.as_ref();
+                let version = meta.and_then(|meta| meta.attempt_version).unwrap_or(1);
+                (
+                    version,
+                    node.title.clone(),
+                    node.id.clone(),
+                    meta.is_some_and(attempt_has_output),
+                )
+            })
+            .collect();
+        entries.sort_by(|left, right| {
+            left.0
+                .cmp(&right.0)
+                .then_with(|| left.1.cmp(&right.1))
+                .then_with(|| left.2.cmp(&right.2))
+        });
+        let mut counts: std::collections::BTreeMap<i64, usize> = std::collections::BTreeMap::new();
+        for (version, ..) in &entries {
+            *counts.entry(*version).or_default() += 1;
+        }
+        entries
+            .into_iter()
+            .map(|(version, title, id, has_output)| {
+                let label =
+                    if counts.get(&version).copied().unwrap_or(0) > 1 && !title.trim().is_empty() {
+                        format!("v{version} · {title}")
+                    } else {
+                        format!("v{version}")
+                    };
+                crate::AttemptTabRow {
+                    id: id.clone().into(),
+                    label: label.into(),
+                    current: id == current,
+                    has_output,
+                }
+            })
+            .collect()
+    }
+
     fn attempt_model_options(&self, current: &str) -> Vec<String> {
         let mut options: Vec<String> = Vec::new();
         for channel in &self.config.channels {
@@ -213,6 +261,15 @@ RAW
             options.push(IMAGE_MODEL.to_string());
         }
         options
+    }
+
+    pub fn attempt_tab_picked(&mut self, ui: &AppWindow, id: &str) {
+        if self.attempt_modal.as_deref() == Some(id) || self.doc.node(id).is_none() {
+            return;
+        }
+        self.doc.commit(self.now_ms());
+        self.note_doc_change();
+        self.attempt_open(ui, id);
     }
 
     pub fn attempt_close(&mut self, ui: &AppWindow) {
@@ -580,6 +637,14 @@ pub fn wire(ui: &AppWindow, app: &std::rc::Rc<std::cell::RefCell<App>>) {
         ui.on_attempt_extract(move || {
             let Some(ui) = weak.upgrade() else { return };
             crate::app::with_app(&app, |app| app.attempt_extract(&ui));
+        });
+    }
+    {
+        let app = app.clone();
+        let weak = ui.as_weak();
+        ui.on_attempt_tab_picked(move |id| {
+            let Some(ui) = weak.upgrade() else { return };
+            crate::app::with_app(&app, |app| app.attempt_tab_picked(&ui, id.as_str()));
         });
     }
     {

@@ -524,6 +524,26 @@ fn attempt_workbench_renders_centered_prompt_config_and_trace() -> TestResult {
     init_backend()?;
     let buffer = render_editor_shared(|ui, _app| {
         ui.set_attempt_open(true);
+        ui.set_attempt_tabs(ModelRc::new(VecModel::from(vec![
+            crate::AttemptTabRow {
+                id: "v2".into(),
+                label: "v2".into(),
+                current: false,
+                has_output: false,
+            },
+            crate::AttemptTabRow {
+                id: "v3".into(),
+                label: "v3".into(),
+                current: false,
+                has_output: true,
+            },
+            crate::AttemptTabRow {
+                id: "v7".into(),
+                label: "v7".into(),
+                current: true,
+                has_output: true,
+            },
+        ])));
         ui.set_attempt_prompt("A red fox in a snowy bamboo forest, cinematic light".into());
         ui.set_attempt_model("openai/gpt-image-2.5-sunburst".into());
         ui.set_attempt_size("16:9".into());

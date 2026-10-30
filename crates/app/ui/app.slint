@@ -19,7 +19,7 @@ import { ExportImportModal, LibraryScreen } from "components/library.slint";
 import { NodeLayerPopover } from "components/node-list.slint";
 import { ShortcutsModal } from "components/shortcuts-modal.slint";
 import { PluginManagerModal } from "components/plugin-manager.slint";
-import { HoverAction, AssetItem, AssetTreeRow, ImageActionRow, ImageAdjustmentGroup, ImageAssetRow, ImageBrushRow, ImageChannelRow, ImageCurvePoint, ImageEditorRow, ImageFilterParam, ImageGradientRow, ImageGradientStopRow, ImageHistoryRow, ImageLayerRow, ImagePanels, ImageParamRow, ImagePathRow, ImagePatternRow, ImageStyleRow, ImageSwatchGroup, ImageToolRow, FilterMenuRow, InfoRow, LibraryGroupRow, RefImage, GenerationSettings, PluginManagerRow, ProjectListRow, RulerTick, RulerTickImage, SidePanelRow, StackImage, TextOptionRow, ConfigChannelRow } from "components/overlay-types.slint";
+import { HoverAction, AssetItem, AssetTreeRow, AttemptTabRow, ImageActionRow, ImageAdjustmentGroup, ImageAssetRow, ImageBrushRow, ImageChannelRow, ImageCurvePoint, ImageEditorRow, ImageFilterParam, ImageGradientRow, ImageGradientStopRow, ImageHistoryRow, ImageLayerRow, ImagePanels, ImageParamRow, ImagePathRow, ImagePatternRow, ImageStyleRow, ImageSwatchGroup, ImageToolRow, FilterMenuRow, InfoRow, LibraryGroupRow, RefImage, GenerationSettings, PluginManagerRow, ProjectListRow, RulerTick, RulerTickImage, SidePanelRow, StackImage, TextOptionRow, ConfigChannelRow } from "components/overlay-types.slint";
 import { ConfigModal } from "components/config-modal.slint";
 import { AttemptWorkbench } from "components/attempt-workbench.slint";
 import { ImageStudio } from "components/image.slint";
@@ -406,6 +406,7 @@ export component AppWindow inherits Window {
     // Image Attempt workbench (double-click an attempt card).
     in-out property <bool> attempt-open: false;
     in-out property <string> attempt-id: "";
+    in-out property <[AttemptTabRow]> attempt-tabs: [];
     in-out property <string> attempt-prompt: "";
     in-out property <string> attempt-model: "";
     in-out property <[string]> attempt-model-options: [];
@@ -432,6 +433,7 @@ export component AppWindow inherits Window {
     callback attempt-duplicate();
     callback attempt-extract();
     callback attempt-close();
+    callback attempt-tab-picked(string);
     // The Appearance tab's window glass settings (0–100 each): the plate alpha
     // and the captured-desktop blur strength. Rust restores them from `ui.json`
     // and applies every change (`App::glass_setting`).
@@ -2367,6 +2369,7 @@ export component AppWindow inherits Window {
 
     if root.attempt-open : AttemptWorkbench {
         node-id: root.attempt-id;
+        tabs: root.attempt-tabs;
         prompt: root.attempt-prompt;
         model: root.attempt-model;
         model-options: root.attempt-model-options;
@@ -2393,6 +2396,7 @@ export component AppWindow inherits Window {
         duplicate => { root.attempt-duplicate(); }
         extract => { root.attempt-extract(); }
         close => { root.attempt-close(); }
+        tab-picked(id) => { root.attempt-tab-picked(id); }
     }
 
     // Dock tooltips (`Theme.tooltip`): the button's name first, then one

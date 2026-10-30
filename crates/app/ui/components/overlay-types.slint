@@ -444,6 +444,15 @@ export struct ConfigModelRow {
 // One provider (channel) card: a text-editable name/base-url/api-key plus its
 // model list and count (`config-providers.tsx`). `model-count-label` is the
 // localized `"{n} models"` the provider header renders.
+// One version tab at the top of the Image Attempt workbench. `label` is the
+// version (plus the title when several attempts share a version number).
+export struct AttemptTabRow {
+    id: string,
+    label: string,
+    current: bool,
+    has-output: bool,
+}
+
 export struct ConfigChannelRow {
     id: string,
     name: string,
