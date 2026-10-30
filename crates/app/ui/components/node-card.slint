@@ -1217,96 +1217,13 @@ export component NodeCard inherits Rectangle {
             padding: root.frameless ? 0px : Theme.space-4 * root.visual-scale;
             spacing: Theme.space-3 * root.visual-scale;
 
-            // Image attempt: one prompt/config version with its output. The
-            // version band is a 1:9 split: the large brand block on the left,
-            // the intent/title and why-note on the right.
+            // Image attempt: the output image is the top block; below it the
+            // version block and the text share a 1:9 split.
             if root.kind == "image-attempt" : VerticalLayout {
                 spacing: Theme.space-2 * root.visual-scale;
 
                 Rectangle {
-                    height: 64px * root.visual-scale;
-                    border-radius: Theme.radius-lg * root.visual-scale;
-                    border-width: 1px * root.visual-scale;
-                    border-color: Theme.node-stroke;
-                    background: Theme.muted;
-                    clip: !root.drag-active;
-
-                    HorizontalLayout {
-                        width: 100%;
-                        height: 100%;
-                        spacing: 0px;
-
-                        Rectangle {
-                            width: parent.width * 0.1;
-                            height: 100%;
-                            background: Theme.brand;
-
-                            Text {
-                                width: 100%;
-                                height: 100%;
-                                text: "v" + root.attempt-version;
-                                font-size: 18px * root.visual-scale;
-                                font-weight: 800;
-                                color: Theme.brand-foreground;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                                overflow: elide;
-                            }
-                        }
-
-                        Rectangle {
-                            horizontal-stretch: 1;
-                            height: 100%;
-                            background: transparent;
-
-                            VerticalLayout {
-                                padding-left: Theme.space-3 * root.visual-scale;
-                                padding-right: Theme.space-3 * root.visual-scale;
-                                padding-top: Theme.space-2 * root.visual-scale;
-                                padding-bottom: Theme.space-2 * root.visual-scale;
-                                spacing: Theme.space-1 * root.visual-scale;
-
-                                HorizontalLayout {
-                                    height: 18px * root.visual-scale;
-                                    spacing: Theme.space-1 * root.visual-scale;
-                                    Text {
-                                        text: root.attempt-title;
-                                        font-size: 13px * root.visual-scale;
-                                        font-weight: 700;
-                                        color: Theme.node-text;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                        horizontal-stretch: 1;
-                                    }
-                                    Text {
-                                        visible: root.attempt-current;
-                                        text: "current";
-                                        font-size: 9px * root.visual-scale;
-                                        font-weight: 700;
-                                        color: Theme.node-accent-text;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                                Text {
-                                    width: 100%;
-                                    vertical-stretch: 1;
-                                    text: root.attempt-reason != ""
-                                        ? "Why · " + root.attempt-reason
-                                        : "No version note yet";
-                                    font-size: 10px * root.visual-scale;
-                                    color: Theme.node-muted;
-                                    wrap: word-wrap;
-                                    overflow: elide;
-                                    vertical-alignment: top;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Rectangle {
-                    min-height: 230px * root.visual-scale;
-                    vertical-stretch: 1;
+                    height: 240px * root.visual-scale;
                     border-radius: Theme.radius-2xl * root.visual-scale;
                     clip: !root.drag-active;
                     background: root.content-empty ? Theme.muted : transparent;
@@ -1351,26 +1268,105 @@ export component NodeCard inherits Rectangle {
                     }
                 }
 
-                Text {
-                    width: 100%;
-                    height: 38px * root.visual-scale;
-                    text: root.body != "" ? root.body : "Double-click to write a prompt";
-                    font-size: 12px * root.visual-scale;
-                    color: Theme.node-text;
-                    wrap: word-wrap;
-                    overflow: elide;
-                    vertical-alignment: top;
-                }
+                Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: Theme.radius-lg * root.visual-scale;
+                    border-width: 1px * root.visual-scale;
+                    border-color: Theme.node-stroke;
+                    background: Theme.muted;
+                    clip: !root.drag-active;
 
-                Text {
-                    width: 100%;
-                    height: 18px * root.visual-scale;
-                    text: root.settings-label + " · " + root.attempt-run-count + " runs · "
-                        + root.attempt-image-count + " images · " + root.attempt-trace-count + " trace";
-                    font-size: 10px * root.visual-scale;
-                    color: Theme.node-muted;
-                    overflow: elide;
-                    vertical-alignment: center;
+                    HorizontalLayout {
+                        width: 100%;
+                        height: 100%;
+                        spacing: 0px;
+
+                        Rectangle {
+                            width: parent.width * 0.1;
+                            height: 100%;
+                            background: Theme.brand;
+
+                            Text {
+                                width: 100%;
+                                height: 100%;
+                                text: "v" + root.attempt-version;
+                                font-size: 19px * root.visual-scale;
+                                font-weight: 800;
+                                color: Theme.brand-foreground;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: 100%;
+                            background: transparent;
+
+                            VerticalLayout {
+                                padding-left: Theme.space-3 * root.visual-scale;
+                                padding-right: Theme.space-3 * root.visual-scale;
+                                padding-top: Theme.space-2 * root.visual-scale;
+                                padding-bottom: Theme.space-2 * root.visual-scale;
+                                spacing: Theme.space-1 * root.visual-scale;
+
+                                HorizontalLayout {
+                                    height: 18px * root.visual-scale;
+                                    spacing: Theme.space-1 * root.visual-scale;
+                                    Text {
+                                        text: root.attempt-title;
+                                        font-size: 13px * root.visual-scale;
+                                        font-weight: 700;
+                                        color: Theme.node-text;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                    Text {
+                                        visible: root.attempt-current;
+                                        text: "current";
+                                        font-size: 9px * root.visual-scale;
+                                        font-weight: 700;
+                                        color: Theme.node-accent-text;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                Text {
+                                    width: 100%;
+                                    height: 28px * root.visual-scale;
+                                    text: root.attempt-reason != ""
+                                        ? "Why · " + root.attempt-reason
+                                        : "No version note yet";
+                                    font-size: 10px * root.visual-scale;
+                                    color: Theme.node-muted;
+                                    wrap: word-wrap;
+                                    overflow: elide;
+                                    vertical-alignment: top;
+                                }
+                                Text {
+                                    width: 100%;
+                                    vertical-stretch: 1;
+                                    text: root.body != "" ? root.body : "Double-click to write a prompt";
+                                    font-size: 11px * root.visual-scale;
+                                    color: Theme.node-text;
+                                    wrap: word-wrap;
+                                    overflow: elide;
+                                    vertical-alignment: top;
+                                }
+                                Text {
+                                    width: 100%;
+                                    height: 18px * root.visual-scale;
+                                    text: root.settings-label + " · " + root.attempt-run-count + " runs · "
+                                        + root.attempt-image-count + " images · " + root.attempt-trace-count + " trace";
+                                    font-size: 10px * root.visual-scale;
+                                    color: Theme.node-muted;
+                                    overflow: elide;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
