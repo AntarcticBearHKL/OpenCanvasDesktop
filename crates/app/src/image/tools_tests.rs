@@ -542,7 +542,6 @@ fn image_node_geometry_is_locked_to_the_bitmap_ratio() -> TestResult {
         node.metadata.as_ref().and_then(|meta| meta.free_resize),
         None
     );
-    assert_eq!(crate::canvas_content::media_fit(&node), "contain");
     assert!(!app.normalize_image_node_geometry(&id));
     Ok(())
 }

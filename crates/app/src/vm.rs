@@ -336,7 +336,6 @@ pub fn node_row(
         has_source: view.has_source_handle && accepts_source,
         has_target: view.has_target_handle && accepts_target,
         content_image,
-        content_fit: canvas_content::media_fit(node).into(),
         content_empty,
         status: status.into(),
         error_text: error_text.into(),

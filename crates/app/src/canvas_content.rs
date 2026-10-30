@@ -46,26 +46,6 @@ pub fn format_bytes(bytes: u64) -> String {
     format!("{} {}", text, UNITS[unit])
 }
 
-/// Object-fit of an image node body. Image nodes are always `contain`: their
-/// card geometry is locked to the bitmap's aspect ratio, so `contain` fills the
-/// card exactly and never crops or stretches the picture. Other media keep the
-/// legacy free-resize flag for backward-compatible documents.
-pub fn media_fit(node: &CanvasNodeData) -> &'static str {
-    if node.node_type == CanvasNodeType::Image {
-        return "contain";
-    }
-    let free = node
-        .metadata
-        .as_ref()
-        .and_then(|meta| meta.free_resize)
-        .unwrap_or(false);
-    if free {
-        "fill"
-    } else {
-        "contain"
-    }
-}
-
 /// Slint-side status tag: only `loading`/`error` render a state surface; idle
 /// and success show the content (`canvas-node.tsx:496-497`).
 pub fn status_id(status: Option<CanvasNodeStatus>) -> &'static str {

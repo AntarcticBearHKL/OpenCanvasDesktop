@@ -185,7 +185,6 @@ component CountStepper inherits Rectangle {
 // this is the only place prompt/config are edited. A generated attempt is
 // immutable: every editable field greys out, while duplicate/extract remain.
 export component AttemptWorkbench inherits ModalShell {
-    in property <string> node-id: "";
     in property <[AttemptTabRow]> tabs: [];
     in-out property <string> prompt: "";
     in property <string> model: "";
@@ -193,12 +192,10 @@ export component AttemptWorkbench inherits ModalShell {
     in property <string> size: "";
     in property <string> quality: "";
     in property <int> count: 1;
-    in property <int> version: 1;
     in-out property <string> version-text: "1";
     in property <string> intent: "";
     in-out property <string> reason: "";
     in property <bool> frozen: false;
-    in property <int> run-count: 0;
     in property <int> image-count: 0;
     in property <image> image;
     in property <bool> has-image: false;

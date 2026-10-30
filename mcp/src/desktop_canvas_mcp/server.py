@@ -579,10 +579,8 @@ def canvas_resize_node(
     id: str,
     width: float,
     height: float,
-    freeResize: bool | None = None,
 ) -> dict:
-    """调整节点尺寸；图片节点会锁定图片比例，freeResize 仅保留兼容。"""
-    metadata = {"freeResize": freeResize} if freeResize is not None else {}
+    """调整节点尺寸；图片节点会自动锁定图片比例。"""
     project, _ = _apply(
         projectId,
         [
@@ -590,7 +588,6 @@ def canvas_resize_node(
                 "type": "update_node",
                 "id": id,
                 "patch": {"width": width, "height": height},
-                "metadata": metadata,
             }
         ],
     )

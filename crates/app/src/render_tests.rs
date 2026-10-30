@@ -528,19 +528,16 @@ fn attempt_workbench_renders_centered_prompt_config_and_trace() -> TestResult {
             id: "v7".into(),
             label: "v7".into(),
             current: true,
-            has_output: true,
         }])));
         ui.set_attempt_prompt("A red fox in a snowy bamboo forest, cinematic light".into());
         ui.set_attempt_model("openai/gpt-image-2.5-sunburst".into());
         ui.set_attempt_size("16:9".into());
         ui.set_attempt_quality("high".into());
         ui.set_attempt_count(2);
-        ui.set_attempt_version(7);
         ui.set_attempt_version_text("7".into());
         ui.set_attempt_intent("fox study".into());
         ui.set_attempt_reason("Warmer palette and a lower camera angle".into());
         ui.set_attempt_frozen(false);
-        ui.set_attempt_run_count(2);
         ui.set_attempt_image_count(3);
         ui.set_attempt_has_image(false);
         ui.set_attempt_has_output(true);
@@ -582,12 +579,10 @@ fn attempt_workbench_renders_editable_flat_controls() -> TestResult {
         ui.set_attempt_size_custom(true);
         ui.set_attempt_quality("high".into());
         ui.set_attempt_count(3);
-        ui.set_attempt_version(5);
         ui.set_attempt_version_text("5".into());
         ui.set_attempt_intent("whale icon".into());
         ui.set_attempt_reason("Initial version".into());
         ui.set_attempt_frozen(false);
-        ui.set_attempt_run_count(0);
         ui.set_attempt_image_count(0);
         ui.set_attempt_has_image(false);
         ui.set_attempt_trace("No trace recorded for this attempt yet.".into());

@@ -69,7 +69,6 @@ export struct NodeItem {
     // Media/content layer (`vm::node_row`): the decoded body bitmap (image
     // content, video poster, stack cover), its fit and the empty flag.
     content-image: image,
-    content-fit: string,
     content-empty: bool,
     // Status surface: "" | "loading" | "error" + the error detail line.
     status: string,
@@ -405,7 +404,6 @@ export component AppWindow inherits Window {
     in-out property <string> config-theme: "light";
     // Image Attempt workbench (double-click an attempt card).
     in-out property <bool> attempt-open: false;
-    in-out property <string> attempt-id: "";
     in-out property <[AttemptTabRow]> attempt-tabs: [];
     in-out property <string> attempt-prompt: "";
     in-out property <string> attempt-model: "";
@@ -414,12 +412,10 @@ export component AppWindow inherits Window {
     in-out property <bool> attempt-size-custom: false;
     in-out property <string> attempt-quality: "";
     in-out property <int> attempt-count: 1;
-    in-out property <int> attempt-version: 1;
     in-out property <string> attempt-version-text: "1";
     in-out property <string> attempt-intent: "";
     in-out property <string> attempt-reason: "";
     in-out property <bool> attempt-frozen: false;
-    in-out property <int> attempt-run-count: 0;
     in-out property <int> attempt-image-count: 0;
     in-out property <image> attempt-image;
     in-out property <bool> attempt-has-image: false;
@@ -1193,7 +1189,6 @@ export component AppWindow inherits Window {
                     has-source: node.has-source;
                     has-target: node.has-target;
                     content-image: node.content-image;
-                    content-fit: node.content-fit;
                     content-empty: node.content-empty;
                     status: node.status;
                     error-text: node.error-text;
@@ -2368,7 +2363,6 @@ export component AppWindow inherits Window {
     }
 
     if root.attempt-open : AttemptWorkbench {
-        node-id: root.attempt-id;
         tabs: root.attempt-tabs;
         prompt: root.attempt-prompt;
         model: root.attempt-model;
@@ -2377,12 +2371,10 @@ export component AppWindow inherits Window {
         size-custom: root.attempt-size-custom;
         quality: root.attempt-quality;
         count: root.attempt-count;
-        version: root.attempt-version;
         version-text: root.attempt-version-text;
         intent: root.attempt-intent;
         reason: root.attempt-reason;
         frozen: root.attempt-frozen;
-        run-count: root.attempt-run-count;
         image-count: root.attempt-image-count;
         image: root.attempt-image;
         has-image: root.attempt-has-image;

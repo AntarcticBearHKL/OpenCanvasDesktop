@@ -193,11 +193,13 @@ impl Doc {
             .filter(|(width, height)| *width > 0.0 && *height > 0.0);
         let ratio = natural.map_or(node.width / node.height.max(1.0), |(w, h)| w / h.max(1.0));
         let keep_ratio = match node.node_type {
-            // An Image node is always locked to its bitmap's aspect ratio. The
+            // Image nodes are always locked to their bitmap's aspect ratio. The
             // legacy `freeResize` flag is ignored: old documents may still carry
-            // it, but it must not let the card distort the picture.
-            CanvasNodeType::Image => true,
-            CanvasNodeType::Video | CanvasNodeType::ImageGeneration => true,
+            // it, but it must not let the card distort the picture. Video and
+            // image-generation cards keep their historical ratio lock too.
+            CanvasNodeType::Image
+            | CanvasNodeType::Video
+            | CanvasNodeType::ImageGeneration => true,
             _ => false,
         };
         self.drag = Some(Drag::Resize(ResizeGesture {

@@ -5,7 +5,7 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 
 use open_canvas_ai::config::{ModelCapability, IMAGE_MODEL};
 use open_canvas_core::node::{
-    CanvasNodeImage, CanvasNodeMetadata, CanvasNodeStatus, CanvasNodeType,
+    CanvasNodeData, CanvasNodeImage, CanvasNodeMetadata, CanvasNodeStatus, CanvasNodeType,
 };
 
 use crate::app::App;
@@ -48,17 +48,117 @@ const ATTEMPT_SIZE_PRESETS: [&str; 9] = [
     "2048x2048",
 ];
 
-impl App {
-    /// Opens the centered workbench for one attempt. The card itself stays
-    /// read-only; all edits go through this modal.
-    pub fn attempt_open(&mut self, ui: &AppWindow, id: &str) {
-        let Some(node) = self.doc.node(id).cloned() else {
-            return;
-        };
-        if node.node_type != CanvasNodeType::ImageAttempt {
-            return;
+/// Builds the version tabs for the lineage that contains `current`.
+///
+/// A tab is only a version of the same target when the attempt carries an
+/// `attemptParentId` chain. Independent generation nodes are deliberately kept
+/// separate; a project with no lineage data therefore shows one tab per node.
+fn attempt_tab_rows(attempts: &[&CanvasNodeData], current: &str) -> Vec<crate::AttemptTabRow> {
+    let parents: std::collections::HashMap<String, String> = attempts
+        .iter()
+        .filter_map(|node| {
+            node.metadata
+                .as_ref()
+                .and_then(|meta| meta.attempt_parent_id.clone())
+                .map(|parent| (node.id.clone(), parent))
+        })
+        .collect();
+    let root_of = |start: &str| {
+        let mut current = start.to_string();
+        let mut seen: Vec<String> = Vec::new();
+        loop {
+            if seen.iter().any(|id| id == &current) {
+                return current;
+            }
+            seen.push(current.clone());
+            let Some(parent) = parents.get(&current) else {
+                return current;
+            };
+            current.clone_from(parent);
         }
-        let mut meta = node.metadata.clone().unwrap_or_default();
+    };
+    let current_root = root_of(current);
+    let mut entries: Vec<(i64, String, String)> = attempts
+        .iter()
+        .filter(|node| root_of(&node.id) == current_root)
+        .map(|node| {
+            let meta = node.metadata.as_ref();
+            let version = meta.and_then(|meta| meta.attempt_version).unwrap_or(1);
+            (version, node.title.clone(), node.id.clone())
+        })
+        .collect();
+    entries.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| left.2.cmp(&right.2))
+    });
+    let mut counts: std::collections::BTreeMap<i64, usize> = std::collections::BTreeMap::new();
+    for (version, ..) in &entries {
+        *counts.entry(*version).or_default() += 1;
+    }
+    entries
+        .into_iter()
+        .map(|(version, title, id)| {
+            let label =
+                if counts.get(&version).copied().unwrap_or(0) > 1 && !title.trim().is_empty() {
+                    format!("v{version} · {title}")
+                } else {
+                    format!("v{version}")
+                };
+            crate::AttemptTabRow {
+                id: id.clone().into(),
+                label: label.into(),
+                current: id == current,
+            }
+        })
+        .collect()
+}
+
+/// One display string for the merged why/timeline/raw trace surface.
+fn attempt_trace_text(meta: &CanvasNodeMetadata) -> String {
+    let timeline = meta
+        .agent_steps
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .map(|step| {
+            let detail = step
+                .detail
+                .as_deref()
+                .map(|detail| format!(" — {detail}"))
+                .unwrap_or_default();
+            format!("[{}] {}{detail}", step.kind, step.title)
+        })
+        .collect::<Vec<_>>()
+        .join(
+            "
+",
+        );
+    let raw = meta.agent_raw_trace.clone().unwrap_or_default();
+    if timeline.is_empty() {
+        raw
+    } else if raw.is_empty() {
+        format!(
+            "TIMELINE
+{timeline}"
+        )
+    } else {
+        format!(
+            "TIMELINE
+{timeline}
+
+RAW
+{raw}"
+        )
+    }
+}
+
+impl App {
+    /// Repairs old attempts that have runs but no captured agent trace, and
+    /// seeds a version note when one is missing. This is deliberately separate
+    /// from the workbench projection: it is the only mutating part of opening.
+    fn recover_attempt_metadata(&mut self, id: &str, meta: &mut CanvasNodeMetadata) {
         let runs = meta.attempt_runs.as_deref().unwrap_or_default();
         let image_count = runs.iter().map(|run| run.images.len()).sum::<usize>();
         if !runs.is_empty()
@@ -125,13 +225,25 @@ Model: {}
             self.doc.commit(self.now_ms());
             self.note_doc_change();
         }
-        let image = primary_image(&meta)
+    }
+
+    /// Projects one attempt's metadata into the workbench properties. Kept
+    /// separate from the open/recovery path so the modal's data mapping is one
+    /// readable unit and every tab switch goes through the same projection.
+    fn sync_attempt_workbench(&mut self, ui: &AppWindow, id: &str, meta: &CanvasNodeMetadata) {
+        let image_count = meta
+            .attempt_runs
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|run| run.images.len())
+            .sum::<usize>();
+        let image = primary_image(meta)
             .and_then(|image| {
                 self.media
                     .image_or_thumbnail(image.thumbnail.as_deref(), &image.content)
             })
             .unwrap_or_default();
-        ui.set_attempt_id(id.into());
         let model = meta.model.clone().unwrap_or_default();
         let size = meta.size.clone().unwrap_or_else(|| "1:1".into());
         let tabs = self.attempt_tabs(id);
@@ -147,128 +259,41 @@ Model: {}
         ui.set_attempt_quality(meta.quality.clone().unwrap_or_else(|| "auto".into()).into());
         ui.set_attempt_count(i32::try_from(meta.count.unwrap_or(1)).unwrap_or(1));
         let version = meta.attempt_version.unwrap_or(1);
-        ui.set_attempt_version(i32::try_from(version).unwrap_or(1));
         ui.set_attempt_version_text(version.to_string().into());
         ui.set_attempt_intent(meta.attempt_title.clone().unwrap_or_default().into());
         ui.set_attempt_reason(meta.attempt_reason.clone().unwrap_or_default().into());
         ui.set_attempt_frozen(meta.attempt_frozen.unwrap_or(false));
-        ui.set_attempt_run_count(i32::try_from(runs.len()).unwrap_or(i32::MAX));
         ui.set_attempt_image_count(i32::try_from(image_count).unwrap_or(i32::MAX));
         ui.set_attempt_image(image.clone());
         ui.set_attempt_has_image(image.size().width > 0);
-        ui.set_attempt_has_output(attempt_has_output(&meta));
-        let timeline = meta
-            .agent_steps
-            .as_deref()
-            .unwrap_or_default()
-            .iter()
-            .map(|step| {
-                let detail = step
-                    .detail
-                    .as_deref()
-                    .map(|detail| format!(" — {detail}"))
-                    .unwrap_or_default();
-                format!("[{}] {}{detail}", step.kind, step.title)
-            })
-            .collect::<Vec<_>>()
-            .join(
-                "
-",
-            );
-        let raw = meta.agent_raw_trace.clone().unwrap_or_default();
-        let trace = if timeline.is_empty() {
-            raw
-        } else if raw.is_empty() {
-            format!(
-                "TIMELINE
-{timeline}"
-            )
-        } else {
-            format!(
-                "TIMELINE
-{timeline}
+        ui.set_attempt_has_output(attempt_has_output(meta));
+        ui.set_attempt_trace(attempt_trace_text(meta).into());
+    }
 
-RAW
-{raw}"
-            )
+    /// Opens the centered workbench for one attempt. The card itself stays
+    /// read-only; all edits go through this modal.
+    pub fn attempt_open(&mut self, ui: &AppWindow, id: &str) {
+        let Some(node) = self.doc.node(id).cloned() else {
+            return;
         };
-        ui.set_attempt_trace(trace.into());
+        if node.node_type != CanvasNodeType::ImageAttempt {
+            return;
+        }
+        let mut meta = node.metadata.clone().unwrap_or_default();
+        self.recover_attempt_metadata(id, &mut meta);
+        self.sync_attempt_workbench(ui, id, &meta);
         ui.set_attempt_open(true);
         self.attempt_modal = Some(id.to_string());
     }
 
     fn attempt_tabs(&self, current: &str) -> Vec<crate::AttemptTabRow> {
-        let attempts: Vec<&open_canvas_core::node::CanvasNodeData> = self
+        let attempts: Vec<&CanvasNodeData> = self
             .doc
             .nodes()
             .iter()
             .filter(|node| node.node_type == CanvasNodeType::ImageAttempt)
             .collect();
-        let parents: std::collections::HashMap<String, String> = attempts
-            .iter()
-            .filter_map(|node| {
-                node.metadata
-                    .as_ref()
-                    .and_then(|meta| meta.attempt_parent_id.clone())
-                    .map(|parent| (node.id.clone(), parent))
-            })
-            .collect();
-        let root_of = |start: &str| {
-            let mut current = start.to_string();
-            let mut seen: Vec<String> = Vec::new();
-            loop {
-                if seen.iter().any(|id| id == &current) {
-                    return current;
-                }
-                seen.push(current.clone());
-                let Some(parent) = parents.get(&current) else {
-                    return current;
-                };
-                current = parent.clone();
-            }
-        };
-        let current_root = root_of(current);
-        let mut entries: Vec<(i64, String, String, bool)> = attempts
-            .iter()
-            .filter(|node| root_of(&node.id) == current_root)
-            .map(|node| {
-                let meta = node.metadata.as_ref();
-                let version = meta.and_then(|meta| meta.attempt_version).unwrap_or(1);
-                (
-                    version,
-                    node.title.clone(),
-                    node.id.clone(),
-                    meta.is_some_and(attempt_has_output),
-                )
-            })
-            .collect();
-        entries.sort_by(|left, right| {
-            left.0
-                .cmp(&right.0)
-                .then_with(|| left.1.cmp(&right.1))
-                .then_with(|| left.2.cmp(&right.2))
-        });
-        let mut counts: std::collections::BTreeMap<i64, usize> = std::collections::BTreeMap::new();
-        for (version, ..) in &entries {
-            *counts.entry(*version).or_default() += 1;
-        }
-        entries
-            .into_iter()
-            .map(|(version, title, id, has_output)| {
-                let label =
-                    if counts.get(&version).copied().unwrap_or(0) > 1 && !title.trim().is_empty() {
-                        format!("v{version} · {title}")
-                    } else {
-                        format!("v{version}")
-                    };
-                crate::AttemptTabRow {
-                    id: id.clone().into(),
-                    label: label.into(),
-                    current: id == current,
-                    has_output,
-                }
-            })
-            .collect()
+        attempt_tab_rows(&attempts, current)
     }
 
     fn attempt_model_options(&self, current: &str) -> Vec<String> {
@@ -375,7 +400,6 @@ RAW
                 .get_or_insert_with(CanvasNodeMetadata::default);
             meta.attempt_version = Some(version);
         }
-        ui.set_attempt_version(i32::try_from(version).unwrap_or(1));
         ui.set_attempt_version_text(version.to_string().into());
         self.note_doc_change();
     }
@@ -683,5 +707,64 @@ pub fn wire(ui: &AppWindow, app: &std::rc::Rc<std::cell::RefCell<App>>) {
             let Some(ui) = weak.upgrade() else { return };
             crate::app::with_app(&app, |app| app.attempt_close(&ui));
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use open_canvas_core::node::Position;
+
+    fn attempt(id: &str, version: i64, parent: Option<&str>) -> CanvasNodeData {
+        CanvasNodeData {
+            id: id.to_string(),
+            node_type: CanvasNodeType::ImageAttempt,
+            title: format!("v{version} · {id}"),
+            position: Position::new(0.0, 0.0),
+            width: 380.0,
+            height: 460.0,
+            metadata: Some(CanvasNodeMetadata {
+                attempt_version: Some(version),
+                attempt_parent_id: parent.map(str::to_string),
+                ..CanvasNodeMetadata::default()
+            }),
+        }
+    }
+
+    fn labels(rows: &[crate::AttemptTabRow]) -> Vec<String> {
+        rows.iter().map(|row| row.label.to_string()).collect()
+    }
+
+    #[test]
+    fn independent_attempts_each_have_one_tab() {
+        let first = attempt("first", 1, None);
+        let second = attempt("second", 1, None);
+        let rows = attempt_tab_rows(&[&first, &second], "first");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id.as_str(), "first");
+        assert!(rows[0].current);
+        assert_eq!(labels(&rows), vec!["v1"]);
+    }
+
+    #[test]
+    fn parent_chain_groups_versions_of_one_target() {
+        let v1 = attempt("v1", 1, None);
+        let v2 = attempt("v2", 2, Some("v1"));
+        let v3 = attempt("v3", 3, Some("v2"));
+        let unrelated = attempt("other", 4, None);
+        let rows = attempt_tab_rows(&[&v1, &v2, &v3, &unrelated], "v3");
+        assert_eq!(labels(&rows), vec!["v1", "v2", "v3"]);
+        assert!(rows.iter().all(|row| row.id.as_str() != "other"));
+        assert!(rows[2].current);
+    }
+
+    #[test]
+    fn duplicate_version_numbers_keep_titles_in_tabs() {
+        let first = attempt("a", 2, Some("root"));
+        let second = attempt("b", 2, Some("root"));
+        let root = attempt("root", 1, None);
+        let rows = attempt_tab_rows(&[&root, &first, &second], "a");
+        assert_eq!(rows.len(), 3);
+        assert!(labels(&rows).iter().any(|label| label.contains("v2 ·")));
     }
 }

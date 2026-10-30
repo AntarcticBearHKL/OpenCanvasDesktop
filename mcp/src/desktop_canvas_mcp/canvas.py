@@ -653,13 +653,6 @@ def apply_ops(project: dict[str, Any], ops: list[dict[str, Any]]) -> dict[str, A
             elif op_type == "set_font_size":
                 node = find_node(project, str(op.get("nodeId") or ""))
                 node.setdefault("metadata", {})["fontSize"] = _number(op.get("fontSize"), 14.0)
-            elif op_type == "set_free_resize":
-                # Legacy op: Image nodes are always ratio-locked now. Keep the
-                # op accepted so old agent calls do not fail, but remove the
-                # flag and re-lock the geometry.
-                node = find_node(project, str(op.get("nodeId") or ""))
-                node.setdefault("metadata", {}).pop("freeResize", None)
-                _lock_image_size(node)
             elif op_type == "resize_node":
                 node = find_node(project, str(op.get("nodeId") or ""))
                 node["width"] = _number(op.get("width"), _number(node.get("width")))

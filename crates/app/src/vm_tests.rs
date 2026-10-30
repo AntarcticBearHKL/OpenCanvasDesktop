@@ -152,34 +152,12 @@ fn populated_image_row_decodes_and_fills_the_info_bar() -> TestResult {
         "image content swaps the title for the info bar"
     );
     assert_eq!(row.info, "image title · 800 x 600 · 2.0 KB");
-    assert_eq!(row.content_fit, "contain");
     assert_eq!(media.decodes(), 1);
 
     // A second row build for the same node reuses the cache.
     let again = build_row(&node, &mut media, &edit, None, &[]);
     assert!(!again.content_empty);
     assert_eq!(media.decodes(), 1, "one decode per distinct bitmap");
-    Ok(())
-}
-
-#[test]
-fn image_nodes_ignore_legacy_free_resize_and_keep_contain() -> TestResult {
-    let node = node(
-        CanvasNodeType::Image,
-        "image",
-        CanvasNodeMetadata {
-            content: Some(red_png_data_url()?),
-            free_resize: Some(true),
-            ..Default::default()
-        },
-    );
-    let mut media = MediaCache::default();
-    let edit = EditState::default();
-    let row = build_row(&node, &mut media, &edit, None, &[]);
-    assert_eq!(
-        row.content_fit, "contain",
-        "Image nodes never stretch the bitmap"
-    );
     Ok(())
 }
 
