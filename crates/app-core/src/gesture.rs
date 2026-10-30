@@ -197,9 +197,7 @@ impl Doc {
             // legacy `freeResize` flag is ignored: old documents may still carry
             // it, but it must not let the card distort the picture. Video and
             // image-generation cards keep their historical ratio lock too.
-            CanvasNodeType::Image
-            | CanvasNodeType::Video
-            | CanvasNodeType::ImageGeneration => true,
+            CanvasNodeType::Image | CanvasNodeType::Video | CanvasNodeType::ImageGeneration => true,
             _ => false,
         };
         self.drag = Some(Drag::Resize(ResizeGesture {
