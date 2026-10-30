@@ -58,6 +58,14 @@ Model: {}
                 model
             );
             meta.agent_raw_trace = Some(raw);
+            if meta
+                .attempt_reason
+                .as_deref()
+                .is_none_or(|reason| reason.trim().is_empty())
+            {
+                meta.attempt_reason =
+                    Some("Recovered from a run recorded before version notes".into());
+            }
             meta.agent_steps = Some(vec![
                 open_canvas_core::node::CanvasAgentStep {
                     kind: "observe".into(),
@@ -78,6 +86,18 @@ Model: {}
             self.doc.commit(self.now_ms());
             self.note_doc_change();
         }
+        if meta
+            .attempt_reason
+            .as_deref()
+            .is_none_or(|reason| reason.trim().is_empty())
+        {
+            meta.attempt_reason = Some("Initial version".into());
+            if let Some(current) = self.doc.nodes_mut().iter_mut().find(|n| n.id == id) {
+                current.metadata = Some(meta.clone());
+            }
+            self.doc.commit(self.now_ms());
+            self.note_doc_change();
+        }
         let image = primary_image(&meta)
             .and_then(|image| {
                 self.media
@@ -92,6 +112,7 @@ Model: {}
         ui.set_attempt_count(i32::try_from(meta.count.unwrap_or(1)).unwrap_or(1));
         ui.set_attempt_version(i32::try_from(meta.attempt_version.unwrap_or(1)).unwrap_or(1));
         ui.set_attempt_intent(meta.attempt_title.clone().unwrap_or_default().into());
+        ui.set_attempt_reason(meta.attempt_reason.clone().unwrap_or_default().into());
         ui.set_attempt_frozen(meta.attempt_frozen.unwrap_or(false));
         ui.set_attempt_run_count(i32::try_from(runs.len()).unwrap_or(i32::MAX));
         ui.set_attempt_image_count(i32::try_from(image_count).unwrap_or(i32::MAX));
@@ -167,6 +188,22 @@ RAW
         self.note_doc_change();
     }
 
+    /// The version note is editable even after the prompt/config freeze: it
+    /// records why this version exists, not how to generate it.
+    pub fn attempt_reason_edited(&mut self, text: &str) {
+        let Some(id) = self.attempt_modal.as_deref() else {
+            return;
+        };
+        let Some(node) = self.doc.nodes_mut().iter_mut().find(|node| node.id == id) else {
+            return;
+        };
+        let meta = node
+            .metadata
+            .get_or_insert_with(CanvasNodeMetadata::default);
+        meta.attempt_reason = Some(text.to_string());
+        self.note_doc_change();
+    }
+
     pub fn attempt_config_edited(&mut self, key: &str, value: &str) {
         let Some(id) = self.attempt_modal.as_deref() else {
             return;
@@ -206,6 +243,81 @@ RAW
         self.node_generate(ui, &id);
     }
 
+    /// Hover-toolbar shortcut: run this attempt and, when it finishes, extract
+    /// the first output into a standalone Image node. An empty prompt opens the
+    /// workbench instead of sending an empty request.
+    pub fn attempt_generate_to_image(&mut self, ui: &AppWindow, id: &str) {
+        let Some(node) = self.doc.node(id) else {
+            return;
+        };
+        if node.node_type != CanvasNodeType::ImageAttempt {
+            return;
+        }
+        let prompt = node
+            .metadata
+            .as_ref()
+            .and_then(|meta| meta.prompt.as_deref())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if prompt.is_empty() {
+            self.attempt_open(ui, id);
+            return;
+        }
+        if self.panel.running.as_deref() == Some(id) {
+            return;
+        }
+        self.attempt_auto_export = Some(id.to_string());
+        self.node_generate(ui, id);
+        // `ai_start` may reject the request before it queues a task (missing
+        // key, bad config). Do not leave the one-shot flag armed for a later run.
+        if self.panel.running.as_deref() != Some(id) {
+            self.attempt_auto_export = None;
+        }
+    }
+
+    /// Extracts the primary output of `id` into a pure Image node. Returns the
+    /// new node id so callers can include it in their dirty-row batch.
+    pub fn attempt_export_image(
+        &mut self,
+        ui: &AppWindow,
+        id: &str,
+        title: &str,
+    ) -> Option<String> {
+        let source = self.doc.node(id).cloned()?;
+        let image = source.metadata.as_ref().and_then(primary_image)?;
+        let now = self.now_ms();
+        let at = WorldPos::new(
+            source.position.x + source.width + 48.0 + 170.0,
+            source.position.y + source.height / 2.0,
+        );
+        let new_id = self.doc.create_node(CanvasNodeType::Image, at, now);
+        if let Some(node) = self
+            .doc
+            .nodes_mut()
+            .iter_mut()
+            .find(|node| node.id == new_id)
+        {
+            node.title = title.to_string();
+            node.metadata = Some(CanvasNodeMetadata {
+                content: Some(image.content.clone()),
+                thumbnail: image.thumbnail.clone(),
+                status: Some(CanvasNodeStatus::Success),
+                natural_width: Some(image.natural_width),
+                natural_height: Some(image.natural_height),
+                mime_type: Some(image.mime_type.clone()),
+                bytes: Some(image.bytes),
+                free_resize: Some(true),
+                ..CanvasNodeMetadata::default()
+            });
+        }
+        self.doc.commit(now);
+        self.note_doc_change();
+        self.sync_rows_full(ui);
+        self.sync_wires(ui);
+        Some(new_id)
+    }
+
     /// Copies prompt/config into a fresh child attempt with no image. The
     /// duplicate edge records why the branch exists.
     pub fn attempt_duplicate(&mut self, ui: &AppWindow) {
@@ -241,6 +353,10 @@ RAW
             status: Some(CanvasNodeStatus::Idle),
             attempt_version: Some(version),
             attempt_title: Some(format!("v{version} · copy")),
+            attempt_reason: Some(format!(
+                "Duplicated from v{}",
+                source_meta.attempt_version.unwrap_or(1)
+            )),
             attempt_frozen: Some(false),
             attempt_runs: Some(Vec::new()),
             ..CanvasNodeMetadata::default()
@@ -262,47 +378,12 @@ RAW
         self.attempt_open(ui, &new_id);
     }
 
-    /// Extracts the primary output into a pure Image node and links it back to
-    /// the attempt with an `extract` edge.
+    /// Extracts the primary output into a pure Image node.
     pub fn attempt_extract(&mut self, ui: &AppWindow) {
         let Some(id) = self.attempt_modal.clone() else {
             return;
         };
-        let Some(source) = self.doc.node(&id).cloned() else {
-            return;
-        };
-        let Some(image) = source.metadata.as_ref().and_then(primary_image) else {
-            return;
-        };
-        let now = self.now_ms();
-        let at = WorldPos::new(
-            source.position.x + source.width + 48.0 + 170.0,
-            source.position.y + source.height / 2.0,
-        );
-        let new_id = self.doc.create_node(CanvasNodeType::Image, at, now);
-        if let Some(node) = self
-            .doc
-            .nodes_mut()
-            .iter_mut()
-            .find(|node| node.id == new_id)
-        {
-            node.title = "Extracted image".into();
-            node.metadata = Some(CanvasNodeMetadata {
-                content: Some(image.content.clone()),
-                thumbnail: image.thumbnail.clone(),
-                status: Some(CanvasNodeStatus::Success),
-                natural_width: Some(image.natural_width),
-                natural_height: Some(image.natural_height),
-                mime_type: Some(image.mime_type.clone()),
-                bytes: Some(image.bytes),
-                free_resize: Some(true),
-                ..CanvasNodeMetadata::default()
-            });
-        }
-        self.doc.commit(now);
-        self.note_doc_change();
-        self.sync_rows_full(ui);
-        self.sync_wires(ui);
+        self.attempt_export_image(ui, &id, "Extracted image");
     }
 }
 
@@ -316,6 +397,16 @@ pub fn wire(ui: &AppWindow, app: &std::rc::Rc<std::cell::RefCell<App>>) {
                 return;
             }
             crate::app::with_app(&app, |app| app.attempt_prompt_edited(text.as_str()));
+        });
+    }
+    {
+        let app = app.clone();
+        let weak = ui.as_weak();
+        ui.on_attempt_reason_edited(move |text| {
+            if weak.upgrade().is_none() {
+                return;
+            }
+            crate::app::with_app(&app, |app| app.attempt_reason_edited(text.as_str()));
         });
     }
     {

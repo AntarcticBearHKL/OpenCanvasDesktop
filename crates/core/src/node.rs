@@ -371,6 +371,9 @@ pub struct CanvasNodeMetadata {
     pub attempt_version: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attempt_title: Option<String>,
+    /// Why this version exists / what the agent or user changed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attempt_frozen: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -527,6 +530,7 @@ pub fn merge_metadata(base: &CanvasNodeMetadata, patch: &CanvasNodeMetadata) -> 
         status,
         attempt_version,
         attempt_title,
+        attempt_reason,
         attempt_frozen,
         attempt_runs,
         agent_raw_trace,

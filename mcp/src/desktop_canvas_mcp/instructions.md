@@ -40,6 +40,6 @@
 
 连线规则：只有纯 `image` 节点可以有输出线；`image-attempt` 只能作为连线终点。不要创建 attempt→attempt、attempt→image 的连线。
 
-迭代：要保留旧版本并生成下一版，调用 `canvas_iterate_attempt`（或给 `canvas_generate_image` 传 `parentAttemptId`）。新版本放在父版本下方，不连线，旧版本不会被删除。
+迭代：要保留旧版本并生成下一版，调用 `canvas_iterate_attempt`（或给 `canvas_generate_image` 传 `parentAttemptId`）。新版本放在父版本下方，不连线，旧版本不会被删除。用 `reason` 参数写清楚这一版为什么改；它会显示在卡片和 Workbench 的 Why this version 里。
 
 所有 `canvas_*` 宏工具都会编译成 `app_apply_ops` 的 canvas 操作；复杂批量修改优先用 `app_apply_ops`。

@@ -1344,6 +1344,10 @@ impl App {
                 AiEvent::Done { node_id, outcome } => {
                     self.forget_task(&node_id);
                     self.panel.running = None;
+                    let auto_export = self.attempt_auto_export.as_deref() == Some(node_id.as_str());
+                    if auto_export {
+                        self.attempt_auto_export = None;
+                    }
                     let produced = apply_outcome(self, &node_id, &outcome);
                     self.set_node_state(&node_id, CanvasNodeStatus::Success, None);
                     // An image result owns its generation's cost record; text
@@ -1356,9 +1360,16 @@ impl App {
                         "Generation finished",
                         Some(node_id.clone()),
                     );
-                    let mut dirty = vec![node_id];
+                    let mut dirty = vec![node_id.clone()];
                     if let Some(produced) = produced {
                         dirty.push(produced);
+                    }
+                    if auto_export {
+                        if let Some(image_id) =
+                            self.attempt_export_image(ui, &node_id, "Generated image")
+                        {
+                            dirty.push(image_id);
+                        }
                     }
                     self.sync_rows_of(ui, &dirty);
                     self.sync_panel(ui);
@@ -1366,6 +1377,9 @@ impl App {
                 AiEvent::Cancelled { node_id } => {
                     self.forget_task(&node_id);
                     self.panel.running = None;
+                    if self.attempt_auto_export.as_deref() == Some(node_id.as_str()) {
+                        self.attempt_auto_export = None;
+                    }
                     let output_id = self
                         .ai
                         .as_ref()
@@ -1391,6 +1405,9 @@ impl App {
                 AiEvent::Error { node_id, message } => {
                     self.forget_task(&node_id);
                     self.panel.running = None;
+                    if self.attempt_auto_export.as_deref() == Some(node_id.as_str()) {
+                        self.attempt_auto_export = None;
+                    }
                     let output_id = self
                         .ai
                         .as_ref()

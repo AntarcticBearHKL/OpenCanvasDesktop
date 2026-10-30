@@ -237,6 +237,7 @@ impl Doc {
                     count,
                     generation_mode: Some(open_canvas_core::node::CanvasGenerationMode::Image),
                     status: Some(CanvasNodeStatus::Idle),
+                    attempt_reason: Some("Migrated from the legacy prompt/generation node".into()),
                     ..CanvasNodeMetadata::default()
                 },
                 next_version,
@@ -280,6 +281,7 @@ impl Doc {
                         primary_image_id: Some(image.id.clone()),
                         attempt_runs: Some(vec![run_for(&image)]),
                         attempt_frozen: Some(true),
+                        attempt_reason: Some("Migrated legacy output".into()),
                         ..CanvasNodeMetadata::default()
                     },
                     next_version,
@@ -306,6 +308,7 @@ impl Doc {
                 CanvasNodeMetadata {
                     prompt: prompt.metadata.as_ref().and_then(|m| m.prompt.clone()),
                     status: Some(CanvasNodeStatus::Idle),
+                    attempt_reason: Some("Migrated from a legacy prompt node".into()),
                     ..CanvasNodeMetadata::default()
                 },
                 next_version,

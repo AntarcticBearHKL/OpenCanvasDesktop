@@ -123,6 +123,7 @@ impl App {
                 self.note_doc_change();
                 self.sync_all(ui);
             }
+            "attempt-generate" => self.attempt_generate_to_image(ui, &id),
             "layers" => self.toggle_node_layers(ui, &id),
             // Local image quick tools (`image_tools`): every one of them either
             // opens a dialog or acts directly on the node's stored bitmap.

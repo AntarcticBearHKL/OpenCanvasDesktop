@@ -151,6 +151,11 @@ pub fn hover_action_rows_with(
             .unwrap_or(false);
         actions.push(active_action("free-resize", free_resize));
     }
+    if node.node_type == CanvasNodeType::ImageAttempt {
+        // One-click shortcut: run the attempt and extract its first output into
+        // a standalone Image node, without opening the workbench.
+        actions.push(action("attempt-generate", false));
+    }
     if node.node_type == CanvasNodeType::Text {
         actions.push(action("font-down", false));
         actions.push(action("font-up", false));
@@ -552,6 +557,19 @@ mod tests {
         assert_eq!(font_step(14.0, true), 16.0);
         assert_eq!(font_step(31.0, true), 32.0);
         assert_eq!(font_step(11.0, false), 10.0);
+    }
+
+    #[test]
+    fn hover_actions_of_an_attempt_offer_the_direct_generate_shortcut() {
+        let ids: Vec<String> =
+            hover_action_rows_with(&node("a", CanvasNodeType::ImageAttempt), &[])
+                .into_iter()
+                .map(|action| action.id.to_string())
+                .collect();
+        assert!(
+            ids.contains(&"attempt-generate".to_string()),
+            "the attempt card can generate and export an image in one click"
+        );
     }
 
     #[test]

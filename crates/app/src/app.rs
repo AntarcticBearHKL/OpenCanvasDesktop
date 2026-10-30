@@ -448,6 +448,9 @@ pub struct App {
     pub window_maximized: bool,
     /// The Image Attempt currently open in the centered workbench.
     pub attempt_modal: Option<String>,
+    /// When set, the next successful attempt generation also extracts its
+    /// primary output into a standalone Image node (hover toolbar shortcut).
+    pub attempt_auto_export: Option<String>,
     /// In-flight manual title-bar drag: the cursor and window origin of the
     /// previous tick, so each tick applies the cursor delta and the event loop
     /// keeps running (unlike the OS-modal move loop).
@@ -604,6 +607,7 @@ impl App {
             locale: Locale::EnUs,
             window_maximized: false,
             attempt_modal: None,
+            attempt_auto_export: None,
             window_drag: None,
             logs: RuntimeLogBuffer::default(),
             logs_filter: crate::log_view::FILTER_ALL.to_string(),

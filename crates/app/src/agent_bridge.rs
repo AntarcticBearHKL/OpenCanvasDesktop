@@ -905,6 +905,13 @@ fn generate(app: &mut App, ui: &AppWindow, id: &str, body: &Value) -> Reply {
             if let Some(run_id) = body.get("agentRunId").and_then(Value::as_str) {
                 meta.agent_run_id = Some(run_id.to_string());
             }
+            if let Some(reason) = body
+                .get("versionReason")
+                .or_else(|| body.get("reason"))
+                .and_then(Value::as_str)
+            {
+                meta.attempt_reason = Some(reason.to_string());
+            }
             if let Some(steps) = body.get("agentSteps").and_then(Value::as_array) {
                 meta.agent_steps = Some(
                     steps

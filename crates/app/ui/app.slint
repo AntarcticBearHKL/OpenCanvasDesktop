@@ -139,7 +139,9 @@ export struct NodeItem {
     running: bool,
     attempt-version: int,
     attempt-title: string,
+    attempt-reason: string,
     attempt-frozen: bool,
+    attempt-current: bool,
     attempt-run-count: int,
     attempt-image-count: int,
     attempt-trace-count: int,
@@ -411,6 +413,7 @@ export component AppWindow inherits Window {
     in-out property <int> attempt-count: 1;
     in-out property <int> attempt-version: 1;
     in-out property <string> attempt-intent: "";
+    in-out property <string> attempt-reason: "";
     in-out property <bool> attempt-frozen: false;
     in-out property <int> attempt-run-count: 0;
     in-out property <int> attempt-image-count: 0;
@@ -418,6 +421,7 @@ export component AppWindow inherits Window {
     in-out property <bool> attempt-has-image: false;
     in-out property <string> attempt-trace: "";
     callback attempt-prompt-edited(string);
+    callback attempt-reason-edited(string);
     callback attempt-config-edited(string, string);
     callback attempt-run();
     callback attempt-duplicate();
@@ -1259,7 +1263,9 @@ export component AppWindow inherits Window {
                     running: node.running;
                     attempt-version: node.attempt-version;
                     attempt-title: node.attempt-title;
+                    attempt-reason: node.attempt-reason;
                     attempt-frozen: node.attempt-frozen;
+                    attempt-current: node.attempt-current;
                     attempt-run-count: node.attempt-run-count;
                     attempt-image-count: node.attempt-image-count;
                     attempt-trace-count: node.attempt-trace-count;
@@ -2363,6 +2369,7 @@ export component AppWindow inherits Window {
         count: root.attempt-count;
         version: root.attempt-version;
         intent: root.attempt-intent;
+        reason: root.attempt-reason;
         frozen: root.attempt-frozen;
         run-count: root.attempt-run-count;
         image-count: root.attempt-image-count;
@@ -2370,6 +2377,7 @@ export component AppWindow inherits Window {
         has-image: root.attempt-has-image;
         trace: root.attempt-trace;
         prompt-edited(text) => { root.attempt-prompt-edited(text); }
+        reason-edited(text) => { root.attempt-reason-edited(text); }
         config-edited(key, value) => { root.attempt-config-edited(key, value); }
         run => { root.attempt-run(); }
         duplicate => { root.attempt-duplicate(); }

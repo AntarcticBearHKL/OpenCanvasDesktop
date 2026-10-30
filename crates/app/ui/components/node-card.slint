@@ -930,7 +930,9 @@ export component NodeCard inherits Rectangle {
     in property <bool> running: false;
     in property <int> attempt-version: 1;
     in property <string> attempt-title: "";
+    in property <string> attempt-reason: "";
     in property <bool> attempt-frozen: false;
+    in property <bool> attempt-current: false;
     in property <int> attempt-run-count: 0;
     in property <int> attempt-image-count: 0;
     in property <int> attempt-trace-count: 0;
@@ -1053,9 +1055,11 @@ export component NodeCard inherits Rectangle {
         : 2px * root.visual-scale;
     border-color: root.selected || root.connect-target || root.drop-target
         ? Theme.selection-blue
-        : root.related
-            ? Theme.node-muted
-            : Theme.node-stroke;
+        : root.attempt-current
+            ? Theme.node-accent
+            : root.related
+                ? Theme.node-muted
+                : Theme.node-stroke;
     animate border-color {
         duration: root.selected || root.connect-target || root.drop-target ? Theme.motion-select : Theme.motion-hover;
         easing: ease-out;
@@ -1219,7 +1223,8 @@ export component NodeCard inherits Rectangle {
                 spacing: Theme.space-2 * root.visual-scale;
 
                 Rectangle {
-                    height: 250px * root.visual-scale;
+                    min-height: 250px * root.visual-scale;
+                    vertical-stretch: 1;
                     border-radius: Theme.radius-2xl * root.visual-scale;
                     clip: !root.drag-active;
                     background: root.content-empty ? Theme.muted : transparent;
@@ -1275,28 +1280,51 @@ export component NodeCard inherits Rectangle {
                     vertical-alignment: top;
                 }
 
+                if root.attempt-reason != "" : Text {
+                    width: 100%;
+                    height: 30px * root.visual-scale;
+                    text: "Why · " + root.attempt-reason;
+                    font-size: 10px * root.visual-scale;
+                    color: Theme.node-muted;
+                    wrap: word-wrap;
+                    overflow: elide;
+                    vertical-alignment: top;
+                }
+
                 HorizontalLayout {
-                    height: 20px * root.visual-scale;
+                    height: 22px * root.visual-scale;
                     spacing: Theme.space-2 * root.visual-scale;
-                    Text {
-                        text: "v" + root.attempt-version;
-                        font-size: 11px * root.visual-scale;
-                        font-weight: 700;
-                        color: Theme.node-accent;
-                        vertical-alignment: center;
+                    Rectangle {
+                        width: 44px * root.visual-scale;
+                        height: 20px * root.visual-scale;
+                        border-radius: Theme.radius-sm * root.visual-scale;
+                        background: Theme.node-accent-soft;
+                        Text {
+                            width: 100%;
+                            height: 100%;
+                            text: "v" + root.attempt-version;
+                            font-size: 11px * root.visual-scale;
+                            font-weight: 700;
+                            color: Theme.node-accent-text;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
                     }
                     Text {
                         text: root.attempt-title;
                         font-size: 11px * root.visual-scale;
-                        color: Theme.node-muted;
+                        font-weight: 600;
+                        color: Theme.node-text;
                         vertical-alignment: center;
                         overflow: elide;
                         horizontal-stretch: 1;
                     }
                     Text {
-                        text: root.attempt-frozen ? "frozen" : "draft";
-                        font-size: 10px * root.visual-scale;
-                        color: root.attempt-frozen ? Theme.node-muted : Theme.node-accent;
+                        visible: root.attempt-current;
+                        text: "current";
+                        font-size: 9px * root.visual-scale;
+                        font-weight: 700;
+                        color: Theme.node-accent-text;
                         vertical-alignment: center;
                     }
                 }

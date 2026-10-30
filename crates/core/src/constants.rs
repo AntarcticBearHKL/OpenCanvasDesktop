@@ -62,6 +62,8 @@ pub fn get_node_spec(node_type: &CanvasNodeType) -> NodeSpec {
                 m.status = Some(CanvasNodeStatus::Idle);
                 m.generation_mode = Some(CanvasGenerationMode::Image);
                 m.attempt_version = Some(1);
+                m.attempt_title = Some("new attempt".to_string());
+                m.attempt_reason = Some("Initial version".to_string());
                 m.attempt_frozen = Some(false);
                 m.attempt_runs = Some(Vec::new());
             }),

@@ -131,6 +131,8 @@ def _generation_flow(
         if node.get("type") == "image-attempt"
     ]
     version = max(versions, default=0) + 1
+    parent_version = int((parent_meta or {}).get("attemptVersion") or 0)
+    default_reason = f"Iteration from v{parent_version}" if parent_version else "Initial version"
     inherited = {
         key: parent_meta.get(key)
         for key in ("model", "size", "quality", "count", "background", "generationMode")
@@ -152,6 +154,7 @@ def _generation_flow(
                     "status": "idle",
                     "generationMode": "image",
                     "attemptVersion": version,
+                    "attemptReason": reason or default_reason,
                     "attemptFrozen": False,
                     "attemptRuns": [],
                     **options,
@@ -834,6 +837,7 @@ def canvas_create_image_prompt_flow(
     y: float | None = None,
     referenceNodeIds: list[str] | None = None,
     parentAttemptId: str | None = None,
+    reason: str | None = None,
     autoRun: bool | None = None,
     model: str | None = None,
     size: str | None = None,
@@ -850,6 +854,7 @@ def canvas_create_image_prompt_flow(
         y=y,
         reference_node_ids=referenceNodeIds,
         parent_attempt_id=parentAttemptId,
+        reason=reason,
         options=_clean({"model": model, "size": size, "quality": quality, "count": count}),
         auto_run=bool(autoRun),
     )
@@ -864,6 +869,7 @@ def canvas_generate_image(
     y: float | None = None,
     referenceNodeIds: list[str] | None = None,
     parentAttemptId: str | None = None,
+    reason: str | None = None,
     model: str | None = None,
     size: str | None = None,
     quality: str | None = None,
@@ -879,6 +885,7 @@ def canvas_generate_image(
         y=y,
         reference_node_ids=referenceNodeIds,
         parent_attempt_id=parentAttemptId,
+        reason=reason,
         options=_clean({"model": model, "size": size, "quality": quality, "count": count}),
         auto_run=True,
     )
@@ -890,6 +897,7 @@ def canvas_iterate_attempt(
     nodeId: str,
     prompt: str,
     title: str | None = None,
+    reason: str | None = None,
     referenceNodeIds: list[str] | None = None,
     model: str | None = None,
     size: str | None = None,
@@ -907,6 +915,7 @@ def canvas_iterate_attempt(
         y=None,
         reference_node_ids=referenceNodeIds,
         parent_attempt_id=nodeId,
+        reason=reason,
         options=_clean({"model": model, "size": size, "quality": quality, "count": count}),
         auto_run=bool(autoRun),
     )
@@ -921,21 +930,25 @@ def canvas_run_generation(
     agentTrace: str | None = None,
     agentSteps: list[dict] | None = None,
     agentRunId: str | None = None,
+    versionReason: str | None = None,
 ) -> dict:
     """触发指定 Image Attempt 生成。桌面端要求该画布已在窗口中打开；prompt 用于覆盖尝试的提示词。agentTrace/agentSteps 用于写入 agent 的原始思考与结构化步骤。"""
     del mode
-    if prompt is not None:
+    if prompt is not None or versionReason is not None:
         project = _load(projectId)
         node = _node(project, nodeId)
-        if node.get("type") in canvas.PROMPT_TYPES:
+        if prompt is not None and node.get("type") in canvas.PROMPT_TYPES:
             node.setdefault("metadata", {})["prompt"] = prompt
-            bridge.put_project(project)
+        if versionReason is not None and node.get("type") == "image-attempt":
+            node.setdefault("metadata", {})["attemptReason"] = versionReason
+        bridge.put_project(project)
     payload = {
         key: value
         for key, value in {
             "agentTrace": agentTrace,
             "agentSteps": agentSteps,
             "agentRunId": agentRunId,
+            "versionReason": versionReason,
         }.items()
         if value is not None
     }

@@ -420,8 +420,22 @@ pub fn node_row(
         running: ctx.panel.running.as_deref() == Some(node.id.as_str()),
         attempt_version: i32::try_from(meta.and_then(|m| m.attempt_version).unwrap_or(1))
             .unwrap_or(i32::MAX),
+        attempt_current: {
+            let version = meta.and_then(|m| m.attempt_version).unwrap_or(1);
+            let latest = ctx
+                .nodes
+                .iter()
+                .filter_map(|item| item.metadata.as_ref().and_then(|meta| meta.attempt_version))
+                .max()
+                .unwrap_or(0);
+            kind == CanvasNodeType::ImageAttempt && version == latest
+        },
         attempt_title: meta
             .and_then(|m| m.attempt_title.as_deref())
+            .unwrap_or_default()
+            .into(),
+        attempt_reason: meta
+            .and_then(|m| m.attempt_reason.as_deref())
             .unwrap_or_default()
             .into(),
         attempt_frozen: meta.and_then(|m| m.attempt_frozen).unwrap_or(false),
