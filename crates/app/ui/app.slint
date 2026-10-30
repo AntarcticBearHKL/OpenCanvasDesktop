@@ -470,6 +470,7 @@ export component AppWindow inherits Window {
     in-out property <bool> export-error: false;
     // Image Studio workspace (Rust owns the state; see crates/app/src/image*.rs).
     in-out property <image> image-canvas-image;
+    in-out property <bool> image-back-to-canvas: false;
     in-out property <string> image-checker: "";
     in-out property <length> image-checker-x: 0px;
     in-out property <length> image-checker-y: 0px;
@@ -746,9 +747,11 @@ export component AppWindow inherits Window {
     callback library-select-group(string);
     callback library-group-action(string, string);
     callback library-group-name-edited(string);
+    callback library-group-reorder(int, int);
     callback library-create-project();
     callback library-project-action(string, string);
     callback library-project-name-edited(string);
+    callback library-project-reorder(int, int);
     callback export-path-edited(string);
     callback export-run();
     callback export-close();
@@ -932,6 +935,9 @@ export component AppWindow inherits Window {
                 group-name-edited(text) => {
                     root.library-group-name-edited(text);
                 }
+                group-reorder(from, to) => {
+                    root.library-group-reorder(from, to);
+                }
                 create-project => {
                     root.library-create-project();
                 }
@@ -940,6 +946,9 @@ export component AppWindow inherits Window {
                 }
                 project-name-edited(text) => {
                     root.library-project-name-edited(text);
+                }
+                project-reorder(from, to) => {
+                    root.library-project-reorder(from, to);
                 }
                 settings => {
                     root.open-config();
@@ -1589,6 +1598,12 @@ export component AppWindow inherits Window {
                 width: 100%;
                 height: 100%;
                 canvas-image: root.image-canvas-image;
+                back-to-canvas: root.image-back-to-canvas;
+                hold-visible: root.home-hold-visible;
+                hold-progress: root.home-hold-progress;
+                hold-x: root.home-hold-x;
+                hold-y: root.home-hold-y;
+                hold-arc: root.home-hold-arc;
                 checker: root.image-checker;
                 checker-x: root.image-checker-x;
                 checker-y: root.image-checker-y;

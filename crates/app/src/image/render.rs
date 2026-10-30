@@ -797,13 +797,18 @@ impl App {
         ui.set_image_ruler_x(slint::ModelRc::new(slint::VecModel::from(ticks_x)));
         ui.set_image_ruler_y(slint::ModelRc::new(slint::VecModel::from(ticks_y)));
 
+        ui.set_image_back_to_canvas(self.image.origin_canvas.is_some());
         ui.set_image_doc_w(crate::vm::len(project.width));
         ui.set_image_doc_h(crate::vm::len(project.height));
         ui.set_image_view_k(crate::vm::len(view.k));
         ui.set_image_view_x(crate::vm::len(view.x));
         ui.set_image_view_y(crate::vm::len(view.y));
         ui.set_image_has_selection(self.image.selection.is_some());
-        ui.set_image_pan_cursor(self.image.tool == ImageTool::Hand || self.image.space_held);
+        ui.set_image_pan_cursor(
+            self.image.origin_canvas.is_some()
+                || self.image.tool == ImageTool::Hand
+                || self.image.space_held,
+        );
         ui.set_image_can_undo(self.image.history.can_undo());
         ui.set_image_can_redo(self.image.history.can_redo());
         ui.set_image_menu(self.image.menu.as_str().into());

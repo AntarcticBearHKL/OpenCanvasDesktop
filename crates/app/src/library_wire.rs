@@ -68,6 +68,26 @@ pub fn wire_library(ui: &AppWindow, app: &Rc<RefCell<App>>) {
     {
         let app = app.clone();
         let weak = ui.as_weak();
+        ui.on_library_group_reorder(move |from, to| {
+            let Some(ui) = weak.upgrade() else {
+                return;
+            };
+            with_app(&app, |app| app.library_group_reorder(&ui, from, to));
+        });
+    }
+    {
+        let app = app.clone();
+        let weak = ui.as_weak();
+        ui.on_library_project_reorder(move |from, to| {
+            let Some(ui) = weak.upgrade() else {
+                return;
+            };
+            with_app(&app, |app| app.library_project_reorder(&ui, from, to));
+        });
+    }
+    {
+        let app = app.clone();
+        let weak = ui.as_weak();
         ui.on_library_create_project(move || {
             let Some(ui) = weak.upgrade() else {
                 return;

@@ -63,7 +63,7 @@ impl App {
             self.set_notice(ui, format!("Create failed: {error}"), true);
             return None;
         }
-        self.library.index.upsert_project(&project);
+        self.library.index.append_project(&project);
         Some(project)
     }
 
@@ -413,6 +413,39 @@ impl App {
         let mut next = ids;
         next.swap(index, target);
         self.apply_filtered_order(&next);
+        self.persist_index(ui);
+        self.sync_library(ui);
+    }
+
+    /// Drag reorder for the home sidebar: move a project group to another
+    /// visible index and persist the new group order.
+    pub fn library_group_reorder(&mut self, ui: &AppWindow, from: i32, to: i32) {
+        let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) else {
+            return;
+        };
+        let len = self.library.index.groups.len();
+        if from >= len || to >= len || from == to {
+            return;
+        }
+        let group = self.library.index.groups.remove(from);
+        self.library.index.groups.insert(to, group);
+        self.persist_index(ui);
+        self.sync_library(ui);
+    }
+
+    /// Drag reorder for the canvas table: move a canvas within the visible
+    /// project list and keep the non-canvas index slots stable.
+    pub fn library_project_reorder(&mut self, ui: &AppWindow, from: i32, to: i32) {
+        let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) else {
+            return;
+        };
+        let mut ids = self.filtered_project_ids();
+        if from >= ids.len() || to >= ids.len() || from == to {
+            return;
+        }
+        let id = ids.remove(from);
+        ids.insert(to, id);
+        self.apply_filtered_order(&ids);
         self.persist_index(ui);
         self.sync_library(ui);
     }

@@ -13,6 +13,7 @@
 use slint::ComponentHandle;
 use slint::Model as _;
 
+use crate::input::{Button, PointerKind};
 use crate::test_support::init_backend_allow_existing;
 use open_canvas_core::constants::get_node_spec;
 use open_canvas_core::node::CanvasNodeType;
@@ -1584,6 +1585,10 @@ fn smart_canvas_double_click_opens_the_studio_and_home_returns_to_the_canvas() -
             Some(fixture.canvas_id.as_str()),
             "the origin canvas is remembered"
         );
+        assert!(
+            fixture.ui.get_image_back_to_canvas(),
+            "Smart Canvas mode uses the back arrow"
+        );
         assert_eq!(fixture.ui.get_image_board().as_str(), "640");
         assert!(
             fixture.ui.get_image_canvas_image().size().width > 0,
@@ -1611,6 +1616,99 @@ fn smart_canvas_double_click_opens_the_studio_and_home_returns_to_the_canvas() -
         assert!(app.editor.is_none());
     });
     drop(fixture);
+    Ok(())
+}
+
+/// In Smart Canvas mode the board is a viewer: left-drag pans and right-hold
+/// returns to the origin canvas; right-click itself does not move the window.
+#[test]
+fn smart_canvas_board_pans_and_right_hold_returns_to_canvas() -> TestResult {
+    let fixture = smart_fixture()?;
+    crate::app::with_app(&fixture.app, |app| {
+        app.node_double_click(&fixture.ui, &fixture.node_id);
+        assert_eq!(app.view, crate::app::View::Image);
+        let before = app.image.view.x;
+        app.image_pointer(
+            &fixture.ui,
+            PointerKind::Down,
+            300.0,
+            300.0,
+            Button::Left,
+            false,
+            false,
+        );
+        app.image_pointer(
+            &fixture.ui,
+            PointerKind::Move,
+            360.0,
+            330.0,
+            Button::Left,
+            false,
+            false,
+        );
+        app.image_pointer(
+            &fixture.ui,
+            PointerKind::Up,
+            360.0,
+            330.0,
+            Button::Left,
+            false,
+            false,
+        );
+        assert!(
+            (app.image.view.x - before).abs() > 0.1,
+            "left-drag pans the Smart Canvas board"
+        );
+
+        app.clock_override = Some(1_000);
+        app.image_pointer(
+            &fixture.ui,
+            PointerKind::Down,
+            300.0,
+            300.0,
+            Button::Right,
+            false,
+            false,
+        );
+        app.clock_override = Some(1_100);
+        app.home_hold_tick(&fixture.ui);
+        assert!(
+            fixture.ui.get_home_hold_visible(),
+            "the right hold paints its ring"
+        );
+        app.image_pointer(
+            &fixture.ui,
+            PointerKind::Up,
+            300.0,
+            300.0,
+            Button::Right,
+            false,
+            false,
+        );
+        assert_eq!(
+            app.view,
+            crate::app::View::Image,
+            "an early release cancels the hold"
+        );
+
+        app.clock_override = Some(2_000);
+        app.image_pointer(
+            &fixture.ui,
+            PointerKind::Down,
+            300.0,
+            300.0,
+            Button::Right,
+            false,
+            false,
+        );
+        app.clock_override = Some(2_900);
+        app.home_hold_tick(&fixture.ui);
+        assert_eq!(
+            app.view,
+            crate::app::View::Editor,
+            "a completed hold returns to the origin canvas"
+        );
+    });
     Ok(())
 }
 

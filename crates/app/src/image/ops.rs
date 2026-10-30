@@ -10,7 +10,8 @@ use open_canvas_ps::{
     CanvasPsShapeKind, Point, Rgba, SelectionMode, Surface,
 };
 
-use crate::app::{App, View};
+use crate::app::{App, HomeHold, View, HOME_HOLD_SLOP};
+use crate::coords::ScreenPos;
 use crate::image::{Gesture, ImageTool};
 use crate::input::{Button, PointerKind};
 use crate::vm;
@@ -138,6 +139,10 @@ impl App {
         if kind == PointerKind::Down && self.image.text_edit.is_editing() {
             self.image_text_edit_commit(ui, None);
         }
+        if self.image_smart_canvas_pointer(ui, kind, x, y, button) {
+            self.sync_image(ui);
+            return;
+        }
         self.image_pointer_core(kind, x, y, button, shift, alt);
         if std::mem::take(&mut self.image.auto_layer_hint) {
             self.set_notice(
@@ -147,6 +152,58 @@ impl App {
             );
         }
         self.sync_image(ui);
+    }
+
+    /// Smart Canvas boards are a viewer, not a painting surface: left-drag
+    /// pans, the wheel zooms, and right-hold returns to the origin canvas.
+    /// Returning true means the event was consumed here.
+    fn image_smart_canvas_pointer(
+        &mut self,
+        ui: &AppWindow,
+        kind: PointerKind,
+        x: f64,
+        y: f64,
+        button: Button,
+    ) -> bool {
+        if self.image.origin_canvas.is_none() {
+            return false;
+        }
+        match kind {
+            PointerKind::Down if button == Button::Right => {
+                self.home_hold = Some(HomeHold {
+                    started_ms: self.now_ms(),
+                    pos: ScreenPos::new(x, y),
+                });
+                true
+            }
+            PointerKind::Down if button == Button::Left => {
+                self.image.gesture = Some(Gesture::Pan {
+                    start_x: x,
+                    start_y: y,
+                    view: self.image.view,
+                });
+                true
+            }
+            PointerKind::Move => {
+                if let Some(hold) = self.home_hold {
+                    if (x - hold.pos.x).abs() > HOME_HOLD_SLOP
+                        || (y - hold.pos.y).abs() > HOME_HOLD_SLOP
+                    {
+                        self.cancel_home_hold(ui);
+                    }
+                }
+                self.home_hold.is_some()
+            }
+            PointerKind::Up | PointerKind::Cancel => {
+                if self.home_hold.is_some() {
+                    self.cancel_home_hold(ui);
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
     }
 
     /// The gesture state machine without a window: unit tests drive this

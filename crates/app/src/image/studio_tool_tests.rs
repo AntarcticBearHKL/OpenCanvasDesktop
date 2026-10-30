@@ -1024,8 +1024,9 @@ fn studio_chrome_is_full_window_and_its_menus_are_compact() {
         .unwrap_or(usize::MAX);
     assert!(home < file, "the Home button sits left of File");
     assert!(
-        image.contains("icon: Icons.home;") && image.contains(r#"tip: "Back to canvas";"#),
-        "a Home glyph with the Back to canvas tooltip"
+        image.contains("icon: root.back-to-canvas ? Icons.back : Icons.home;")
+            && image.contains(r#"tip: root.back-to-canvas ? "Back to canvas" : "Home";"#),
+        "the first control switches between Home and Back to canvas"
     );
     assert!(
         image.contains("root.home();")
@@ -1114,16 +1115,24 @@ fn studio_chrome_has_no_tab_strip_and_matches_the_canvas_mouse_mapping() {
         "the board is the menu bar's next sibling"
     );
 
-    // 3. Right-drag moves the window through the app's manual move.
+    // 3. The menu bar is the only window-move surface; the board no longer
+    // starts a window drag on the right button.
+    assert!(
+        !image.contains("board-area.window-dragging"),
+        "the board does not move the window"
+    );
+    assert!(
+        image.contains("menu-drag := TouchArea"),
+        "the menu bar owns the window move"
+    );
     for wiring in [
-        "board-area.window-dragging = true;",
         "root.drag-begin();",
         "root.drag-tick();",
         "root.drag-end();",
     ] {
         assert!(
             image.contains(wiring),
-            "the board wires the window move (`{wiring}`)"
+            "the menu bar wires the window move (`{wiring}`)"
         );
     }
     for wiring in ["drag-begin => {", "drag-tick => {", "drag-end => {"] {

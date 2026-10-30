@@ -643,6 +643,64 @@ mod tests {
     }
 
     #[test]
+    fn drag_group_reorder_changes_the_project_order() -> TestResult {
+        crate::config_test_support::init_backend()?;
+        let (_dir, ui, mut app) = fixture()?;
+        app.library.index.groups.push(CanvasGroup {
+            id: "g2".into(),
+            name: "Archive".into(),
+            created_at: String::new(),
+        });
+        app.sync_library(&ui);
+        app.library_group_reorder(&ui, 0, 1);
+        assert_eq!(
+            app.library
+                .index
+                .groups
+                .iter()
+                .map(|group| group.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["g2", "g1"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn drag_canvas_reorder_preserves_non_canvas_slots() -> TestResult {
+        crate::config_test_support::init_backend()?;
+        let (_dir, ui, mut app) = fixture()?;
+        app.library_project_reorder(&ui, 0, 1);
+        assert_eq!(row_ids(&app), vec!["c2".to_string(), "c1".to_string()]);
+        assert_eq!(
+            app.library
+                .index
+                .projects
+                .iter()
+                .map(|row| row.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["c2", "i1", "c1", "i2"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn new_canvas_is_appended_to_the_bottom_of_the_list() -> TestResult {
+        crate::config_test_support::init_backend()?;
+        let (_dir, ui, mut app) = fixture()?;
+        app.library_create_project(&ui);
+        let created = app
+            .editor
+            .as_ref()
+            .map(|editor| editor.id.clone())
+            .ok_or("the new canvas opens")?;
+        assert_eq!(
+            app.library.index.projects.last().map(|row| row.id.as_str()),
+            Some(created.as_str())
+        );
+        Ok(())
+    }
+
+    #[test]
     fn side_panel_arms_and_confirms_a_project_delete() -> TestResult {
         crate::config_test_support::init_backend()?;
         let (_dir, ui, mut app) = fixture()?;

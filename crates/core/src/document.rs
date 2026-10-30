@@ -197,6 +197,24 @@ impl LibraryIndex {
         }
     }
 
+    /// Inserts a new canvas at the end of the library list. The home screen
+    /// reads the index in order, so a newly created canvas belongs at the
+    /// bottom of its project rather than jumping above existing rows.
+    pub fn append_project(&mut self, project: &CanvasProject) {
+        let row = ProjectIndexEntry {
+            id: project.id.clone(),
+            title: project.title.clone(),
+            created_at: project.created_at.clone(),
+            updated_at: project.updated_at.clone(),
+            group_id: project.group_id.clone(),
+            kind: PROJECT_KIND_CANVAS.to_string(),
+        };
+        match self.projects.iter().position(|entry| entry.id == row.id) {
+            Some(index) => self.projects[index] = row,
+            None => self.projects.push(row),
+        }
+    }
+
     /// Drops one project row; `true` when it was present.
     pub fn remove_project(&mut self, id: &str) -> bool {
         let before = self.projects.len();
@@ -439,6 +457,32 @@ mod tests {
 
         let back = deserialize_library(&json).unwrap();
         assert_eq!(back, index);
+    }
+
+    #[test]
+    fn append_project_adds_new_canvases_at_the_bottom() {
+        let mut index = LibraryIndex::new();
+        let mut first = sample_project();
+        first.id = "p1".into();
+        let mut second = sample_project();
+        second.id = "p2".into();
+        index.upsert_project(&first);
+        index.append_project(&second);
+        assert_eq!(
+            index
+                .projects
+                .iter()
+                .map(|row| row.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["p1", "p2"]
+        );
+        second.title = "Renamed".into();
+        index.append_project(&second);
+        assert_eq!(index.projects.len(), 2, "an existing row is refreshed");
+        assert_eq!(
+            index.project("p2").map(|row| row.title.as_str()),
+            Some("Renamed")
+        );
     }
 
     #[test]

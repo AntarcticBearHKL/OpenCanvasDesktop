@@ -61,14 +61,26 @@ component ProjectSidebarRow inherits Rectangle {
     in property <bool> active: false;
     in property <bool> editing: false;
     in property <bool> armed: false;
+    in property <int> index: 0;
+    in property <bool> drop-target: false;
     callback select();
     callback action(string);
     callback name-edited(string);
+    callback drag-start(int, length);
+    callback drag-move(int, length);
+    callback drag-end(int, length);
+    property <bool> dragging: false;
+    property <bool> drag-suppress: false;
+    property <length> drag-press-y: 0px;
 
     width: 100%;
     height: 44px;
+    opacity: root.dragging ? 0.62 : 1;
     // The selected wash is a full-row band, not an inset rounded card.
-    background: root.active ? Theme.node-accent.with-alpha(0.12) : ta.has-hover ? Theme.hover : transparent;
+    background: root.active ? Theme.node-accent.with-alpha(0.12)
+              : root.drop-target ? Theme.node-accent.with-alpha(0.08)
+              : ta.has-hover ? Theme.hover
+              : transparent;
     animate background {
         // Selection steps on the longer token, plain hover on the short one;
         // reduced motion collapses both to an instant state change.
@@ -92,13 +104,30 @@ component ProjectSidebarRow inherits Rectangle {
         // canvases). Double-click opens its most recently edited canvas; the
         // canvas row itself opens on a single click.
         clicked => {
-            if (!root.editing) {
+            if (!root.editing && !root.drag-suppress) {
                 root.select();
             }
         }
         double-clicked => {
-            if (!root.editing) {
+            if (!root.editing && !root.drag-suppress) {
                 root.action("open");
+            }
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.dragging = false;
+                root.drag-suppress = false;
+                root.drag-press-y = self.mouse-y;
+                root.drag-start(root.index, self.mouse-y);
+            } else if (e.kind == PointerEventKind.move && self.pressed) {
+                if ((self.mouse-y - root.drag-press-y).abs() > 6px) {
+                    root.dragging = true;
+                    root.drag-suppress = true;
+                    root.drag-move(root.index, self.mouse-y);
+                }
+            } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                root.dragging = false;
+                root.drag-end(root.index, self.mouse-y);
             }
         }
     }
@@ -269,6 +298,14 @@ component CanvasRow inherits Rectangle {
     in property <bool> editing: false;
     in property <bool> armed: false;
     in property <bool> selected: false;
+    in property <int> index: 0;
+    in property <bool> drop-target: false;
+    callback drag-start(int, length);
+    callback drag-move(int, length);
+    callback drag-end(int, length);
+    property <bool> dragging: false;
+    property <bool> drag-suppress: false;
+    property <length> drag-press-y: 0px;
     // Set by Rust for the rebuild in which the canvas set changed: the row
     // starts slightly transparent and settles on the select token. The first
     // paint (and every rebuild that keeps the set) starts opaque.
@@ -291,8 +328,11 @@ component CanvasRow inherits Rectangle {
     }
 
     height: 44px;
-    opacity: root.enter;
-    background: root.selected ? Theme.node-accent.with-alpha(0.12) : ta.has-hover ? Theme.hover : transparent;
+    opacity: root.enter * (root.dragging ? 0.62 : 1);
+    background: root.selected ? Theme.node-accent.with-alpha(0.12)
+              : root.drop-target ? Theme.node-accent.with-alpha(0.08)
+              : ta.has-hover ? Theme.hover
+              : transparent;
     animate background {
         duration: Theme.reduced-motion ? 0ms : (root.selected ? Theme.motion-select : Theme.motion-hover);
         easing: ease-out;
@@ -311,8 +351,25 @@ component CanvasRow inherits Rectangle {
         // One click opens the canvas; selecting is part of opening, so there is
         // no separate double-click step.
         clicked => {
-            if (!root.editing) {
+            if (!root.editing && !root.drag-suppress) {
                 root.action("open");
+            }
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.dragging = false;
+                root.drag-suppress = false;
+                root.drag-press-y = self.mouse-y;
+                root.drag-start(root.index, self.mouse-y);
+            } else if (e.kind == PointerEventKind.move && self.pressed) {
+                if ((self.mouse-y - root.drag-press-y).abs() > 6px) {
+                    root.dragging = true;
+                    root.drag-suppress = true;
+                    root.drag-move(root.index, self.mouse-y);
+                }
+            } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                root.dragging = false;
+                root.drag-end(root.index, self.mouse-y);
             }
         }
     }
@@ -524,6 +581,8 @@ export component LibraryScreen inherits Rectangle {
     callback create-project();
     callback project-action(string, string);
     callback project-name-edited(string);
+    callback group-reorder(int, int);
+    callback project-reorder(int, int);
     callback settings();
     callback minimize();
     callback maximize-toggle();
@@ -534,6 +593,42 @@ export component LibraryScreen inherits Rectangle {
     callback drag-begin();
     callback drag-tick();
     callback drag-end();
+
+    // Drag state shared by the project sidebar and the canvas table. The row
+    // sends local pointer y; the target is the row index after rounding the
+    // 44px row delta.
+    property <string> drag-type: "";
+    property <int> drag-index: -1;
+    property <int> drag-target: -1;
+    property <length> drag-start-y: 0px;
+
+    function begin-drag(scope: string, index: int, y: length) {
+        root.drag-type = scope;
+        root.drag-index = index;
+        root.drag-target = index;
+        root.drag-start-y = y;
+    }
+    function move-drag(scope: string, index: int, y: length, count: int) {
+        if (scope != root.drag-type || index != root.drag-index) {
+            return;
+        }
+        let step = round((y - root.drag-start-y) / 44px);
+        root.drag-target = max(0, min(count - 1, root.drag-index + step));
+    }
+    function finish-drag(scope: string, index: int, y: length, count: int) {
+        root.move-drag(scope, index, y, count);
+        if (root.drag-target != root.drag-index) {
+            if (scope == "group") {
+                root.group-reorder(root.drag-index, root.drag-target);
+            } else {
+                root.project-reorder(root.drag-index, root.drag-target);
+            }
+        }
+        root.drag-type = "";
+        root.drag-index = -1;
+        root.drag-target = -1;
+        root.drag-start-y = 0px;
+    }
 
     // No plate of its own: the window's single `Theme.background` surface (the
     // root plate in `app.slint`) runs unbroken from the left edge to the right.
@@ -692,11 +787,13 @@ export component LibraryScreen inherits Rectangle {
                             width: 100%;
                             spacing: 0px;
 
-                            for group in root.groups : ProjectSidebarRow {
+                            for group[index] in root.groups : ProjectSidebarRow {
                                 name: group.name;
                                 active: group.active;
                                 editing: group.editing;
                                 armed: group.armed;
+                                index: index;
+                                drop-target: root.drag-type == "group" && root.drag-target == index;
                                 select => {
                                     root.select-group(group.id);
                                 }
@@ -705,6 +802,15 @@ export component LibraryScreen inherits Rectangle {
                                 }
                                 name-edited(t) => {
                                     root.group-name-edited(t);
+                                }
+                                drag-start(i, y) => {
+                                    root.begin-drag("group", i, y);
+                                }
+                                drag-move(i, y) => {
+                                    root.move-drag("group", i, y, root.groups.length);
+                                }
+                                drag-end(i, y) => {
+                                    root.finish-drag("group", i, y, root.groups.length);
                                 }
                             }
 
@@ -894,18 +1000,29 @@ export component LibraryScreen inherits Rectangle {
                                         width: 100%;
                                         spacing: 0px;
 
-                                        for project in root.projects : CanvasRow {
+                                        for project[index] in root.projects : CanvasRow {
                                             title: project.title;
                                             updated: project.updated;
                                             editing: project.editing;
                                             armed: project.armed;
                                             selected: project.selected;
                                             fade-in: project.fade;
+                                            index: index;
+                                            drop-target: root.drag-type == "project" && root.drag-target == index;
                                             action(a) => {
                                                 root.project-action(project.id, a);
                                             }
                                             title-edited(t) => {
                                                 root.project-name-edited(t);
+                                            }
+                                            drag-start(i, y) => {
+                                                root.begin-drag("project", i, y);
+                                            }
+                                            drag-move(i, y) => {
+                                                root.move-drag("project", i, y, root.projects.length);
+                                            }
+                                            drag-end(i, y) => {
+                                                root.finish-drag("project", i, y, root.projects.length);
                                             }
                                         }
 
