@@ -412,6 +412,7 @@ export component AppWindow inherits Window {
     in-out property <string> attempt-quality: "";
     in-out property <int> attempt-count: 1;
     in-out property <int> attempt-version: 1;
+    in-out property <string> attempt-version-text: "1";
     in-out property <string> attempt-intent: "";
     in-out property <string> attempt-reason: "";
     in-out property <bool> attempt-frozen: false;
@@ -421,6 +422,7 @@ export component AppWindow inherits Window {
     in-out property <bool> attempt-has-image: false;
     in-out property <string> attempt-trace: "";
     callback attempt-prompt-edited(string);
+    callback attempt-version-edited(string);
     callback attempt-reason-edited(string);
     callback attempt-config-edited(string, string);
     callback attempt-run();
@@ -2368,6 +2370,7 @@ export component AppWindow inherits Window {
         quality: root.attempt-quality;
         count: root.attempt-count;
         version: root.attempt-version;
+        version-text: root.attempt-version-text;
         intent: root.attempt-intent;
         reason: root.attempt-reason;
         frozen: root.attempt-frozen;
@@ -2377,6 +2380,7 @@ export component AppWindow inherits Window {
         has-image: root.attempt-has-image;
         trace: root.attempt-trace;
         prompt-edited(text) => { root.attempt-prompt-edited(text); }
+        version-edited(text) => { root.attempt-version-edited(text); }
         reason-edited(text) => { root.attempt-reason-edited(text); }
         config-edited(key, value) => { root.attempt-config-edited(key, value); }
         run => { root.attempt-run(); }

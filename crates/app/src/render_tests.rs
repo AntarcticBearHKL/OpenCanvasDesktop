@@ -530,6 +530,7 @@ fn attempt_workbench_renders_centered_prompt_config_and_trace() -> TestResult {
         ui.set_attempt_quality("high".into());
         ui.set_attempt_count(2);
         ui.set_attempt_version(7);
+        ui.set_attempt_version_text("7".into());
         ui.set_attempt_intent("fox study".into());
         ui.set_attempt_reason("Warmer palette and a lower camera angle".into());
         ui.set_attempt_frozen(true);

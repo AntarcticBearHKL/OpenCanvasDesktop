@@ -1292,20 +1292,20 @@ export component NodeCard inherits Rectangle {
                 }
 
                 HorizontalLayout {
-                    height: 22px * root.visual-scale;
+                    height: 28px * root.visual-scale;
                     spacing: Theme.space-2 * root.visual-scale;
                     Rectangle {
-                        width: 44px * root.visual-scale;
-                        height: 20px * root.visual-scale;
-                        border-radius: Theme.radius-sm * root.visual-scale;
-                        background: Theme.node-accent-soft;
+                        width: 56px * root.visual-scale;
+                        height: 26px * root.visual-scale;
+                        border-radius: Theme.radius-md * root.visual-scale;
+                        background: Theme.brand;
                         Text {
                             width: 100%;
                             height: 100%;
                             text: "v" + root.attempt-version;
-                            font-size: 11px * root.visual-scale;
-                            font-weight: 700;
-                            color: Theme.node-accent-text;
+                            font-size: 13px * root.visual-scale;
+                            font-weight: 800;
+                            color: Theme.brand-foreground;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }

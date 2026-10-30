@@ -64,6 +64,7 @@ export component AttemptWorkbench inherits ModalShell {
     in property <string> quality: "";
     in property <int> count: 1;
     in property <int> version: 1;
+    in-out property <string> version-text: "1";
     in property <string> intent: "";
     in-out property <string> reason: "";
     in property <bool> frozen: false;
@@ -74,13 +75,14 @@ export component AttemptWorkbench inherits ModalShell {
     in property <string> trace: "";
 
     callback prompt-edited(string);
+    callback version-edited(string);
     callback reason-edited(string);
     callback config-edited(string, string);
     callback run();
     callback duplicate();
     callback extract();
 
-    title: "Image Attempt · v" + root.version + (root.intent != "" ? " · " + root.intent : "");
+    title: "Image Attempt · v" + root.version-text + (root.intent != "" ? " · " + root.intent : "");
     tier: "wide";
     panel-width: Math.min(1000px, root.width - 24px);
     body-height: Math.min(560px, root.height - 110px);
@@ -110,19 +112,27 @@ export component AttemptWorkbench inherits ModalShell {
                         horizontal-stretch: 1;
                     }
                     Rectangle {
-                        width: 48px;
-                        height: 22px;
+                        width: 62px;
+                        height: 24px;
                         border-radius: Theme.radius-sm;
-                        background: Theme.node-accent-soft;
-                        Text {
-                            width: 100%;
+                        border-width: 1px;
+                        border-color: Theme.border-strong;
+                        background: Theme.card;
+
+                        TextInput {
+                            x: 6px;
+                            width: parent.width - 12px;
                             height: 100%;
-                            text: "v" + root.version;
+                            text: "v" + root.version-text;
+                            single-line: true;
                             font-size: 11px;
                             font-weight: 700;
-                            color: Theme.node-accent-text;
+                            color: Theme.node-text;
                             horizontal-alignment: center;
                             vertical-alignment: center;
+                            edited => {
+                                root.version-edited(self.text);
+                            }
                         }
                     }
                     Text {

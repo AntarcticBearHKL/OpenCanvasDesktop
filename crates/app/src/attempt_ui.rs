@@ -110,7 +110,9 @@ Model: {}
         ui.set_attempt_size(meta.size.clone().unwrap_or_else(|| "1:1".into()).into());
         ui.set_attempt_quality(meta.quality.clone().unwrap_or_else(|| "auto".into()).into());
         ui.set_attempt_count(i32::try_from(meta.count.unwrap_or(1)).unwrap_or(1));
-        ui.set_attempt_version(i32::try_from(meta.attempt_version.unwrap_or(1)).unwrap_or(1));
+        let version = meta.attempt_version.unwrap_or(1);
+        ui.set_attempt_version(i32::try_from(version).unwrap_or(1));
+        ui.set_attempt_version_text(version.to_string().into());
         ui.set_attempt_intent(meta.attempt_title.clone().unwrap_or_default().into());
         ui.set_attempt_reason(meta.attempt_reason.clone().unwrap_or_default().into());
         ui.set_attempt_frozen(meta.attempt_frozen.unwrap_or(false));
@@ -185,6 +187,42 @@ RAW
             return;
         }
         meta.prompt = Some(text.to_string());
+        self.note_doc_change();
+    }
+
+    /// Manual version label. This is a label edit, not a generation change, so
+    /// it stays available after freeze; the next automatic version still uses
+    /// the global maximum.
+    pub fn attempt_version_edited(&mut self, ui: &AppWindow, text: &str) {
+        let Some(id) = self.attempt_modal.as_deref() else {
+            return;
+        };
+        let parsed = text
+            .trim()
+            .trim_start_matches(['v', 'V'])
+            .trim()
+            .parse::<i64>()
+            .ok()
+            .filter(|value| (1..=9999).contains(value));
+        let Some(version) = parsed else {
+            // Reject invalid input by restoring the current label.
+            let current = self
+                .doc
+                .node(id)
+                .and_then(|node| node.metadata.as_ref())
+                .and_then(|meta| meta.attempt_version)
+                .unwrap_or(1);
+            ui.set_attempt_version_text(current.to_string().into());
+            return;
+        };
+        if let Some(node) = self.doc.nodes_mut().iter_mut().find(|node| node.id == id) {
+            let meta = node
+                .metadata
+                .get_or_insert_with(CanvasNodeMetadata::default);
+            meta.attempt_version = Some(version);
+        }
+        ui.set_attempt_version(i32::try_from(version).unwrap_or(1));
+        ui.set_attempt_version_text(version.to_string().into());
         self.note_doc_change();
     }
 
@@ -397,6 +435,14 @@ pub fn wire(ui: &AppWindow, app: &std::rc::Rc<std::cell::RefCell<App>>) {
                 return;
             }
             crate::app::with_app(&app, |app| app.attempt_prompt_edited(text.as_str()));
+        });
+    }
+    {
+        let app = app.clone();
+        let weak = ui.as_weak();
+        ui.on_attempt_version_edited(move |text| {
+            let Some(ui) = weak.upgrade() else { return };
+            crate::app::with_app(&app, |app| app.attempt_version_edited(&ui, text.as_str()));
         });
     }
     {
