@@ -581,10 +581,10 @@ export component LibraryScreen inherits Rectangle {
                 HorizontalLayout {
                     horizontal-stretch: 0;
                     width: self.preferred-width;
-                    height: 44px;
+                    height: 100%;
+                    padding-top: 4px;
                     spacing: 2px;
-                    cross-axis-alignment: end;
-                    padding-bottom: 8px;
+                    cross-axis-alignment: center;
 
                     Text {
                         text: "Canvas";
@@ -592,7 +592,7 @@ export component LibraryScreen inherits Rectangle {
                         font-weight: 800;
                         letter-spacing: 0.6px;
                         color: Theme.foreground;
-                        vertical-alignment: bottom;
+                        vertical-alignment: center;
                     }
                 }
 
@@ -685,20 +685,13 @@ export component LibraryScreen inherits Rectangle {
                         width: 100%;
                         height: 100%;
                         content-width: self.width;
-                        content-height: max((root.groups.length + 2) * 44px, self.height);
+                        content-height: max((root.groups.length + 1) * 44px, self.height);
 
                         VerticalLayout {
                             width: 100%;
                             padding-left: Theme.space-2;
                             padding-right: Theme.space-2;
                             spacing: 0px;
-
-                            // Project rows align with the canvas rows below the
-                            // table's 44px column header.
-                            Rectangle {
-                                height: 44px;
-                                background: transparent;
-                            }
 
                             for group in root.groups : ProjectSidebarRow {
                                 name: group.name;
