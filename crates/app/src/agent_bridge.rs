@@ -567,7 +567,9 @@ fn put_project(app: &mut App, ui: &AppWindow, id: &str, body: Value) -> Reply {
     // Agent writes go through the same destructive migration as project open:
     // a bridge client can never persist text/video or old prompt graphs.
     let mut doc = Doc::from_project(&project);
-    if !doc.migrate_legacy_workflows().is_empty() {
+    let migration = doc.migrate_legacy_workflows();
+    let removed_edges = doc.remove_attempt_source_edges();
+    if !migration.is_empty() || removed_edges > 0 {
         let meta = crate::library::EditorMeta {
             id: project.id.clone(),
             title: project.title.clone(),

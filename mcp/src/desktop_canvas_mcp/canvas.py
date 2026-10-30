@@ -258,6 +258,9 @@ def _connect(project: dict[str, Any], op: dict[str, Any]) -> str | None:
     nodes = {node.get("id"): node for node in project.get("nodes") or []}
     if from_id not in nodes or to_id not in nodes:
         return None
+    # Only a pure Image owns an output wire. Attempts and other cards are sinks.
+    if nodes[from_id].get("type") != "image":
+        return None
     for conn in project.get("connections") or []:
         if conn.get("fromNodeId") == from_id and conn.get("toNodeId") == to_id:
             return str(conn.get("id"))

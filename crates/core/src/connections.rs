@@ -16,7 +16,6 @@ pub fn source_relation(node_type: &CanvasNodeType) -> Option<&'static str> {
         CanvasNodeType::Text | CanvasNodeType::Prompt | CanvasNodeType::VideoPrompt => {
             Some("prompt")
         }
-        CanvasNodeType::ImageAttempt => Some("derive"),
         CanvasNodeType::Video => Some("video-reference"),
         CanvasNodeType::Image => Some("reference"),
         _ => None,
@@ -202,7 +201,7 @@ pub struct NormalizedConnection {
 pub fn accepts_source_connections(node_type: &CanvasNodeType) -> bool {
     !matches!(
         node_type,
-        CanvasNodeType::ImageStack | CanvasNodeType::SmartCanvas
+        CanvasNodeType::ImageStack | CanvasNodeType::SmartCanvas | CanvasNodeType::ImageAttempt
     )
 }
 

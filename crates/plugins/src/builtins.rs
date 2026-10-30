@@ -61,6 +61,8 @@ fn builtin_definition(node_type: CanvasNodeType) -> CanvasNodeDefinition {
         CanvasNodeType::ImageAttempt => {
             definition.resource = Some(Arc::new(builtin_resource));
             definition.keep_aspect_ratio = Some(Arc::new(|_| true));
+            // Attempts are sinks: only a pure Image may start a wire.
+            definition.has_source_handle = false;
         }
         CanvasNodeType::ImageStack => {
             definition.has_source_handle = false;

@@ -378,8 +378,12 @@ impl App {
         self.flush_save(ui);
         self.doc = Doc::from_project(&project);
         let migration = self.doc.migrate_legacy_workflows();
+        let removed_edges = self.doc.remove_attempt_source_edges();
         if !migration.is_empty() {
             self.set_notice(ui, migration.summary(), false);
+            self.save_dirty = true;
+            self.save_due = Some(self.now_ms());
+        } else if removed_edges > 0 {
             self.save_dirty = true;
             self.save_due = Some(self.now_ms());
         }

@@ -4,7 +4,7 @@
 use slint::ComponentHandle;
 
 use open_canvas_core::node::{
-    CanvasConnection, CanvasNodeImage, CanvasNodeMetadata, CanvasNodeStatus, CanvasNodeType,
+    CanvasNodeImage, CanvasNodeMetadata, CanvasNodeStatus, CanvasNodeType,
 };
 
 use crate::app::App;
@@ -255,16 +255,6 @@ RAW
             node.title = format!("v{version} · copy");
             node.metadata = Some(meta);
         }
-        self.doc.connections.push(CanvasConnection {
-            id: format!("conn-{now}-duplicate"),
-            from_node_id: id,
-            to_node_id: new_id.clone(),
-            relation: Some("duplicate".into()),
-            kind: Some("duplicate".into()),
-            reason: Some("Duplicate config as a variant; clear outputs".into()),
-            changes: Some("prompt/config copied; images and runs cleared".into()),
-            agent_run_id: None,
-        });
         self.doc.commit(now);
         self.note_doc_change();
         self.attempt_modal = Some(new_id.clone());
@@ -309,16 +299,6 @@ RAW
                 ..CanvasNodeMetadata::default()
             });
         }
-        self.doc.connections.push(CanvasConnection {
-            id: format!("conn-{now}-extract"),
-            from_node_id: id,
-            to_node_id: new_id,
-            relation: Some("extract".into()),
-            kind: Some("extract".into()),
-            reason: Some("Extract an attempt output as a reusable image".into()),
-            changes: None,
-            agent_run_id: None,
-        });
         self.doc.commit(now);
         self.note_doc_change();
         self.sync_rows_full(ui);

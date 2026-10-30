@@ -28,7 +28,7 @@
 - 节点：`canvas_create_node`、`canvas_create_text_node`、`canvas_create_text_nodes`、`canvas_update_node`、`canvas_update_node_text`、`canvas_move_nodes`、`canvas_resize_node`、`canvas_set_node_flags`、`canvas_bulk_rename`、`canvas_align_nodes`、`canvas_duplicate_node`、`canvas_delete_nodes`、`canvas_connect_nodes`、`canvas_select_nodes`、`canvas_set_viewport`
 - 图片组：`canvas_group_images`、`canvas_ungroup_images`、`canvas_get_image_group`
 - 内容：`canvas_get_node_content`、`canvas_get_project`
-- 生成：`canvas_create_image_prompt_flow`、`canvas_create_generation_flow`、`canvas_generate_image`、`canvas_run_generation`、`generation_get_status`
+- 生成：`canvas_create_image_prompt_flow`、`canvas_create_generation_flow`、`canvas_generate_image`、`canvas_iterate_attempt`、`canvas_run_generation`、`generation_get_status`
 
 ## 节点类型
 
@@ -37,5 +37,9 @@
 - 工具节点：`assets`（folder/cache/studio 三种来源）、`smart-canvas`（关联一个图像工作室项目）。
 
 文本与视频节点/生成链路已移除；不要再创建 `text`、`prompt`、`image-generation`、`video-*`。
+
+连线规则：只有纯 `image` 节点可以有输出线；`image-attempt` 只能作为连线终点。不要创建 attempt→attempt、attempt→image 的连线。
+
+迭代：要保留旧版本并生成下一版，调用 `canvas_iterate_attempt`（或给 `canvas_generate_image` 传 `parentAttemptId`）。新版本放在父版本下方，不连线，旧版本不会被删除。
 
 所有 `canvas_*` 宏工具都会编译成 `app_apply_ops` 的 canvas 操作；复杂批量修改优先用 `app_apply_ops`。

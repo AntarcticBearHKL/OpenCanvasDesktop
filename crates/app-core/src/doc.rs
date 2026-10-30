@@ -125,6 +125,21 @@ impl Doc {
         &mut self.connections
     }
 
+    /// Removes legacy attempt-to-anything edges. Attempts are sinks; only a
+    /// pure Image may own an output wire. Returns the number removed.
+    pub fn remove_attempt_source_edges(&mut self) -> usize {
+        let attempt_ids: std::collections::BTreeSet<&str> = self
+            .nodes
+            .iter()
+            .filter(|node| node.node_type == open_canvas_core::node::CanvasNodeType::ImageAttempt)
+            .map(|node| node.id.as_str())
+            .collect();
+        let before = self.connections.len();
+        self.connections
+            .retain(|connection| !attempt_ids.contains(connection.from_node_id.as_str()));
+        before.saturating_sub(self.connections.len())
+    }
+
     pub fn viewport(&self) -> Viewport {
         self.viewport
     }

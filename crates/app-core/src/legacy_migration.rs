@@ -7,8 +7,8 @@ use std::collections::BTreeSet;
 
 use open_canvas_core::constants::get_node_spec;
 use open_canvas_core::node::{
-    CanvasAttemptRun, CanvasConnection, CanvasNodeData, CanvasNodeImage, CanvasNodeMetadata,
-    CanvasNodeStatus, CanvasNodeType, Position,
+    CanvasAttemptRun, CanvasNodeData, CanvasNodeImage, CanvasNodeMetadata, CanvasNodeStatus,
+    CanvasNodeType, Position,
 };
 
 use crate::doc::Doc;
@@ -155,7 +155,6 @@ impl Doc {
 
         let mut assigned_images: BTreeSet<String> = BTreeSet::new();
         let mut new_nodes: Vec<CanvasNodeData> = Vec::new();
-        let mut new_connections: Vec<CanvasConnection> = Vec::new();
         let mut next_version = self
             .nodes
             .iter()
@@ -227,7 +226,7 @@ impl Doc {
                     .collect();
             }
 
-            let root_id = make_attempt(
+            let _root_id = make_attempt(
                 generator.position,
                 format!("v{next_version} · migrated attempt"),
                 CanvasNodeMetadata {
@@ -257,7 +256,7 @@ impl Doc {
                     .and_then(|m| m.prompt.clone())
                     .filter(|p| !p.trim().is_empty())
                     .unwrap_or_else(|| prompt_text.clone());
-                let child_id = make_attempt(
+                let _child_id = make_attempt(
                     Position::new(
                         generator.position.x,
                         generator.position.y + 500.0 + child_index as f64 * 520.0,
@@ -287,26 +286,6 @@ impl Doc {
                     &mut next_seq,
                 );
                 report.attempts_created += 1;
-                new_connections.push(CanvasConnection {
-                    id: format!("conn-migrated-derive-{next_seq}"),
-                    from_node_id: root_id.clone(),
-                    to_node_id: child_id.clone(),
-                    relation: Some("derive".into()),
-                    kind: Some("derive".into()),
-                    reason: Some("Migrated from a legacy prompt/image-generation output".into()),
-                    changes: Some("prompt/config inherited from the legacy image".into()),
-                    agent_run_id: None,
-                });
-                new_connections.push(CanvasConnection {
-                    id: format!("conn-migrated-extract-{next_seq}"),
-                    from_node_id: child_id,
-                    to_node_id: image_node.id.clone(),
-                    relation: Some("extract".into()),
-                    kind: Some("extract".into()),
-                    reason: Some("Legacy output kept as a reusable Image node".into()),
-                    changes: None,
-                    agent_run_id: None,
-                });
                 next_version += 1;
                 child_index += 1;
             }
@@ -352,7 +331,6 @@ impl Doc {
         self.connections.retain(|connection| {
             live_ids.contains(&connection.from_node_id) && live_ids.contains(&connection.to_node_id)
         });
-        self.connections.extend(new_connections);
         self.selected_connection = None;
         self.selection.clear();
         self.seq = self.seq.wrapping_add(next_seq);
@@ -363,7 +341,7 @@ impl Doc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use open_canvas_core::node::{CanvasNodeData, Position};
+    use open_canvas_core::node::{CanvasConnection, CanvasNodeData, Position};
 
     fn node(id: &str, kind: CanvasNodeType, x: f64, meta: CanvasNodeMetadata) -> CanvasNodeData {
         CanvasNodeData {

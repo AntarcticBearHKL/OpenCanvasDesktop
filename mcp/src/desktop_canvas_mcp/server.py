@@ -105,14 +105,39 @@ def _generation_flow(
     reference_node_ids: list[str] | None,
     options: dict[str, Any],
     auto_run: bool,
+    parent_attempt_id: str | None = None,
 ) -> dict[str, Any]:
     if mode != "image":
         raise ValueError("Text and video workflows were removed; only Image Attempt is supported")
     project = _load(project_id)
+    parent = None
+    parent_meta: dict[str, Any] = {}
+    if parent_attempt_id:
+        parent = canvas.find_node(project, parent_attempt_id)
+        if parent.get("type") != "image-attempt":
+            raise ValueError(f"{parent_attempt_id} is not an Image Attempt")
+        parent_meta = parent.get("metadata") or {}
+        base_x = canvas._number(parent.get("position", {}).get("x"))
+        base_y = canvas._number(parent.get("position", {}).get("y")) + canvas._number(parent.get("height")) + 40.0
+        has_position = True
+    else:
+        base_x = canvas.next_canvas_x(project.get("nodes") or []) if x is None else float(x)
+        base_y = 0.0 if y is None else float(y)
+        has_position = x is not None or y is not None
     attempt_id = canvas.new_id("image-attempt")
-    base_x = 0.0 if x is None else float(x)
-    base_y = 0.0 if y is None else float(y)
-    has_position = x is not None or y is not None
+    versions = [
+        int((node.get("metadata") or {}).get("attemptVersion") or 0)
+        for node in project.get("nodes") or []
+        if node.get("type") == "image-attempt"
+    ]
+    version = max(versions, default=0) + 1
+    inherited = {
+        key: parent_meta.get(key)
+        for key in ("model", "size", "quality", "count", "background", "generationMode")
+        if parent_meta.get(key) is not None
+    }
+    if parent_attempt_id and not title:
+        title = f"v{version} · iteration"
     ops: list[dict[str, Any]] = [
         {
             "type": "add_node",
@@ -122,9 +147,11 @@ def _generation_flow(
             "position": {"x": base_x, "y": base_y} if has_position else None,
             "metadata": _clean(
                 {
+                    **inherited,
                     "prompt": prompt,
                     "status": "idle",
                     "generationMode": "image",
+                    "attemptVersion": version,
                     "attemptFrozen": False,
                     "attemptRuns": [],
                     **options,
@@ -151,6 +178,8 @@ def _generation_flow(
         "promptNodeId": None,
         "generationNodeId": attempt_id,
         "attemptNodeId": attempt_id,
+        "parentAttemptId": parent_attempt_id,
+        "attemptVersion": version,
         "createdNodeIds": [attempt_id],
         "started": bool(started.get("started")),
         "generation": started,
@@ -804,6 +833,7 @@ def canvas_create_image_prompt_flow(
     x: float | None = None,
     y: float | None = None,
     referenceNodeIds: list[str] | None = None,
+    parentAttemptId: str | None = None,
     autoRun: bool | None = None,
     model: str | None = None,
     size: str | None = None,
@@ -819,6 +849,7 @@ def canvas_create_image_prompt_flow(
         x=x,
         y=y,
         reference_node_ids=referenceNodeIds,
+        parent_attempt_id=parentAttemptId,
         options=_clean({"model": model, "size": size, "quality": quality, "count": count}),
         auto_run=bool(autoRun),
     )
@@ -832,6 +863,7 @@ def canvas_generate_image(
     x: float | None = None,
     y: float | None = None,
     referenceNodeIds: list[str] | None = None,
+    parentAttemptId: str | None = None,
     model: str | None = None,
     size: str | None = None,
     quality: str | None = None,
@@ -846,8 +878,37 @@ def canvas_generate_image(
         x=x,
         y=y,
         reference_node_ids=referenceNodeIds,
+        parent_attempt_id=parentAttemptId,
         options=_clean({"model": model, "size": size, "quality": quality, "count": count}),
         auto_run=True,
+    )
+
+
+@server.tool()
+def canvas_iterate_attempt(
+    projectId: str,
+    nodeId: str,
+    prompt: str,
+    title: str | None = None,
+    referenceNodeIds: list[str] | None = None,
+    model: str | None = None,
+    size: str | None = None,
+    quality: str | None = None,
+    count: float | None = None,
+    autoRun: bool | None = True,
+) -> dict:
+    """Create the next Image Attempt version below the given one, preserving the old version. No version-to-version wire is added."""
+    return _generation_flow(
+        projectId,
+        prompt=prompt,
+        mode="image",
+        title=title,
+        x=None,
+        y=None,
+        reference_node_ids=referenceNodeIds,
+        parent_attempt_id=nodeId,
+        options=_clean({"model": model, "size": size, "quality": quality, "count": count}),
+        auto_run=bool(autoRun),
     )
 
 
