@@ -198,11 +198,39 @@ RAW
     }
 
     fn attempt_tabs(&self, current: &str) -> Vec<crate::AttemptTabRow> {
-        let mut entries: Vec<(i64, String, String, bool)> = self
+        let attempts: Vec<&open_canvas_core::node::CanvasNodeData> = self
             .doc
             .nodes()
             .iter()
             .filter(|node| node.node_type == CanvasNodeType::ImageAttempt)
+            .collect();
+        let parents: std::collections::HashMap<String, String> = attempts
+            .iter()
+            .filter_map(|node| {
+                node.metadata
+                    .as_ref()
+                    .and_then(|meta| meta.attempt_parent_id.clone())
+                    .map(|parent| (node.id.clone(), parent))
+            })
+            .collect();
+        let root_of = |start: &str| {
+            let mut current = start.to_string();
+            let mut seen: Vec<String> = Vec::new();
+            loop {
+                if seen.iter().any(|id| id == &current) {
+                    return current;
+                }
+                seen.push(current.clone());
+                let Some(parent) = parents.get(&current) else {
+                    return current;
+                };
+                current = parent.clone();
+            }
+        };
+        let current_root = root_of(current);
+        let mut entries: Vec<(i64, String, String, bool)> = attempts
+            .iter()
+            .filter(|node| root_of(&node.id) == current_root)
             .map(|node| {
                 let meta = node.metadata.as_ref();
                 let version = meta.and_then(|meta| meta.attempt_version).unwrap_or(1);
@@ -540,6 +568,7 @@ RAW
             generation_mode: source_meta.generation_mode,
             status: Some(CanvasNodeStatus::Idle),
             attempt_version: Some(version),
+            attempt_parent_id: Some(id.clone()),
             attempt_title: Some(format!("v{version} · copy")),
             attempt_reason: Some(format!(
                 "Duplicated from v{}",

@@ -154,6 +154,7 @@ def _generation_flow(
                     "status": "idle",
                     "generationMode": "image",
                     "attemptVersion": version,
+                    "attemptParentId": parent_attempt_id,
                     "attemptReason": reason or default_reason,
                     "attemptFrozen": False,
                     "attemptRuns": [],

@@ -369,6 +369,10 @@ pub struct CanvasNodeMetadata {
     pub status: Option<CanvasNodeStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attempt_version: Option<i64>,
+    /// The attempt this version was derived from. Tabs only group a version
+    /// lineage through this link; independent attempts never share tabs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_parent_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attempt_title: Option<String>,
     /// Why this version exists / what the agent or user changed.
@@ -529,6 +533,7 @@ pub fn merge_metadata(base: &CanvasNodeMetadata, patch: &CanvasNodeMetadata) -> 
         prompt,
         status,
         attempt_version,
+        attempt_parent_id,
         attempt_title,
         attempt_reason,
         attempt_frozen,

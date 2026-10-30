@@ -231,7 +231,7 @@ export component AttemptWorkbench inherits ModalShell {
 
         // Bookmark-style version tabs. The strip is horizontal and scrolls when
         // a project has many attempts; the active version uses the brand fill.
-        if root.tabs.length > 1 : Flickable {
+        if root.tabs.length > 0 : Flickable {
             width: 100%;
             height: 32px;
             content-width: tabs-row.preferred-width;
@@ -285,7 +285,7 @@ export component AttemptWorkbench inherits ModalShell {
                 }
             }
         }
-        if root.tabs.length > 1 : Rectangle {
+        if root.tabs.length > 0 : Rectangle {
             width: 100%;
             height: 1px;
             background: Theme.node-stroke;
