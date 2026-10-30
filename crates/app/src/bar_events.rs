@@ -143,7 +143,6 @@ impl App {
                 Ok(message) => self.set_notice(ui, message, false),
                 Err(message) => self.set_notice(ui, message, true),
             },
-            "free-resize" => self.image_free_resize_toggle(ui, &id),
             _ => {}
         }
     }

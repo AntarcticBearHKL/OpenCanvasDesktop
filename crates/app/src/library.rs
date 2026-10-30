@@ -377,6 +377,7 @@ impl App {
     pub(crate) fn open_project_ui(&mut self, ui: &AppWindow, project: CanvasProject) {
         self.flush_save(ui);
         self.doc = Doc::from_project(&project);
+        let geometry_changed = self.normalize_image_geometry();
         let migration = self.doc.migrate_legacy_workflows();
         let removed_edges = self.doc.remove_attempt_source_edges();
         if !migration.is_empty() {
@@ -413,8 +414,8 @@ impl App {
         self.panel = crate::node_ui::Panel::default();
         self.attempt_modal = None;
         ui.set_attempt_open(false);
-        self.save_dirty = false;
-        self.save_due = None;
+        self.save_dirty = geometry_changed;
+        self.save_due = geometry_changed.then(|| self.now_ms());
         self.sync_all(ui);
     }
 

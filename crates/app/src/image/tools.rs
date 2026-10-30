@@ -1,6 +1,6 @@
 //! Canvas local media pipeline: importing local files as canvas nodes, the
 //! image node quick tools (crop, mask, split, resolution, analysis, copy,
-//! download, free-resize) and the image-stack gallery actions.
+//! download) and the image-stack gallery actions.
 //!
 //! Provenance: `use-canvas-insertion.ts` (file → node insertion, `fitNodeSize`,
 //! the 40px stagger), `canvas-node-crop-dialog.tsx` (normalized crop rect, ratio
@@ -658,6 +658,97 @@ pub fn primary_image(node: &CanvasNodeData) -> Option<&CanvasNodeImage> {
     primary
         .and_then(|id| images.iter().find(|image| image.id == id))
         .or_else(|| images.first())
+}
+
+/// The bitmap's natural dimensions, preferring stored metadata and falling
+/// back to the image header. An Image node uses this for both its initial
+/// card size and every corner resize, so the card can never distort the
+/// picture.
+pub fn image_natural_size(node: &CanvasNodeData) -> Option<(f64, f64)> {
+    if let Some(meta) = node.metadata.as_ref() {
+        if let Some((width, height)) = meta.natural_width.zip(meta.natural_height) {
+            if width > 0.0 && height > 0.0 {
+                return Some((width, height));
+            }
+        }
+    }
+    if let Some(image) = primary_image(node) {
+        if image.natural_width > 0.0 && image.natural_height > 0.0 {
+            return Some((image.natural_width, image.natural_height));
+        }
+    }
+    let text = node_source_text(node)?;
+    let (width, height) = crate::media::decode_dimensions(&text)?;
+    Some((f64::from(width), f64::from(height)))
+}
+
+impl App {
+    /// Locks every Image node to its bitmap's aspect ratio and drops the
+    /// legacy free-resize flag. Called when a project opens, when a generated
+    /// image lands, and before an Image node resize gesture.
+    pub(crate) fn normalize_image_geometry(&mut self) -> bool {
+        let ids: Vec<String> = self
+            .doc
+            .nodes()
+            .iter()
+            .filter(|node| node.node_type == CanvasNodeType::Image)
+            .map(|node| node.id.clone())
+            .collect();
+        let mut changed = false;
+        for id in ids {
+            changed |= self.normalize_image_node_geometry(&id);
+        }
+        changed
+    }
+
+    /// Normalizes one Image node. The width stays put (the user's chosen card
+    /// scale), the height follows the bitmap ratio, and the card grows/shrinks
+    /// around its vertical centre.
+    pub(crate) fn normalize_image_node_geometry(&mut self, id: &str) -> bool {
+        let Some(node) = self.doc.node(id).cloned() else {
+            return false;
+        };
+        if node.node_type != CanvasNodeType::Image {
+            return false;
+        }
+        let Some((natural_width, natural_height)) = image_natural_size(&node) else {
+            // No decodable bitmap: still remove the legacy flag so a future
+            // resize cannot unlock the node.
+            let Some(target) = self.doc.nodes_mut().iter_mut().find(|node| node.id == id) else {
+                return false;
+            };
+            let meta = target
+                .metadata
+                .get_or_insert_with(CanvasNodeMetadata::default);
+            let changed = meta.free_resize.is_some();
+            meta.free_resize = None;
+            return changed;
+        };
+        let ratio = natural_width / natural_height.max(1.0);
+        let width = node.width.max(1.0);
+        let height = (width / ratio).max(1.0);
+        let meta_needs = node.metadata.as_ref().is_none_or(|meta| {
+            meta.free_resize.is_some()
+                || meta.natural_width != Some(natural_width)
+                || meta.natural_height != Some(natural_height)
+        });
+        if !meta_needs && (node.height - height).abs() < 0.01 {
+            return false;
+        }
+        let center_y = node.position.y + node.height / 2.0;
+        let Some(target) = self.doc.nodes_mut().iter_mut().find(|node| node.id == id) else {
+            return false;
+        };
+        target.height = height;
+        target.position.y = center_y - height / 2.0;
+        let meta = target
+            .metadata
+            .get_or_insert_with(CanvasNodeMetadata::default);
+        meta.natural_width = Some(natural_width);
+        meta.natural_height = Some(natural_height);
+        meta.free_resize = None;
+        true
+    }
 }
 
 /// Every `metadata.images` entry of a node.
@@ -1328,34 +1419,6 @@ impl App {
     pub fn select_nodes(&mut self, ids: &[String]) {
         for (index, id) in ids.iter().enumerate() {
             self.doc.select_node(id, index > 0);
-        }
-    }
-
-    /// Free-resize toggle (`onToggleFreeResize`): flips `metadata.freeResize`,
-    /// which `canvas_content::media_fit` reads as `fill` vs `contain`.
-    pub fn image_free_resize_core(&mut self, node_id: &str) -> bool {
-        let now = self.now_ms();
-        let Some(node) = self
-            .doc
-            .nodes_mut()
-            .iter_mut()
-            .find(|node| node.id == node_id)
-        else {
-            return false;
-        };
-        let meta = node
-            .metadata
-            .get_or_insert_with(CanvasNodeMetadata::default);
-        meta.free_resize = Some(!meta.free_resize.unwrap_or(false));
-        self.doc.commit(now);
-        true
-    }
-
-    pub fn image_free_resize_toggle(&mut self, ui: &AppWindow, node_id: &str) {
-        if self.image_free_resize_core(node_id) {
-            self.note_doc_change();
-            self.sync_rows_of(ui, &[node_id.to_string()]);
-            self.sync_hover_bar(ui);
         }
     }
 

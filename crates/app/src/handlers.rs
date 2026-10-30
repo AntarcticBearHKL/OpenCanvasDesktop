@@ -593,6 +593,18 @@ impl App {
         match event.kind {
             PointerKind::Down if event.button == Button::Left => {
                 if let Some(corner) = Corner::from_id(corner) {
+                    // Image nodes are locked to the bitmap's ratio. Normalize
+                    // any legacy card before the gesture starts so the first
+                    // drag already uses the real image ratio. A locked node is
+                    // left untouched: the resize below refuses anyway.
+                    let locked = self
+                        .doc
+                        .node(id)
+                        .is_some_and(open_canvas_core::geometry::is_node_locked);
+                    if !locked && self.normalize_image_node_geometry(id) {
+                        self.note_doc_change();
+                        self.sync_rows_of(ui, &[id.to_string()]);
+                    }
                     self.doc.begin_resize(id, corner, event.pos);
                 }
             }

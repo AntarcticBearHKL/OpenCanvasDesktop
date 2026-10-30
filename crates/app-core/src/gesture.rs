@@ -188,11 +188,15 @@ impl Doc {
             return false;
         }
         let meta = node.metadata.as_ref();
-        let natural = meta.and_then(|m| m.natural_width.zip(m.natural_height));
+        let natural = meta
+            .and_then(|m| m.natural_width.zip(m.natural_height))
+            .filter(|(width, height)| *width > 0.0 && *height > 0.0);
         let ratio = natural.map_or(node.width / node.height.max(1.0), |(w, h)| w / h.max(1.0));
         let keep_ratio = match node.node_type {
-            // builtin-nodes.tsx:20-33 - image unless `freeResize`, video, image-generation.
-            CanvasNodeType::Image => !meta.and_then(|m| m.free_resize).unwrap_or(false),
+            // An Image node is always locked to its bitmap's aspect ratio. The
+            // legacy `freeResize` flag is ignored: old documents may still carry
+            // it, but it must not let the card distort the picture.
+            CanvasNodeType::Image => true,
             CanvasNodeType::Video | CanvasNodeType::ImageGeneration => true,
             _ => false,
         };

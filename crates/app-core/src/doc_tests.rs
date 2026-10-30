@@ -99,6 +99,29 @@ fn resize_honours_min_size_and_ratio_lock() {
 }
 
 #[test]
+fn image_resize_ignores_the_legacy_free_resize_flag() {
+    let mut doc = drag_doc();
+    if let Some(meta) = doc
+        .nodes
+        .iter_mut()
+        .find(|n| n.id == "image")
+        .and_then(|n| n.metadata.as_mut())
+    {
+        meta.free_resize = Some(true);
+    }
+    let start = ScreenPos::new(0.0, 0.0);
+    assert!(doc.begin_resize("image", Corner::BottomRight, start));
+    assert!(doc.resize_to(ScreenPos::new(120.0, 10.0)));
+    let node = doc.node("image").expect("image node");
+    let ratio = node.width / node.height;
+    assert!(
+        (ratio - 340.0 / 240.0).abs() < 1e-9,
+        "the card follows the bitmap ratio: {node:?}"
+    );
+    assert!(doc.end_resize());
+}
+
+#[test]
 fn connect_drag_rejects_image_targets_and_dedups_legal_wires() {
     let mut doc = drag_doc();
     let before = doc.connections().len();

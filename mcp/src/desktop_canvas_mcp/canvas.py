@@ -215,6 +215,7 @@ def add_node(project: dict[str, Any], op: dict[str, Any]) -> str:
         "height": _number(op.get("height"), spec["height"]),
         "metadata": metadata,
     }
+    _lock_image_size(node)
     project.setdefault("nodes", []).append(node)
     return node_id
 
@@ -233,6 +234,37 @@ def _update_node(project: dict[str, Any], op: dict[str, Any]) -> None:
         op.get("metadata") if isinstance(op.get("metadata"), dict) else None,
     )
     node["metadata"] = metadata
+    _lock_image_size(node)
+
+
+def _lock_image_size(node: dict[str, Any]) -> None:
+    """Keep an Image node's card at the bitmap's aspect ratio.
+
+    The desktop app owns the actual bitmap dimensions; the MCP reducer mirrors
+    the same rule for documents it writes. A legacy ``freeResize`` flag is
+    removed rather than honoured.
+    """
+    if node.get("type") != "image":
+        return
+    metadata = node.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+        node["metadata"] = metadata
+    natural_width = _number(metadata.get("naturalWidth"), 0.0)
+    natural_height = _number(metadata.get("naturalHeight"), 0.0)
+    width = max(1.0, _number(node.get("width"), 1.0))
+    if natural_width > 0.0 and natural_height > 0.0:
+        ratio = natural_width / natural_height
+    else:
+        height = max(1.0, _number(node.get("height"), width))
+        ratio = width / height
+    old_height = _number(node.get("height"), width / ratio)
+    height = max(1.0, width / ratio)
+    position = node.setdefault("position", {})
+    position["y"] = _number(position.get("y")) + (old_height - height) / 2.0
+    node["width"] = width
+    node["height"] = height
+    metadata.pop("freeResize", None)
 
 
 def _duplicate_node(project: dict[str, Any], op: dict[str, Any]) -> str:
@@ -622,23 +654,12 @@ def apply_ops(project: dict[str, Any], ops: list[dict[str, Any]]) -> dict[str, A
                 node = find_node(project, str(op.get("nodeId") or ""))
                 node.setdefault("metadata", {})["fontSize"] = _number(op.get("fontSize"), 14.0)
             elif op_type == "set_free_resize":
+                # Legacy op: Image nodes are always ratio-locked now. Keep the
+                # op accepted so old agent calls do not fail, but remove the
+                # flag and re-lock the geometry.
                 node = find_node(project, str(op.get("nodeId") or ""))
-                metadata = node.setdefault("metadata", {})
-                free_resize = op.get("freeResize")
-                if free_resize is None:
-                    free_resize = not bool(metadata.get("freeResize"))
-                metadata["freeResize"] = bool(free_resize)
-                if not free_resize and node.get("type") == "image":
-                    natural_width = _number(metadata.get("naturalWidth"), _number(node.get("width"), 1.0))
-                    natural_height = _number(metadata.get("naturalHeight"), _number(node.get("height"), 1.0))
-                    ratio = natural_width / max(1.0, natural_height)
-                    height = _number(node.get("width")) / ratio
-                    node["position"] = {
-                        "x": _number(node.get("position", {}).get("x")),
-                        "y": _number(node.get("position", {}).get("y"))
-                        + (_number(node.get("height")) - height) / 2.0,
-                    }
-                    node["height"] = height
+                node.setdefault("metadata", {}).pop("freeResize", None)
+                _lock_image_size(node)
             elif op_type == "resize_node":
                 node = find_node(project, str(op.get("nodeId") or ""))
                 node["width"] = _number(op.get("width"), _number(node.get("width")))
@@ -648,6 +669,7 @@ def apply_ops(project: dict[str, Any], ops: list[dict[str, Any]]) -> dict[str, A
                         "x": _number(op["position"].get("x")),
                         "y": _number(op["position"].get("y")),
                     }
+                _lock_image_size(node)
             elif op_type == "set_node_content":
                 node = find_node(project, str(op.get("nodeId") or ""))
                 _set_node_content(node, str(op.get("content") or ""))

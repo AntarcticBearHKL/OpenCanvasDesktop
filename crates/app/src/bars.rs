@@ -119,11 +119,6 @@ pub fn hover_action_rows_with(
         danger,
         active: false,
     };
-    let active_action = |id: &str, active: bool| crate::HoverAction {
-        id: id.into(),
-        danger: false,
-        active,
-    };
     let is_image = node.node_type == CanvasNodeType::Image;
     let has_content = node
         .metadata
@@ -144,12 +139,6 @@ pub fn hover_action_rows_with(
         actions.push(action("ocr", false));
         actions.push(action("segment", false));
         actions.push(action("angle", false));
-        let free_resize = node
-            .metadata
-            .as_ref()
-            .and_then(|meta| meta.free_resize)
-            .unwrap_or(false);
-        actions.push(active_action("free-resize", free_resize));
     }
     if node.node_type == CanvasNodeType::ImageAttempt {
         // One-click shortcut: run the attempt and extract its first output into
@@ -592,7 +581,6 @@ mod tests {
             "ocr",
             "segment",
             "angle",
-            "free-resize",
         ] {
             assert!(ids.contains(&tool.to_string()), "{tool} is offered");
         }
@@ -604,24 +592,10 @@ mod tests {
             !ids.contains(&"download".to_string()) && !ids.contains(&"copy".to_string()),
             "download/copy live in the focused image viewer"
         );
-        // The free-resize toggle reflects the node's stored flag.
-        let actions = hover_action_rows_with(&image, &[]);
-        let free = actions
-            .iter()
-            .find(|action| action.id.as_str() == "free-resize")
-            .cloned()
-            .unwrap_or_default();
-        assert!(!free.active);
-        if let Some(meta) = image.metadata.as_mut() {
-            meta.free_resize = Some(true);
-        }
-        let actions = hover_action_rows_with(&image, &[]);
-        let free = actions
-            .iter()
-            .find(|action| action.id.as_str() == "free-resize")
-            .cloned()
-            .unwrap_or_default();
-        assert!(free.active, "the toggle reports the stored fit mode");
+        assert!(
+            !ids.contains(&"free-resize".to_string()),
+            "Image nodes are always locked to their bitmap ratio"
+        );
         // A stack without content has no upload either (the collect rule is the
         // drag-and-drop path).
         let stack = node("s", CanvasNodeType::ImageStack);

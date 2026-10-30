@@ -480,7 +480,7 @@ fn analysis_ratios_all_produce_in_bounds_rectangles() {
     }
 }
 
-// ---- Copy / download / free-resize ------------------------------------------
+// ---- Copy / download / image geometry ---------------------------------------
 
 #[test]
 fn download_writes_the_stored_bytes_with_the_mime_extension() -> TestResult {
@@ -519,24 +519,62 @@ fn copy_and_download_report_missing_content() -> TestResult {
 }
 
 #[test]
-fn the_free_resize_toggle_flips_the_fit_mode() -> TestResult {
+fn image_node_geometry_is_locked_to_the_bitmap_ratio() -> TestResult {
     let (mut app, _dir) = temp_app()?;
-    let id = image_node(&mut app, &split_surface(4, 4)).ok_or("fixture node")?;
-    assert_eq!(
-        crate::canvas_content::media_fit(app.doc.node(&id).ok_or("node")?),
-        "contain"
-    );
-    assert!(app.image_free_resize_core(&id));
+    let id = image_node(&mut app, &split_surface(4, 2)).ok_or("fixture node")?;
+    {
+        let node = app
+            .doc
+            .nodes_mut()
+            .iter_mut()
+            .find(|node| node.id == id)
+            .ok_or("node")?;
+        node.width = 400.0;
+        node.height = 100.0;
+        node.metadata
+            .get_or_insert_with(CanvasNodeMetadata::default)
+            .free_resize = Some(true);
+    }
+    assert!(app.normalize_image_node_geometry(&id));
     let node = app.doc.node(&id).cloned().ok_or("node")?;
+    assert!((node.height - 200.0).abs() < 1e-9, "{node:?}");
     assert_eq!(
         node.metadata.as_ref().and_then(|meta| meta.free_resize),
-        Some(true)
+        None
     );
-    assert_eq!(crate::canvas_content::media_fit(&node), "fill");
-    assert!(app.image_free_resize_core(&id));
-    let node = app.doc.node(&id).cloned().ok_or("node")?;
     assert_eq!(crate::canvas_content::media_fit(&node), "contain");
-    assert!(!app.image_free_resize_core("nope"));
+    assert!(!app.normalize_image_node_geometry(&id));
+    Ok(())
+}
+
+#[test]
+fn image_geometry_decodes_the_bitmap_when_metadata_is_legacy() -> TestResult {
+    let (mut app, _dir) = temp_app()?;
+    let id = image_node(&mut app, &split_surface(4, 2)).ok_or("fixture node")?;
+    {
+        let node = app
+            .doc
+            .nodes_mut()
+            .iter_mut()
+            .find(|node| node.id == id)
+            .ok_or("node")?;
+        node.width = 400.0;
+        node.height = 100.0;
+        let meta = node
+            .metadata
+            .get_or_insert_with(CanvasNodeMetadata::default);
+        meta.natural_width = Some(0.0);
+        meta.natural_height = Some(0.0);
+        meta.images = None;
+        meta.primary_image_id = None;
+        meta.free_resize = Some(true);
+    }
+    assert!(app.normalize_image_node_geometry(&id));
+    let node = app.doc.node(&id).cloned().ok_or("node")?;
+    assert!((node.height - 200.0).abs() < 1e-9, "{node:?}");
+    let meta = node.metadata.as_ref().ok_or("metadata")?;
+    assert_eq!(meta.natural_width, Some(4.0));
+    assert_eq!(meta.natural_height, Some(2.0));
     Ok(())
 }
 

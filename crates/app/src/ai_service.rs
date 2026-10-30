@@ -2102,6 +2102,11 @@ fn apply_outcome(app: &mut App, node_id: &str, outcome: &AiOutcome) -> Option<St
                 meta.count = Some(i64::try_from(produced_count).unwrap_or(i64::MAX));
             }
             app.doc.commit(now);
+            // A produced Image node starts at the bitmap's own ratio; the
+            // legacy free-resize flag is cleared here too.
+            if app.normalize_image_node_geometry(&id) {
+                app.note_doc_change();
+            }
             Some(id)
         }
         AiOutcome::Video {

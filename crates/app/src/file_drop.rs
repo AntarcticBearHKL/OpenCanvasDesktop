@@ -365,6 +365,7 @@ impl crate::app::App {
         now: u64,
     ) -> String {
         use open_canvas_core::constants::get_node_spec;
+        use open_canvas_core::geometry::fit_node_size;
         use open_canvas_core::node::{CanvasNodeStatus, CanvasNodeType};
 
         let node_type = match kind {
@@ -379,6 +380,12 @@ impl crate::app::App {
         if let Some((width, height)) = dimensions {
             spec.metadata.natural_width = Some(f64::from(width));
             spec.metadata.natural_height = Some(f64::from(height));
+            // A dropped image node starts at its bitmap ratio; later resizes
+            // stay locked to it as well.
+            let (node_width, node_height) =
+                fit_node_size(f64::from(width), f64::from(height), spec.width, spec.height);
+            spec.width = node_width;
+            spec.height = node_height;
         }
         self.doc.create_node_with(node_type, at, spec, now)
     }

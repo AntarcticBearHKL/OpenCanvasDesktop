@@ -345,11 +345,11 @@ RAW
                 natural_height: Some(image.natural_height),
                 mime_type: Some(image.mime_type.clone()),
                 bytes: Some(image.bytes),
-                free_resize: Some(true),
                 ..CanvasNodeMetadata::default()
             });
         }
         self.doc.commit(now);
+        self.normalize_image_node_geometry(&new_id);
         self.note_doc_change();
         self.sync_rows_full(ui);
         self.sync_wires(ui);

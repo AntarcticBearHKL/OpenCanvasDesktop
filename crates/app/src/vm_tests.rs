@@ -163,7 +163,7 @@ fn populated_image_row_decodes_and_fills_the_info_bar() -> TestResult {
 }
 
 #[test]
-fn free_resized_image_uses_fill_fit() -> TestResult {
+fn image_nodes_ignore_legacy_free_resize_and_keep_contain() -> TestResult {
     let node = node(
         CanvasNodeType::Image,
         "image",
@@ -176,7 +176,10 @@ fn free_resized_image_uses_fill_fit() -> TestResult {
     let mut media = MediaCache::default();
     let edit = EditState::default();
     let row = build_row(&node, &mut media, &edit, None, &[]);
-    assert_eq!(row.content_fit, "fill", "freeResize stretches the bitmap");
+    assert_eq!(
+        row.content_fit, "contain",
+        "Image nodes never stretch the bitmap"
+    );
     Ok(())
 }
 

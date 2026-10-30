@@ -106,6 +106,21 @@ fn base64_payload(text: &str) -> Option<(Option<image::ImageFormat>, &str)> {
     Some((None, trimmed))
 }
 
+/// Reads only the dimensions of a stored media string (data URL or raw
+/// base64), without decoding the full bitmap. Image nodes use this to keep
+/// their card geometry locked to the bitmap's own aspect ratio.
+pub fn decode_dimensions(text: &str) -> Option<(u32, u32)> {
+    let (format, payload) = base64_payload(text)?;
+    let bytes = BASE64.decode(payload).ok()?;
+    let reader = match format {
+        Some(format) => image::ImageReader::with_format(std::io::Cursor::new(bytes), format),
+        None => image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .ok()?,
+    };
+    reader.into_dimensions().ok()
+}
+
 /// Decodes a stored media string (data URL or raw base64) into RGBA pixels.
 pub fn decode_pixels(text: &str) -> Option<DecodedPixels> {
     let (format, payload) = base64_payload(text)?;
