@@ -895,7 +895,11 @@ impl crate::app::App {
                 if layout.locate(id) == Some((edge, index)) {
                     return;
                 }
+                let was_empty = layout.groups(edge).is_empty();
                 layout.move_panel(id, edge, index);
+                if was_empty {
+                    layout.set_size(edge, natural_size(studio, edge));
+                }
                 let layout = layout.clone();
                 self.dock_commit(ui, studio, &layout);
             }
@@ -927,7 +931,11 @@ impl crate::app::App {
                 self.dock_drag(studio_id, "", 0.0, 0.0, true);
                 if let Some((edge, index)) = target {
                     let layout = self.dock_layout_mut(studio_id);
+                    let was_empty = layout.groups(edge).is_empty();
                     layout.move_panel(&id, edge, index);
+                    if was_empty {
+                        layout.set_size(edge, natural_size(studio, edge));
+                    }
                     let layout = layout.clone();
                     self.dock_commit(ui, studio, &layout);
                 } else {

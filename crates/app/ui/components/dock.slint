@@ -365,10 +365,15 @@ export component DockDropOverlay inherits Rectangle {
         y: zone == "left|1" || zone == "right|1" ? parent.height * 0.5
             : zone == "bottom|0" ? parent.height * 0.75
             : 0px;
+        // Show only the one zone the pointer is actually over. Inactive zones
+        // stay invisible: no full-screen set of guide lines while dragging.
         background: Theme.dock-drag-target == zone ? StudioTheme.selection-soft : transparent;
-        border-width: 1px;
-        border-color: StudioTheme.selection;
-        opacity: Theme.dock-drag-target == zone ? 1.0 : 0.5;
+        border-width: 0px;
+        opacity: Theme.dock-drag-target == zone ? 1.0 : 0.0;
+        animate opacity {
+            duration: StudioTheme.motion-hover;
+            easing: ease-out;
+        }
     }
 
     if Theme.dock-drag-panel != "" : Rectangle {

@@ -13,6 +13,7 @@ use std::cmp::Ordering;
 
 use serde::{Deserialize, Serialize};
 
+use open_canvas_core::node::CanvasNodeType;
 use open_canvas_ps::{hex_to_rgba, Rgba, Surface};
 
 use crate::app::App;
@@ -1047,12 +1048,45 @@ impl App {
 
     /// The resource-pool scan without a window (unit tests drive this directly).
     pub fn image_asset_refresh_core(&mut self) {
+        let mut rows: Vec<ImageAssetRow> = Vec::new();
+        // A Smart Canvas studio belongs to a canvas project: list that
+        // project's pure Image nodes (never generation/attempt nodes). A
+        // standalone image studio keeps the old cross-project layer pool.
+        if let Some(canvas) = self.editor.as_ref() {
+            let canvas_title = canvas.title.clone();
+            for node in self
+                .doc
+                .nodes()
+                .iter()
+                .filter(|node| node.node_type == CanvasNodeType::Image)
+            {
+                if rows.len() >= 60 {
+                    break;
+                }
+                let Some(text) = crate::image::tools::node_source_text(node) else {
+                    continue;
+                };
+                let Some(surface) = crate::media::decode_surface(&text) else {
+                    continue;
+                };
+                rows.push(ImageAssetRow {
+                    project_id: "canvas".to_string(),
+                    project_title: canvas_title.clone(),
+                    layer_id: node.id.clone(),
+                    layer_name: format!("{canvas_title}/{}", node.title),
+                    key: node.id.clone(),
+                    thumb: thumbnail(&surface, 96),
+                });
+            }
+            self.image.asset_rows = rows;
+            self.image.asset_loaded = true;
+            return;
+        }
         let current = self
             .image
             .meta
             .as_ref()
             .map_or_else(String::new, |meta| meta.id.clone());
-        let mut rows: Vec<ImageAssetRow> = Vec::new();
         for entry in &self.library.index.projects {
             if !crate::image::is_image_kind(&entry.kind) || entry.id == current || rows.len() >= 60
             {
@@ -1186,6 +1220,11 @@ impl App {
 
     /// Loads one resource-pool layer's bitmap out of its source project file.
     fn load_asset_source(&self, project_id: &str, layer_id: &str) -> Option<(String, Surface)> {
+        if project_id == "canvas" {
+            let node = self.doc.node(layer_id)?;
+            let text = crate::image::tools::node_source_text(node)?;
+            return Some((node.title.clone(), crate::media::decode_surface(&text)?));
+        }
         let file = self.store.load_image(project_id).ok()?;
         let (project, bitmaps, _assets) = file.into_state().ok()?;
         let layer = project
@@ -1203,6 +1242,9 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    use open_canvas_core::node::{
+        CanvasNodeData, CanvasNodeMetadata, CanvasNodeStatus, CanvasNodeType, Position,
+    };
     use open_canvas_ps::{Bounds, CanvasPsLayerKind, IdGen, ImageProject};
 
     fn checker_board() -> (ImageProject, HashMap<String, Surface>) {
@@ -1236,6 +1278,51 @@ mod tests {
     fn assets_board_app() -> Result<(App, tempfile::TempDir), Box<dyn std::error::Error>> {
         let (project, bitmaps) = checker_board();
         crate::test_support::app_with_image(project, bitmaps)
+    }
+
+    #[test]
+    fn canvas_asset_pool_lists_only_pure_image_nodes() -> Result<(), Box<dyn std::error::Error>> {
+        let (mut app, _dir) = assets_board_app()?;
+        app.editor = Some(crate::library::EditorMeta {
+            id: "canvas-1".into(),
+            title: "Canvas A".into(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            group_id: None,
+        });
+        let mut surface = Surface::new(4, 2);
+        surface.set(1, 1, [10, 20, 30, 255]);
+        let (content, _bytes) = crate::image::tools::surface_png(&surface)?;
+        let node = |id: &str, kind: CanvasNodeType, title: &str| CanvasNodeData {
+            id: id.into(),
+            node_type: kind,
+            title: title.into(),
+            position: Position::new(0.0, 0.0),
+            width: 100.0,
+            height: 80.0,
+            metadata: Some(CanvasNodeMetadata {
+                content: Some(content.clone()),
+                status: Some(CanvasNodeStatus::Success),
+                ..CanvasNodeMetadata::default()
+            }),
+        };
+        app.doc
+            .nodes_mut()
+            .push(node("img-node", CanvasNodeType::Image, "Banner"));
+        app.doc.nodes_mut().push(node(
+            "attempt-node",
+            CanvasNodeType::ImageAttempt,
+            "Generated",
+        ));
+        app.image_asset_refresh_core();
+        assert_eq!(app.image.asset_rows.len(), 1, "attempts are excluded");
+        let row = &app.image.asset_rows[0];
+        assert_eq!(row.project_id, "canvas");
+        assert_eq!(row.layer_name, "Canvas A/Banner");
+        let before = app.image.project.board_layers.len();
+        app.image_asset_add_core("canvas", "img-node")?;
+        assert_eq!(app.image.project.board_layers.len(), before + 1);
+        Ok(())
     }
 
     #[test]

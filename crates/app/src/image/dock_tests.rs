@@ -66,6 +66,27 @@ fn split_ratio_clamps_between_point_two_and_point_eight() {
 }
 
 #[test]
+fn dropping_a_panel_on_an_empty_edge_restores_that_edges_size() -> TestResult {
+    crate::config_test_support::init_backend()?;
+    let (_dir, store) = crate::config_test_support::temp_store()?;
+    let (ui, app) = crate::config_test_support::new_wired_app(store)?;
+    let studio = image()?;
+    crate::app::with_app(&app, |app| {
+        app.dock_request(&ui, STUDIO_IMAGE, "drag-start", "layers", "", 300.0, 100.0);
+        // Drop in the left quarter: the left edge was empty in the shipped
+        // default, so the move must also restore its natural width.
+        app.dock_request(&ui, STUDIO_IMAGE, "drag-end", "", "", 10.0, 100.0);
+        assert_eq!(app.image.dock.locate("layers"), Some((DockEdge::Left, 0)));
+        assert_eq!(
+            app.image.dock.size(DockEdge::Left),
+            studio.sizes.left,
+            "an empty edge gets its natural size back"
+        );
+    });
+    Ok(())
+}
+
+#[test]
 fn move_panel_carries_it_to_another_edge() -> TestResult {
     let studio = image()?;
     let mut layout = default_layout(STUDIO_IMAGE);

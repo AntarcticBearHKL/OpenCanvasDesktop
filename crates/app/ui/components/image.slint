@@ -100,6 +100,7 @@ component StudioMenuTab inherits Rectangle {
     }
 
     HorizontalLayout {
+        height: 100%;
         padding-left: 9px;
         padding-right: 9px;
         cross-axis-alignment: center;
@@ -160,7 +161,7 @@ component FilterMenuEntry inherits Rectangle {
             root.opened(root.y);
         }
         hovered(row-y) => {
-            root.opened(row-y);
+            root.opened(root.y);
         }
     }
 }

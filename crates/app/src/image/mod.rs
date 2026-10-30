@@ -1189,8 +1189,9 @@ impl App {
         self.open_image_ui(ui, file);
         if self.view == crate::app::View::Image {
             self.image.origin_canvas = origin;
-            // The back arrow and the hold ring depend on this mode flag; the
-            // initial open sync ran before the origin was known.
+            // The back arrow, the hold ring and the canvas-scoped asset pool
+            // depend on the origin; the initial open sync ran before it existed.
+            self.image_asset_refresh_core();
             self.sync_image(ui);
         }
     }
