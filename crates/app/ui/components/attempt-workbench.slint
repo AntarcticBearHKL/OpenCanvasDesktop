@@ -274,13 +274,6 @@ export component AttemptWorkbench inherits ModalShell {
                             max-lines: 1;
                             overflow: elide;
                         }
-
-                        if tab.has-output : Rectangle {
-                            width: 6px;
-                            height: 6px;
-                            border-radius: 3px;
-                            background: tab.current ? Theme.brand-foreground : Theme.node-success;
-                        }
                     }
                 }
             }
