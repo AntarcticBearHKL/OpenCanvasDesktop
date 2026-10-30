@@ -2324,3 +2324,41 @@ fn attempt_card_renders_the_1_to_9_version_band() -> TestResult {
     image.save(&path)?;
     Ok(())
 }
+
+#[test]
+fn attempt_card_elides_long_copy() -> TestResult {
+    init_backend_allow_existing();
+    let buffer = render(
+        &CanvasNodeType::ImageAttempt,
+        "image-attempt",
+        false,
+        |ui| {
+            ui.set_probe_attempt_version(12);
+            ui.set_probe_attempt_title(
+                "O11A1 — icon v4 whale with a title that must stay on one line".into(),
+            );
+            ui.set_probe_attempt_reason(
+                "Raised the camera, warmed the light, moved the subject and tightened the crop"
+                    .into(),
+            );
+            ui.set_body(
+                "Flat vector software app icon, square 1:1 composition, one rounded-square tile \
+                 that fills the frame, only solid flat colors, absolutely no gradients, no glow, \
+                 no glass, no 3D, no shading, no shadows, no textures, no tech effects, simple \
+                 geometric shapes, crisp clean edges, generous negative space, no text, no letters."
+                    .into(),
+            );
+            ui.set_content_image(red_image());
+        },
+    )?;
+    let pixels: Vec<u8> = buffer
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(buffer.width(), buffer.height(), pixels)
+        .ok_or("attempt card snapshot size")?;
+    let path = std::env::temp_dir().join("open-canvas-attempt-card-long.png");
+    image.save(&path)?;
+    Ok(())
+}
