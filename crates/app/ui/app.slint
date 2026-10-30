@@ -408,7 +408,9 @@ export component AppWindow inherits Window {
     in-out property <string> attempt-id: "";
     in-out property <string> attempt-prompt: "";
     in-out property <string> attempt-model: "";
+    in-out property <[string]> attempt-model-options: [];
     in-out property <string> attempt-size: "";
+    in-out property <bool> attempt-size-custom: false;
     in-out property <string> attempt-quality: "";
     in-out property <int> attempt-count: 1;
     in-out property <int> attempt-version: 1;
@@ -420,6 +422,7 @@ export component AppWindow inherits Window {
     in-out property <int> attempt-image-count: 0;
     in-out property <image> attempt-image;
     in-out property <bool> attempt-has-image: false;
+    in-out property <bool> attempt-has-output: false;
     in-out property <string> attempt-trace: "";
     callback attempt-prompt-edited(string);
     callback attempt-version-edited(string);
@@ -2366,7 +2369,9 @@ export component AppWindow inherits Window {
         node-id: root.attempt-id;
         prompt: root.attempt-prompt;
         model: root.attempt-model;
+        model-options: root.attempt-model-options;
         size: root.attempt-size;
+        size-custom: root.attempt-size-custom;
         quality: root.attempt-quality;
         count: root.attempt-count;
         version: root.attempt-version;
@@ -2378,6 +2383,7 @@ export component AppWindow inherits Window {
         image-count: root.attempt-image-count;
         image: root.attempt-image;
         has-image: root.attempt-has-image;
+        has-output: root.attempt-has-output;
         trace: root.attempt-trace;
         prompt-edited(text) => { root.attempt-prompt-edited(text); }
         version-edited(text) => { root.attempt-version-edited(text); }

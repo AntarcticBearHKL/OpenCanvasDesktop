@@ -561,6 +561,43 @@ fn attempt_workbench_renders_centered_prompt_config_and_trace() -> TestResult {
 }
 
 #[test]
+fn attempt_workbench_renders_editable_flat_controls() -> TestResult {
+    init_backend()?;
+    let buffer = render_editor_shared(|ui, _app| {
+        ui.set_attempt_open(true);
+        ui.set_attempt_prompt("A flat vector icon of a whale, pastel background".into());
+        ui.set_attempt_model("openai/gpt-image-2.5-sunburst".into());
+        ui.set_attempt_model_options(ModelRc::new(VecModel::from(vec![
+            slint::SharedString::from("openai/gpt-image-2.5-sunburst"),
+            slint::SharedString::from("openai/gpt-image-2"),
+        ])));
+        ui.set_attempt_size("1536x1024".into());
+        ui.set_attempt_size_custom(false);
+        ui.set_attempt_quality("high".into());
+        ui.set_attempt_count(3);
+        ui.set_attempt_version(5);
+        ui.set_attempt_version_text("5".into());
+        ui.set_attempt_intent("whale icon".into());
+        ui.set_attempt_reason("Initial version".into());
+        ui.set_attempt_frozen(false);
+        ui.set_attempt_run_count(0);
+        ui.set_attempt_image_count(0);
+        ui.set_attempt_has_image(false);
+        ui.set_attempt_trace("No trace recorded for this attempt yet.".into());
+    })?;
+    let pixels: Vec<u8> = buffer
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(buffer.width(), buffer.height(), pixels)
+        .ok_or("editable workbench snapshot size")?;
+    let path = std::env::temp_dir().join("open-canvas-attempt-workbench-editable.png");
+    image.save(&path)?;
+    Ok(())
+}
+
+#[test]
 fn image_focus_modal_renders_a_borderless_stage_and_floating_toolbar() -> TestResult {
     init_backend()?;
     let content = red_png_data_url()?;

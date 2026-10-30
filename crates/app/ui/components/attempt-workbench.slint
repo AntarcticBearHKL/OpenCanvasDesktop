@@ -2,64 +2,192 @@ import { Theme } from "../theme.slint";
 import { Icons } from "icons.slint";
 import { ModalShell } from "modals.slint";
 
-// A compact, opaque field row. TextInput itself has no background/border in
-// Slint, so the shell rectangle is what makes the config read as a form instead
-// of loose text.
-component FieldRow inherits Rectangle {
-    in property <string> label: "";
+// A flat select. The field itself is a soft surface with no outline; the
+// options open as a small floating list so the config rows keep their rhythm.
+component FlatSelect inherits Rectangle {
     in property <string> value: "";
+    in property <[string]> options: [];
     in property <bool> read-only: false;
-    callback edited(string);
+    in-out property <bool> open: false;
+    callback picked(string);
 
-    height: 34px;
+    height: 32px;
+    border-radius: 6px;
+    background: Theme.muted;
+    clip: false;
 
-    Text {
-        x: 0px;
-        y: 0px;
+    head := Rectangle {
         width: 100%;
-        height: 12px;
-        text: root.label;
-        font-size: 10px;
-        color: Theme.node-muted;
-        horizontal-alignment: left;
-        vertical-alignment: center;
-    }
+        height: 100%;
+        background: transparent;
 
-    Rectangle {
-        x: 0px;
-        y: 14px;
-        width: 100%;
-        height: 20px;
-        border-radius: Theme.radius-sm;
-        border-width: 1px;
-        border-color: Theme.node-stroke;
-        background: root.read-only ? Theme.muted : Theme.card;
-
-        TextInput {
-            x: 8px;
-            y: 0px;
-            width: parent.width - 16px;
+        Text {
+            x: 10px;
+            width: parent.width - 34px;
             height: 100%;
-            text: root.value;
-            read-only: root.read-only;
-            single-line: true;
+            text: root.value != "" ? root.value : "Select";
             font-size: 12px;
             color: root.read-only ? Theme.node-muted : Theme.node-text;
             vertical-alignment: center;
-            edited => {
-                root.edited(self.text);
+            overflow: elide;
+        }
+        Path {
+            x: parent.width - 20px;
+            y: 11px;
+            width: 10px;
+            height: 10px;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M 5 9 L 12 16 L 19 9";
+            fill: transparent;
+            stroke-width: 1.8px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            stroke: root.read-only ? Theme.node-muted : Theme.node-placeholder;
+        }
+        head-ta := TouchArea {
+            width: 100%;
+            height: 100%;
+            enabled: !root.read-only;
+            mouse-cursor: root.read-only ? default : pointer;
+            clicked => {
+                root.open = !root.open;
+            }
+        }
+    }
+
+    if root.open : Rectangle {
+        y: 36px;
+        width: 100%;
+        height: root.options.length * 26px + 8px;
+        z: 100;
+        border-radius: 6px;
+        background: Theme.card;
+        clip: true;
+
+        VerticalLayout {
+            x: 4px;
+            y: 4px;
+            width: parent.width - 8px;
+            height: self.preferred-height;
+            spacing: 0px;
+
+            for option in root.options : Rectangle {
+                height: 26px;
+                border-radius: 4px;
+                background: option-ta.has-hover ? Theme.hover : transparent;
+                animate background {
+                    duration: Theme.motion-hover;
+                    easing: ease-out;
+                }
+                option-ta := TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.picked(option);
+                        root.open = false;
+                    }
+                }
+                Text {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    height: 100%;
+                    text: option;
+                    font-size: 12px;
+                    color: Theme.node-text;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+// A compact, flat number stepper. The three zones share one soft surface.
+component CountStepper inherits Rectangle {
+    in property <int> value: 1;
+    in property <bool> read-only: false;
+    callback changed(int);
+
+    height: 32px;
+    border-radius: 6px;
+    background: Theme.muted;
+
+    HorizontalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 0px;
+
+        Rectangle {
+            width: 30px;
+            height: 100%;
+            border-radius: 6px;
+            background: minus-ta.has-hover && !root.read-only ? Theme.hover : transparent;
+            minus-ta := TouchArea {
+                width: 100%;
+                height: 100%;
+                enabled: !root.read-only;
+                mouse-cursor: root.read-only ? default : pointer;
+                clicked => {
+                    root.changed((root.value - 1).max(1));
+                }
+            }
+            Text {
+                width: 100%;
+                height: 100%;
+                text: "−";
+                font-size: 16px;
+                color: root.read-only ? Theme.node-muted : Theme.node-text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            height: 100%;
+            text: "" + root.value;
+            font-size: 12px;
+            font-weight: 600;
+            color: root.read-only ? Theme.node-muted : Theme.node-text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            width: 30px;
+            height: 100%;
+            border-radius: 6px;
+            background: plus-ta.has-hover && !root.read-only ? Theme.hover : transparent;
+            plus-ta := TouchArea {
+                width: 100%;
+                height: 100%;
+                enabled: !root.read-only;
+                mouse-cursor: root.read-only ? default : pointer;
+                clicked => {
+                    root.changed((root.value + 1).min(4));
+                }
+            }
+            Text {
+                width: 100%;
+                height: 100%;
+                text: "+";
+                font-size: 15px;
+                color: root.read-only ? Theme.node-muted : Theme.node-text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
             }
         }
     }
 }
 
 // Centered workbench for one Image Attempt. The card outside is read-only;
-// this is the only place prompt/config are edited. Drafts are editable; a
-// frozen attempt shows the same fields read-only and offers "Run again".
+// this is the only place prompt/config are edited. A generated attempt is
+// immutable: every editable field greys out, while duplicate/extract remain.
 export component AttemptWorkbench inherits ModalShell {
     in property <string> node-id: "";
     in-out property <string> prompt: "";
     in property <string> model: "";
+    in property <[string]> model-options: [];
     in property <string> size: "";
     in property <string> quality: "";
     in property <int> count: 1;
@@ -72,7 +200,9 @@ export component AttemptWorkbench inherits ModalShell {
     in property <int> image-count: 0;
     in property <image> image;
     in property <bool> has-image: false;
+    in property <bool> has-output: false;
     in property <string> trace: "";
+    in-out property <bool> size-custom: false;
 
     callback prompt-edited(string);
     callback version-edited(string);
@@ -82,6 +212,10 @@ export component AttemptWorkbench inherits ModalShell {
     callback duplicate();
     callback extract();
 
+    // A generated output makes the version immutable. Frozen legacy attempts
+    // are read-only for the same reason.
+    property <bool> read-only: root.frozen || root.has-output || root.has-image || root.image-count > 0;
+
     title: "Image Attempt · v" + root.version-text + (root.intent != "" ? " · " + root.intent : "");
     tier: "wide";
     panel-width: Math.min(1000px, root.width - 24px);
@@ -90,7 +224,7 @@ export component AttemptWorkbench inherits ModalShell {
     reveal: 1;
 
     HorizontalLayout {
-        spacing: 20px;
+        spacing: 24px;
 
         // ---- compose ----------------------------------------------------
         Rectangle {
@@ -98,10 +232,12 @@ export component AttemptWorkbench inherits ModalShell {
             background: transparent;
 
             VerticalLayout {
-                spacing: 10px;
+                spacing: 4px;
 
+                // Prompt header: the version field is flush right and its text
+                // is right-aligned, not a centred badge.
                 HorizontalLayout {
-                    height: 24px;
+                    height: 20px;
                     spacing: 8px;
                     Text {
                         text: "Prompt";
@@ -111,48 +247,45 @@ export component AttemptWorkbench inherits ModalShell {
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                     }
+                    Text {
+                        visible: root.read-only;
+                        text: "read-only";
+                        font-size: 10px;
+                        color: Theme.node-muted;
+                        vertical-alignment: center;
+                    }
                     Rectangle {
-                        width: 62px;
-                        height: 24px;
-                        border-radius: Theme.radius-sm;
-                        border-width: 1px;
-                        border-color: Theme.border-strong;
-                        background: Theme.card;
+                        width: 58px;
+                        height: 20px;
+                        border-radius: 5px;
+                        background: Theme.muted;
 
                         TextInput {
                             x: 6px;
                             width: parent.width - 12px;
                             height: 100%;
                             text: "v" + root.version-text;
+                            read-only: root.read-only;
                             single-line: true;
                             font-size: 11px;
                             font-weight: 700;
-                            color: Theme.node-text;
-                            horizontal-alignment: center;
+                            color: root.read-only ? Theme.node-muted : Theme.node-text;
+                            horizontal-alignment: right;
                             vertical-alignment: center;
                             edited => {
                                 root.version-edited(self.text);
                             }
                         }
                     }
-                    Text {
-                        visible: root.frozen;
-                        text: "read-only";
-                        font-size: 11px;
-                        color: Theme.node-muted;
-                        vertical-alignment: center;
-                    }
                 }
 
-                // The prompt is the one field that can be arbitrarily long.
-                // Keep it in a clipped, scrollable card so its text can never
-                // paint over Config or the action row.
+                // Prompt is the one long field. A flat soft surface keeps it
+                // legible without another outline; the gap above is deliberately
+                // tight.
                 Rectangle {
-                    height: 150px;
-                    border-radius: Theme.radius-md;
-                    border-width: 1px;
-                    border-color: Theme.node-stroke;
-                    background: Theme.card;
+                    height: 160px;
+                    border-radius: 8px;
+                    background: Theme.muted;
                     clip: true;
 
                     Flickable {
@@ -164,14 +297,14 @@ export component AttemptWorkbench inherits ModalShell {
                         content-height: 340px;
                         interactive: true;
 
-                        prompt-input := TextInput {
+                        TextInput {
                             width: parent.width;
                             height: 320px;
                             text: root.prompt;
-                            read-only: root.frozen;
+                            read-only: root.read-only;
                             wrap: word-wrap;
                             font-size: 13px;
-                            color: Theme.node-text;
+                            color: root.read-only ? Theme.node-muted : Theme.node-text;
                             vertical-alignment: top;
                             edited => {
                                 root.prompt-edited(self.text);
@@ -180,120 +313,152 @@ export component AttemptWorkbench inherits ModalShell {
                     }
                 }
 
-                HorizontalLayout {
-                    height: 20px;
-                    Text {
-                        text: "Config";
-                        font-size: 12px;
-                        font-weight: 700;
-                        color: Theme.node-text;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-                    Text {
-                        text: root.model;
-                        font-size: 10px;
-                        color: Theme.node-muted;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                }
-
-                Rectangle {
-                    height: 165px;
-                    border-radius: Theme.radius-md;
-                    border-width: 1px;
-                    border-color: Theme.node-stroke;
-                    background: Theme.card;
-
-                    VerticalLayout {
-                        padding: 8px;
-                        spacing: 4px;
-
-                        FieldRow {
-                            label: "Model";
-                            value: root.model;
-                            read-only: root.frozen;
-                            edited(value) => {
-                                root.config-edited("model", value);
-                            }
-                        }
-                        FieldRow {
-                            label: "Size";
-                            value: root.size;
-                            read-only: root.frozen;
-                            edited(value) => {
-                                root.config-edited("size", value);
-                            }
-                        }
-                        FieldRow {
-                            label: "Quality";
-                            value: root.quality;
-                            read-only: root.frozen;
-                            edited(value) => {
-                                root.config-edited("quality", value);
-                            }
-                        }
-                        FieldRow {
-                            label: "Count";
-                            value: "" + root.count;
-                            read-only: root.frozen;
-                            edited(value) => {
-                                root.config-edited("count", value);
-                            }
-                        }
-                    }
-                }
-
                 Text {
-                    height: 14px;
-                    text: "Why this version";
-                    font-size: 11px;
-                    font-weight: 600;
+                    height: 20px;
+                    text: "Config";
+                    font-size: 12px;
+                    font-weight: 700;
                     color: Theme.node-text;
                     vertical-alignment: center;
                 }
-                Rectangle {
-                    height: 40px;
-                    border-radius: Theme.radius-md;
-                    border-width: 1px;
-                    border-color: Theme.node-stroke;
-                    background: Theme.card;
-                    clip: true;
 
-                    TextInput {
-                        x: 8px;
-                        y: 4px;
-                        width: parent.width - 16px;
-                        height: parent.height - 8px;
-                        text: root.reason;
-                        wrap: word-wrap;
-                        font-size: 11px;
-                        color: Theme.node-text;
-                        vertical-alignment: top;
-                        edited => {
-                            root.reason-edited(self.text);
+                // Flat config rows: label on the left, control on the right.
+                // No outer card and no per-field outline.
+                VerticalLayout {
+                    spacing: 6px;
+
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 10px;
+                        Text {
+                            width: 72px;
+                            height: 100%;
+                            text: "Model";
+                            font-size: 11px;
+                            color: Theme.node-muted;
+                            vertical-alignment: center;
+                        }
+                        FlatSelect {
+                            horizontal-stretch: 1;
+                            value: root.model;
+                            options: root.model-options;
+                            read-only: root.read-only;
+                            picked(option) => {
+                                root.config-edited("model", option);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 10px;
+                        Text {
+                            width: 72px;
+                            height: 100%;
+                            text: "Size";
+                            font-size: 11px;
+                            color: Theme.node-muted;
+                            vertical-alignment: center;
+                        }
+                        FlatSelect {
+                            horizontal-stretch: 1;
+                            value: root.size-custom ? "Custom…" : root.size;
+                            options: ["auto", "1:1", "4:3", "16:9", "9:16", "1024x1024", "1536x1024", "1024x1536", "2048x2048", "Custom…"];
+                            read-only: root.read-only;
+                            picked(option) => {
+                                if option == "Custom…" {
+                                    root.size-custom = true;
+                                } else {
+                                    root.size-custom = false;
+                                    root.config-edited("size", option);
+                                }
+                            }
+                        }
+                    }
+                    if root.size-custom : HorizontalLayout {
+                        height: 32px;
+                        padding-left: 82px;
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: 32px;
+                            border-radius: 6px;
+                            background: Theme.muted;
+
+                            TextInput {
+                                x: 10px;
+                                width: parent.width - 20px;
+                                height: 100%;
+                                text: root.size;
+                                read-only: root.read-only;
+                                single-line: true;
+                                font-size: 12px;
+                                color: root.read-only ? Theme.node-muted : Theme.node-text;
+                                vertical-alignment: center;
+                                edited => {
+                                    root.config-edited("size", self.text);
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 10px;
+                        Text {
+                            width: 72px;
+                            height: 100%;
+                            text: "Quality";
+                            font-size: 11px;
+                            color: Theme.node-muted;
+                            vertical-alignment: center;
+                        }
+                        FlatSelect {
+                            horizontal-stretch: 1;
+                            value: root.quality;
+                            options: ["auto", "low", "medium", "high"];
+                            read-only: root.read-only;
+                            picked(option) => {
+                                root.config-edited("quality", option);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        height: 32px;
+                        spacing: 10px;
+                        Text {
+                            width: 72px;
+                            height: 100%;
+                            text: "Count";
+                            font-size: 11px;
+                            color: Theme.node-muted;
+                            vertical-alignment: center;
+                        }
+                        CountStepper {
+                            horizontal-stretch: 1;
+                            value: root.count;
+                            read-only: root.read-only;
+                            changed(value) => {
+                                root.config-edited("count", "" + value);
+                            }
                         }
                     }
                 }
 
-                Text {
-                    text: root.run-count + " runs · " + root.image-count + " images";
-                    font-size: 11px;
-                    color: Theme.node-muted;
-                    height: 18px;
-                    vertical-alignment: center;
-                }
+                Rectangle { vertical-stretch: 1; background: transparent; }
 
+                // 7 : 1.5 : 1.5 action row. The last two are icon-only.
                 HorizontalLayout {
-                    spacing: 8px;
+                    width: 100%;
                     height: 38px;
+                    spacing: 8px;
 
                     action := Rectangle {
-                        width: 158px;
+                        width: (parent.width - 16px) * 0.7;
                         height: 38px;
-                        border-radius: Theme.radius-md;
-                        background: action-ta.has-hover ? Theme.node-accent : Theme.brand;
+                        border-radius: 7px;
+                        background: root.read-only ? Theme.muted : (action-ta.has-hover ? Theme.node-accent : Theme.brand);
                         animate background {
                             duration: Theme.motion-hover;
                             easing: ease-out;
@@ -302,7 +467,8 @@ export component AttemptWorkbench inherits ModalShell {
                         action-ta := TouchArea {
                             width: 100%;
                             height: 100%;
-                            mouse-cursor: pointer;
+                            enabled: !root.read-only;
+                            mouse-cursor: root.read-only ? default : pointer;
                             clicked => {
                                 root.run();
                             }
@@ -311,7 +477,7 @@ export component AttemptWorkbench inherits ModalShell {
                             width: 100%;
                             height: 100%;
                             alignment: center;
-                            spacing: 6px;
+                            spacing: 7px;
                             Rectangle {
                                 width: 14px;
                                 height: 100%;
@@ -326,26 +492,24 @@ export component AttemptWorkbench inherits ModalShell {
                                     fill: transparent;
                                     stroke-width: 2px;
                                     stroke-line-cap: round;
-                                    stroke: Theme.brand-foreground;
+                                    stroke: root.read-only ? Theme.node-muted : Theme.brand-foreground;
                                 }
                             }
                             Text {
-                                text: root.frozen ? "Run again" : "Run with agent";
+                                text: "Run";
                                 font-size: 12px;
                                 font-weight: 600;
-                                color: Theme.brand-foreground;
+                                color: root.read-only ? Theme.node-muted : Theme.brand-foreground;
                                 vertical-alignment: center;
                             }
                         }
                     }
 
                     Rectangle {
-                        width: 112px;
+                        width: (parent.width - 16px) * 0.15;
                         height: 38px;
-                        border-radius: Theme.radius-md;
-                        border-width: 1px;
-                        border-color: Theme.node-stroke;
-                        background: duplicate-ta.has-hover ? Theme.hover : Theme.card;
+                        border-radius: 7px;
+                        background: duplicate-ta.has-hover ? Theme.hover : Theme.muted;
                         animate background {
                             duration: Theme.motion-hover;
                             easing: ease-out;
@@ -358,22 +522,27 @@ export component AttemptWorkbench inherits ModalShell {
                                 root.duplicate();
                             }
                         }
-                        Text {
-                            text: "Duplicate";
-                            font-size: 12px;
-                            color: Theme.node-text;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                        Path {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            width: 16px;
+                            height: 16px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.copy;
+                            fill: transparent;
+                            stroke-width: 1.8px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                            stroke: Theme.node-text;
                         }
                     }
 
                     Rectangle {
-                        width: 112px;
+                        width: (parent.width - 16px) * 0.15;
                         height: 38px;
-                        border-radius: Theme.radius-md;
-                        border-width: 1px;
-                        border-color: Theme.node-stroke;
-                        background: extract-ta.has-hover ? Theme.hover : Theme.card;
+                        border-radius: 7px;
+                        background: extract-ta.has-hover ? Theme.hover : Theme.muted;
                         animate background {
                             duration: Theme.motion-hover;
                             easing: ease-out;
@@ -386,49 +555,45 @@ export component AttemptWorkbench inherits ModalShell {
                                 root.extract();
                             }
                         }
-                        Text {
-                            text: "Extract image";
-                            font-size: 12px;
-                            color: Theme.node-text;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                        Path {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            width: 16px;
+                            height: 16px;
+                            viewbox-width: 24;
+                            viewbox-height: 24;
+                            commands: Icons.image;
+                            fill: transparent;
+                            stroke-width: 1.8px;
+                            stroke-line-cap: round;
+                            stroke-line-join: round;
+                            stroke: Theme.node-text;
                         }
                     }
                 }
             }
         }
 
-        // ---- result + trace ---------------------------------------------
+        // ---- output + merged why/trace ----------------------------------
         Rectangle {
             horizontal-stretch: 1;
             background: transparent;
 
             VerticalLayout {
-                spacing: 10px;
+                spacing: 8px;
 
-                HorizontalLayout {
-                    height: 24px;
-                    Text {
-                        text: "Output";
-                        font-size: 12px;
-                        font-weight: 700;
-                        color: Theme.node-text;
-                        vertical-alignment: center;
-                        horizontal-stretch: 1;
-                    }
-                    Text {
-                        text: root.image-count + " images";
-                        font-size: 11px;
-                        color: Theme.node-muted;
-                        vertical-alignment: center;
-                    }
+                Text {
+                    height: 22px;
+                    text: "Output";
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: Theme.node-text;
+                    vertical-alignment: center;
                 }
 
                 Rectangle {
                     height: 300px;
-                    border-radius: Theme.radius-md;
-                    border-width: 1px;
-                    border-color: Theme.node-stroke;
+                    border-radius: 8px;
                     background: Theme.muted;
                     clip: true;
 
@@ -450,37 +615,61 @@ export component AttemptWorkbench inherits ModalShell {
                 }
 
                 Text {
+                    height: 20px;
                     text: "Agent trace";
                     font-size: 12px;
                     font-weight: 700;
                     color: Theme.node-text;
-                    height: 20px;
                     vertical-alignment: center;
                 }
 
+                // Why and the agent trace are one surface: the version note is
+                // the first editable line, followed by the recorded timeline.
                 Rectangle {
                     vertical-stretch: 1;
-                    border-radius: Theme.radius-md;
-                    border-width: 1px;
-                    border-color: Theme.node-stroke;
-                    background: Theme.card;
+                    border-radius: 8px;
+                    background: Theme.muted;
                     clip: true;
 
-                    Flickable {
-                        width: 100%;
-                        height: 100%;
-                        content-width: self.width;
-                        content-height: Math.max(self.height, trace-text.preferred-height + 20px);
-                        interactive: true;
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 6px;
 
-                        trace-text := Text {
-                            x: 12px;
-                            y: 10px;
-                            width: parent.width - 24px;
-                            text: root.trace != "" ? root.trace : "No trace recorded for this attempt yet.";
+                        TextInput {
+                            width: 100%;
+                            height: 24px;
+                            text: root.reason;
+                            read-only: root.read-only;
+                            single-line: true;
                             font-size: 11px;
-                            color: Theme.node-muted;
-                            wrap: word-wrap;
+                            color: root.read-only ? Theme.node-muted : Theme.node-text;
+                            vertical-alignment: center;
+                            edited => {
+                                root.reason-edited(self.text);
+                            }
+                        }
+
+                        Rectangle {
+                            width: 100%;
+                            height: 1px;
+                            background: Theme.node-stroke;
+                            opacity: 0.55;
+                        }
+
+                        Flickable {
+                            width: 100%;
+                            vertical-stretch: 1;
+                            content-width: self.width;
+                            content-height: Math.max(self.height, trace-text.preferred-height + 12px);
+                            interactive: true;
+
+                            trace-text := Text {
+                                width: parent.width;
+                                text: root.trace != "" ? root.trace : "No trace recorded for this attempt yet.";
+                                font-size: 11px;
+                                color: Theme.node-muted;
+                                wrap: word-wrap;
+                            }
                         }
                     }
                 }

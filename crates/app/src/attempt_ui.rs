@@ -1,8 +1,9 @@
 //! Image Attempt workbench: the centered prompt/config/result/trace modal and
 //! the duplicate/extract operations that keep the version graph coherent.
 
-use slint::ComponentHandle;
+use slint::{ComponentHandle, ModelRc, VecModel};
 
+use open_canvas_ai::config::{ModelCapability, IMAGE_MODEL};
 use open_canvas_core::node::{
     CanvasNodeImage, CanvasNodeMetadata, CanvasNodeStatus, CanvasNodeType,
 };
@@ -20,6 +21,32 @@ fn primary_image(meta: &CanvasNodeMetadata) -> Option<CanvasNodeImage> {
         .or_else(|| images.first())
         .cloned()
 }
+
+/// A version with a produced image is immutable: prompt, config, version and
+/// why-note can no longer be edited. Duplicate creates a fresh draft instead.
+fn attempt_has_output(meta: &CanvasNodeMetadata) -> bool {
+    meta.attempt_runs
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .any(|run| !run.images.is_empty())
+        || meta
+            .images
+            .as_ref()
+            .is_some_and(|images| !images.is_empty())
+}
+
+const ATTEMPT_SIZE_PRESETS: [&str; 9] = [
+    "auto",
+    "1:1",
+    "4:3",
+    "16:9",
+    "9:16",
+    "1024x1024",
+    "1536x1024",
+    "1024x1536",
+    "2048x2048",
+];
 
 impl App {
     /// Opens the centered workbench for one attempt. The card itself stays
@@ -105,9 +132,16 @@ Model: {}
             })
             .unwrap_or_default();
         ui.set_attempt_id(id.into());
+        let model = meta.model.clone().unwrap_or_default();
+        let size = meta.size.clone().unwrap_or_else(|| "1:1".into());
+        let model_options = self.attempt_model_options(&model);
         ui.set_attempt_prompt(meta.prompt.clone().unwrap_or_default().into());
-        ui.set_attempt_model(meta.model.clone().unwrap_or_default().into());
-        ui.set_attempt_size(meta.size.clone().unwrap_or_else(|| "1:1".into()).into());
+        ui.set_attempt_model(model.into());
+        let model_options: Vec<slint::SharedString> =
+            model_options.into_iter().map(Into::into).collect();
+        ui.set_attempt_model_options(ModelRc::new(VecModel::from(model_options)));
+        ui.set_attempt_size(size.clone().into());
+        ui.set_attempt_size_custom(!ATTEMPT_SIZE_PRESETS.contains(&size.as_str()));
         ui.set_attempt_quality(meta.quality.clone().unwrap_or_else(|| "auto".into()).into());
         ui.set_attempt_count(i32::try_from(meta.count.unwrap_or(1)).unwrap_or(1));
         let version = meta.attempt_version.unwrap_or(1);
@@ -120,6 +154,7 @@ Model: {}
         ui.set_attempt_image_count(i32::try_from(image_count).unwrap_or(i32::MAX));
         ui.set_attempt_image(image.clone());
         ui.set_attempt_has_image(image.size().width > 0);
+        ui.set_attempt_has_output(attempt_has_output(&meta));
         let timeline = meta
             .agent_steps
             .as_deref()
@@ -160,6 +195,26 @@ RAW
         self.attempt_modal = Some(id.to_string());
     }
 
+    fn attempt_model_options(&self, current: &str) -> Vec<String> {
+        let mut options: Vec<String> = Vec::new();
+        for channel in &self.config.channels {
+            for model in &channel.models {
+                if model.capability == ModelCapability::Image
+                    && !options.iter().any(|option| option == &model.name)
+                {
+                    options.push(model.name.clone());
+                }
+            }
+        }
+        if !current.is_empty() && !options.iter().any(|option| option == current) {
+            options.insert(0, current.to_string());
+        }
+        if options.is_empty() {
+            options.push(IMAGE_MODEL.to_string());
+        }
+        options
+    }
+
     pub fn attempt_close(&mut self, ui: &AppWindow) {
         let Some(id) = self.attempt_modal.take() else {
             ui.set_attempt_open(false);
@@ -171,8 +226,8 @@ RAW
         ui.set_attempt_open(false);
     }
 
-    /// Draft prompt edits write straight to the node metadata. A frozen attempt
-    /// is read-only in the modal, so this is a no-op there.
+    /// Draft prompt edits write straight to the node metadata. A frozen or
+    /// generated attempt is read-only in the modal, so this is a no-op there.
     pub fn attempt_prompt_edited(&mut self, text: &str) {
         let Some(id) = self.attempt_modal.as_deref() else {
             return;
@@ -183,20 +238,34 @@ RAW
         let meta = node
             .metadata
             .get_or_insert_with(CanvasNodeMetadata::default);
-        if meta.attempt_frozen.unwrap_or(false) {
+        if meta.attempt_frozen.unwrap_or(false) || attempt_has_output(meta) {
             return;
         }
         meta.prompt = Some(text.to_string());
         self.note_doc_change();
     }
 
-    /// Manual version label. This is a label edit, not a generation change, so
-    /// it stays available after freeze; the next automatic version still uses
-    /// the global maximum.
+    /// Manual version label. It is available only while the attempt is still a
+    /// draft; a produced output locks the whole version.
     pub fn attempt_version_edited(&mut self, ui: &AppWindow, text: &str) {
         let Some(id) = self.attempt_modal.as_deref() else {
             return;
         };
+        let locked = self
+            .doc
+            .node(id)
+            .and_then(|node| node.metadata.as_ref())
+            .is_some_and(|meta| meta.attempt_frozen.unwrap_or(false) || attempt_has_output(meta));
+        if locked {
+            let current = self
+                .doc
+                .node(id)
+                .and_then(|node| node.metadata.as_ref())
+                .and_then(|meta| meta.attempt_version)
+                .unwrap_or(1);
+            ui.set_attempt_version_text(current.to_string().into());
+            return;
+        }
         let parsed = text
             .trim()
             .trim_start_matches(['v', 'V'])
@@ -226,8 +295,8 @@ RAW
         self.note_doc_change();
     }
 
-    /// The version note is editable even after the prompt/config freeze: it
-    /// records why this version exists, not how to generate it.
+    /// The version note is part of the merged trace surface. It is editable
+    /// while the attempt is a draft and read-only once an output exists.
     pub fn attempt_reason_edited(&mut self, text: &str) {
         let Some(id) = self.attempt_modal.as_deref() else {
             return;
@@ -238,11 +307,14 @@ RAW
         let meta = node
             .metadata
             .get_or_insert_with(CanvasNodeMetadata::default);
+        if meta.attempt_frozen.unwrap_or(false) || attempt_has_output(meta) {
+            return;
+        }
         meta.attempt_reason = Some(text.to_string());
         self.note_doc_change();
     }
 
-    pub fn attempt_config_edited(&mut self, key: &str, value: &str) {
+    pub fn attempt_config_edited(&mut self, ui: &AppWindow, key: &str, value: &str) {
         let Some(id) = self.attempt_modal.as_deref() else {
             return;
         };
@@ -252,16 +324,29 @@ RAW
         let meta = node
             .metadata
             .get_or_insert_with(CanvasNodeMetadata::default);
-        if meta.attempt_frozen.unwrap_or(false) {
+        if meta.attempt_frozen.unwrap_or(false) || attempt_has_output(meta) {
             return;
         }
         match key {
-            "model" => meta.model = Some(value.trim().to_string()),
-            "size" => meta.size = Some(value.trim().to_string()),
-            "quality" => meta.quality = Some(value.trim().to_string()),
+            "model" => {
+                meta.model = Some(value.trim().to_string());
+                ui.set_attempt_model(value.trim().into());
+            }
+            "size" => {
+                let size = value.trim().to_string();
+                meta.size = Some(size.clone());
+                ui.set_attempt_size(size.clone().into());
+                ui.set_attempt_size_custom(!ATTEMPT_SIZE_PRESETS.contains(&size.as_str()));
+            }
+            "quality" => {
+                meta.quality = Some(value.trim().to_string());
+                ui.set_attempt_quality(value.trim().into());
+            }
             "count" => {
                 if let Ok(count) = value.trim().parse::<i64>() {
-                    meta.count = Some(count.clamp(1, 4));
+                    let count = count.clamp(1, 4);
+                    meta.count = Some(count);
+                    ui.set_attempt_count(i32::try_from(count).unwrap_or(1));
                 }
             }
             _ => return,
@@ -273,6 +358,14 @@ RAW
         let Some(id) = self.attempt_modal.clone() else {
             return;
         };
+        let locked = self
+            .doc
+            .node(&id)
+            .and_then(|node| node.metadata.as_ref())
+            .is_some_and(|meta| meta.attempt_frozen.unwrap_or(false) || attempt_has_output(meta));
+        if locked {
+            return;
+        }
         self.doc.commit(self.now_ms());
         self.note_doc_change();
         ui.set_attempt_open(false);
@@ -298,7 +391,7 @@ RAW
             .unwrap_or_default()
             .trim()
             .to_string();
-        if prompt.is_empty() {
+        if prompt.is_empty() || node.metadata.as_ref().is_some_and(attempt_has_output) {
             self.attempt_open(ui, id);
             return;
         }
@@ -459,11 +552,9 @@ pub fn wire(ui: &AppWindow, app: &std::rc::Rc<std::cell::RefCell<App>>) {
         let app = app.clone();
         let weak = ui.as_weak();
         ui.on_attempt_config_edited(move |key, value| {
-            if weak.upgrade().is_none() {
-                return;
-            }
+            let Some(ui) = weak.upgrade() else { return };
             crate::app::with_app(&app, |app| {
-                app.attempt_config_edited(key.as_str(), value.as_str());
+                app.attempt_config_edited(&ui, key.as_str(), value.as_str());
             });
         });
     }
