@@ -2362,3 +2362,33 @@ fn attempt_card_elides_long_copy() -> TestResult {
     image.save(&path)?;
     Ok(())
 }
+
+#[test]
+fn attempt_card_elides_long_chinese_copy_at_zoom() -> TestResult {
+    init_backend_allow_existing();
+    let buffer = render_at(
+        &CanvasNodeType::ImageAttempt,
+        "image-attempt",
+        0.75,
+        false,
+        |ui| {
+            ui.set_probe_attempt_version(3);
+            ui.set_probe_attempt_reason("Initial version".into());
+            ui.set_body(
+                "俯视角游戏战斗场景概念图，风格化现代彩色游戏 ARPG 场景，参考《大地之光》的厚涂质感，场景是一片完全平坦的草原竹林战场，整个画面所有地面处于同一高度，单一水平地面，没有高低差、山丘、悬崖、台阶、瀑布、溪流或水面。画面中央是一块平整的浅色石板空地，作为战斗区域，周围是低矮草丛和灌木，边缘点缀木栅栏、石堆、木桶、木箱、篝火和营地木架，所有物件都处在同一水平面上，画面边缘有轻微暗角，光线通透，午后阳光，传统竹林氛围，柔和阴影，颜色以青绿、浅黄、米白和浅灰为主。"
+                    .into(),
+            );
+            ui.set_content_image(red_image());
+        },
+    )?;
+    let pixels: Vec<u8> = buffer
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(buffer.width(), buffer.height(), pixels)
+        .ok_or("attempt card snapshot size")?;
+    let path = std::env::temp_dir().join("open-canvas-attempt-card-zh.png");
+    image.save(&path)?;
+    Ok(())
+}

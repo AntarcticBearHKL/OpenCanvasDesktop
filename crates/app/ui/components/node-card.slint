@@ -1311,7 +1311,7 @@ export component NodeCard inherits Rectangle {
                                 padding-bottom: Theme.space-2 * root.visual-scale;
                                 spacing: Theme.space-1 * root.visual-scale;
 
-                                HorizontalLayout {
+                                if root.attempt-title != "" : HorizontalLayout {
                                     height: 18px * root.visual-scale;
                                     spacing: Theme.space-1 * root.visual-scale;
                                     Text {
@@ -1353,7 +1353,7 @@ export component NodeCard inherits Rectangle {
                                     font-size: 11px * root.visual-scale;
                                     color: Theme.node-text;
                                     wrap: word-wrap;
-                                    max-lines: 4;
+                                    max-lines: 3;
                                     overflow: elide;
                                     vertical-alignment: top;
                                 }
