@@ -108,6 +108,8 @@ fn image_resize_ignores_the_legacy_free_resize_flag() {
         .and_then(|n| n.metadata.as_mut())
     {
         meta.free_resize = Some(true);
+        meta.natural_width = Some(400.0);
+        meta.natural_height = Some(200.0);
     }
     let start = ScreenPos::new(0.0, 0.0);
     assert!(doc.begin_resize("image", Corner::BottomRight, start));
@@ -115,7 +117,7 @@ fn image_resize_ignores_the_legacy_free_resize_flag() {
     let node = doc.node("image").expect("image node");
     let ratio = node.width / node.height;
     assert!(
-        (ratio - 340.0 / 240.0).abs() < 1e-9,
+        (ratio - 2.0).abs() < 1e-9,
         "the card follows the bitmap ratio: {node:?}"
     );
     assert!(doc.end_resize());
