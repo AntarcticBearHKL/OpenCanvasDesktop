@@ -533,10 +533,11 @@ fn attempt_workbench_renders_centered_prompt_config_and_trace() -> TestResult {
         ui.set_attempt_version_text("7".into());
         ui.set_attempt_intent("fox study".into());
         ui.set_attempt_reason("Warmer palette and a lower camera angle".into());
-        ui.set_attempt_frozen(true);
+        ui.set_attempt_frozen(false);
         ui.set_attempt_run_count(2);
         ui.set_attempt_image_count(3);
         ui.set_attempt_has_image(false);
+        ui.set_attempt_has_output(true);
         ui.set_attempt_trace(
             "TIMELINE\n[plan] Read the legacy image\n[write] Draft the next prompt\n\nRAW\nThe full agent thinking is kept here."
                 .into(),
@@ -571,8 +572,8 @@ fn attempt_workbench_renders_editable_flat_controls() -> TestResult {
             slint::SharedString::from("openai/gpt-image-2.5-sunburst"),
             slint::SharedString::from("openai/gpt-image-2"),
         ])));
-        ui.set_attempt_size("1536x1024".into());
-        ui.set_attempt_size_custom(false);
+        ui.set_attempt_size("1024x768".into());
+        ui.set_attempt_size_custom(true);
         ui.set_attempt_quality("high".into());
         ui.set_attempt_count(3);
         ui.set_attempt_version(5);
