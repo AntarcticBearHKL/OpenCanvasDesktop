@@ -55,6 +55,9 @@ mod probe {
             in property <string> probe-error: "";
             in property <bool> probe-prompt-editing: false;
             in property <string> probe-asset-count-label: "10 items";
+            in property <int> probe-attempt-version: 1;
+            in property <string> probe-attempt-title: "";
+            in property <string> probe-attempt-reason: "";
             in property <image> content-image;
             property <image> blank-image;
 
@@ -126,6 +129,9 @@ mod probe {
                 slot-last: "Last frame";
                 ref-slot-count: root.probe-ref-count;
                 ref-slot-titles: root.probe-ref-titles;
+                attempt-version: root.probe-attempt-version;
+                attempt-title: root.probe-attempt-title;
+                attempt-reason: root.probe-attempt-reason;
             }
         }
     }
@@ -2290,4 +2296,31 @@ fn all_four_node_corners_have_invisible_resize_zones() {
         !src.contains("resize-grip"),
         "there is no visible resize grip; the corner zone is invisible"
     );
+}
+
+#[test]
+fn attempt_card_renders_the_1_to_9_version_band() -> TestResult {
+    init_backend_allow_existing();
+    let buffer = render(
+        &CanvasNodeType::ImageAttempt,
+        "image-attempt",
+        false,
+        |ui| {
+            ui.set_probe_attempt_version(7);
+            ui.set_probe_attempt_title("warmer palette".into());
+            ui.set_probe_attempt_reason("Raised the camera and warmed the light".into());
+            ui.set_body("A red fox in a snowy bamboo forest".into());
+            ui.set_content_image(red_image());
+        },
+    )?;
+    let pixels: Vec<u8> = buffer
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(buffer.width(), buffer.height(), pixels)
+        .ok_or("attempt card snapshot size")?;
+    let path = std::env::temp_dir().join("open-canvas-attempt-card.png");
+    image.save(&path)?;
+    Ok(())
 }
