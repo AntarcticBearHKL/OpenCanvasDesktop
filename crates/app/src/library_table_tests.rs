@@ -789,10 +789,10 @@ fn a_single_click_opens_the_canvas() -> TestResult {
 #[test]
 fn a_single_click_on_a_project_switches_scope_without_opening_a_canvas() -> TestResult {
     init_backend_allow_existing();
-    // The app band is 76px, each row 44px. With no empty toolbar, Project 2
-    // is the second row, centred at 76 + 44 + 22.
+    // The app band is 76px, then a 44px header spacer, then 44px rows.
+    // Project 2 is the second project row, centred at 76 + 44 + 44 + 22.
     let (_dir, ui, app) = home("g0")?;
-    click_at(&ui, 100.0, 142.0);
+    click_at(&ui, 100.0, 186.0);
     crate::app::with_app(&app, |app| {
         assert_eq!(
             app.library.selected_group.as_deref(),
@@ -942,27 +942,27 @@ fn the_sidebar_label_and_the_first_rows_align_with_the_table() -> TestResult {
         "the column labels are centred in the 44px header band ({columns:?}, centre {columns_centre}, want 98)"
     );
 
-    // With no empty sidebar toolbar, the first project row starts at the
-    // content top (76), level with the right project header. The second project
-    // row starts at 120, on the first canvas row; both 44px rows share 142.
+    // The sidebar has a 44px header spacer, so the first project row starts
+    // at 120 and shares its centre line with Canvas 1; the second project row
+    // is 44px below.
     let first_project_row =
-        ink_span(&buffer, (8, 200), (76, 118), base).ok_or("the first project row paints")?;
+        ink_span(&buffer, (8, 200), (120, 162), base).ok_or("the first project row paints")?;
     let second_project_row =
-        ink_span(&buffer, (8, 200), (120, 162), base).ok_or("the second project row paints")?;
+        ink_span(&buffer, (8, 200), (164, 206), base).ok_or("the second project row paints")?;
     let canvas_row =
         ink_span(&buffer, (260, 640), (120, 162), base).ok_or("the first canvas row paints")?;
     assert!(
         first_project_row.0 < second_project_row.0,
         "the first project row sits above the second ({first_project_row:?}, {second_project_row:?})"
     );
-    let project_centre = span_centre(second_project_row);
+    let project_centre = span_centre(first_project_row);
     let canvas_centre = span_centre(canvas_row);
     assert!(
         (project_centre - canvas_centre).abs() <= 1.5,
-        "the second project row and Canvas 1 share a centre line          ({second_project_row:?} at {project_centre}, {canvas_row:?} at {canvas_centre})"
+        "the first project row and Canvas 1 share a centre line ({first_project_row:?} at {project_centre}, {canvas_row:?} at {canvas_centre})"
     );
     for (name, centre) in [
-        ("second project row", project_centre),
+        ("first project row", project_centre),
         ("Canvas 1", canvas_centre),
     ] {
         assert!(
@@ -991,8 +991,8 @@ fn the_home_columns_share_the_header_band_and_44px_rows() {
     );
     assert_eq!(
         home.matches("height: 44px;").count(),
-        5,
-        "the wordmark, project/canvas rows and both create rows are 44px"
+        6,
+        "the wordmark, header spacer, project/canvas rows and both create rows are 44px"
     );
     assert!(
         home.contains("component ProjectCreateRow inherits Rectangle")
