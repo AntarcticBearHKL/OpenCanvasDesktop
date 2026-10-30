@@ -11,7 +11,10 @@
 //! select/drag/resize/connect behaviour — the window move only exists on the
 //! background layer.
 
-use crate::app::{home_hold_arc, App, HomeHold, HOME_HOLD_MS, HOME_HOLD_SHOW_AT, HOME_HOLD_SLOP};
+use crate::app::{
+    home_hold_arc, App, HomeHold, HOME_HOLD_MS, HOME_HOLD_SHOW_AT, HOME_HOLD_SHOW_MS,
+    HOME_HOLD_SLOP,
+};
 use crate::coords::ScreenPos;
 use crate::doc::Drag;
 use crate::drop_bindings;
@@ -72,9 +75,9 @@ impl App {
         }
     }
 
-    /// Advances the still-right hold once per interactive frame. Completing
-    /// the ring returns to the library; releasing early leaves the ordinary
-    /// short right-click (the side-panel toggle) to the release handler.
+    /// Advances the still-right hold once per interactive frame. Once the ring
+    /// becomes visible the press is a navigation gesture; an early release
+    /// cancels it without toggling the side panel.
     #[expect(
         clippy::cast_precision_loss,
         reason = "elapsed milliseconds are bounded by the 900ms hold window; f64 is exact enough for the ring"
@@ -89,6 +92,7 @@ impl App {
             return;
         }
         if progress < 1.0 {
+            self.right_click_hold_started = true;
             Self::show_home_hold(ui, hold.pos, progress);
             return;
         }
@@ -100,6 +104,7 @@ impl App {
         // must not also toggle the side panel.
         self.right_click_pending = false;
         self.right_click_moved = false;
+        self.right_click_hold_started = true;
         self.right_press = None;
         self.canvas_click_pending = false;
         self.panning = false;
@@ -143,6 +148,7 @@ impl App {
         self.canvas_click_pending = false;
         self.right_click_pending = false;
         self.right_click_moved = false;
+        self.right_click_hold_started = false;
         self.right_press = None;
         ui.set_canvas_window_drag(false);
     }
@@ -217,6 +223,7 @@ impl App {
                 if event.button == Button::Right {
                     self.right_click_pending = true;
                     self.right_click_moved = false;
+                    self.right_click_hold_started = false;
                     self.right_press = Some(event.pos);
                     // A press that dismisses a popover is that popover's
                     // "back" gesture; do not also open the side panel.
@@ -304,14 +311,20 @@ impl App {
                     && event.kind == PointerKind::Up
                     && !self.window_drag_moved;
                 let canvas_press = self.canvas_click_pending;
+                let hold_started = self.right_click_hold_started
+                    || self.home_hold.is_some_and(|hold| {
+                        self.now_ms().saturating_sub(hold.started_ms) >= HOME_HOLD_SHOW_MS
+                    });
                 let right_click = self.right_click_pending
                     && event.kind == PointerKind::Up
                     && !self.right_click_moved
+                    && !hold_started
                     && self.right_click_allow_sidebar;
                 self.cancel_home_hold(ui);
                 self.canvas_click_pending = false;
                 self.right_click_pending = false;
                 self.right_click_moved = false;
+                self.right_click_hold_started = false;
                 self.right_press = None;
                 ui.set_canvas_window_drag(false);
                 if canvas_press {

@@ -69,6 +69,9 @@ pub const HOME_HOLD_MS: u64 = 900;
 pub const HOME_HOLD_SHOW_AT: f64 = 0.10;
 /// Movement beyond this cancels the hold and becomes a right-drag pan.
 pub const HOME_HOLD_SLOP: f64 = 3.0;
+/// Time at which the ring becomes visible. A release at or after this point is
+/// a navigation hold, not a short right-click.
+pub const HOME_HOLD_SHOW_MS: u64 = HOME_HOLD_MS / 10;
 
 /// One active toast: the text, the tone and the wall-clock deadline the tick
 /// expires it at. `id` is stable for the lifetime of the toast so the dismiss
@@ -366,6 +369,10 @@ pub struct App {
     /// are reset on every canvas press.
     pub right_click_pending: bool,
     pub right_click_moved: bool,
+    /// True once the still-right hold has entered the visible progress-ring
+    /// phase. From that point the release belongs to navigation, never to the
+    /// side-panel click toggle.
+    pub right_click_hold_started: bool,
     pub right_press: Option<ScreenPos>,
     /// False when the press dismissed a popover: that right-click's job was
     /// the popover, not opening the side panel.
@@ -569,6 +576,7 @@ impl App {
             window_drag_origin: (0, 0),
             right_click_pending: false,
             right_click_moved: false,
+            right_click_hold_started: false,
             right_press: None,
             right_click_allow_sidebar: true,
             home_hold: None,

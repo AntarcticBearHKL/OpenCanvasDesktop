@@ -277,6 +277,50 @@ fn right_click_toggles_the_side_panel() -> TestResult {
 }
 
 #[test]
+fn right_hold_released_after_ring_starts_does_not_toggle_side_panel() -> TestResult {
+    let (_dir, ui, app) = wired()?;
+    with_app(&app, |app| {
+        app.view = crate::app::View::Editor;
+        app.side_open = false;
+        ui.set_side_panel_open(false);
+        app.clock_override = Some(1_000);
+        app.canvas_pointer(
+            &ui,
+            &event(PointerKind::Down, 600.0, 300.0, Button::Right, false),
+        );
+        app.clock_override = Some(1_100);
+        app.home_hold_tick(&ui);
+        assert!(ui.get_home_hold_visible(), "the ring has started");
+
+        app.canvas_pointer(
+            &ui,
+            &event(PointerKind::Up, 600.0, 300.0, Button::Right, false),
+        );
+        assert!(!app.side_open, "a ring hold never toggles the side panel");
+        assert!(
+            !ui.get_home_hold_visible(),
+            "the early release hides the ring"
+        );
+        assert_eq!(app.view, crate::app::View::Editor, "the hold was cancelled");
+
+        // Even without a tick between press and release, once the show window
+        // has elapsed the press is no longer a short click.
+        app.clock_override = Some(2_000);
+        app.canvas_pointer(
+            &ui,
+            &event(PointerKind::Down, 600.0, 300.0, Button::Right, false),
+        );
+        app.clock_override = Some(2_200);
+        app.canvas_pointer(
+            &ui,
+            &event(PointerKind::Up, 600.0, 300.0, Button::Right, false),
+        );
+        assert!(!app.side_open, "the elapsed hold is not a side-panel click");
+    });
+    Ok(())
+}
+
+#[test]
 fn right_hold_fills_the_ring_and_returns_home() -> TestResult {
     let (_dir, ui, app) = wired()?;
     with_app(&app, |app| {
