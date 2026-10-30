@@ -65,8 +65,9 @@ component ProjectSidebarRow inherits Rectangle {
     callback action(string);
     callback name-edited(string);
 
+    width: 100%;
     height: 44px;
-    border-radius: Theme.radius-sm;
+    // The selected wash is a full-row band, not an inset rounded card.
     background: root.active ? Theme.node-accent.with-alpha(0.12) : ta.has-hover ? Theme.hover : transparent;
     animate background {
         // Selection steps on the longer token, plain hover on the short one;
@@ -103,8 +104,8 @@ component ProjectSidebarRow inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: Theme.space-2;
-        padding-right: Theme.space-1;
+        padding-left: Theme.space-5 + Theme.space-2;
+        padding-right: Theme.space-3;
         spacing: Theme.space-2;
         cross-axis-alignment: center;
 
@@ -689,8 +690,6 @@ export component LibraryScreen inherits Rectangle {
 
                         VerticalLayout {
                             width: 100%;
-                            padding-left: Theme.space-2;
-                            padding-right: Theme.space-2;
                             spacing: 0px;
 
                             for group in root.groups : ProjectSidebarRow {
