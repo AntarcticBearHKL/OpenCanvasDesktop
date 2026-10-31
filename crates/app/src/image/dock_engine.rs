@@ -369,15 +369,20 @@ impl DockLayout {
     pub fn move_panel(&mut self, id: &str, edge: DockEdge, index: usize) {
         self.without_panel(id);
         let groups = self.groups_mut(edge);
-        let index = index.min(groups.len());
-        if let Some(group) = groups.get_mut(index) {
-            group.panels.push(id.to_string());
-            group.active = id.to_string();
-        } else {
+        if groups.is_empty() {
             groups.push(DockGroup {
                 panels: vec![id.to_string()],
                 active: id.to_string(),
             });
+            return;
+        }
+        // A drag onto an occupied edge joins one of its existing groups as a
+        // tab. It must never invent a second column/group just because the
+        // pointer was in the lower half of the edge.
+        let index = index.min(groups.len() - 1);
+        if let Some(group) = groups.get_mut(index) {
+            group.panels.push(id.to_string());
+            group.active = id.to_string();
         }
     }
 
@@ -394,10 +399,16 @@ impl DockLayout {
         if first_on_edge {
             self.set_size(def.edge, natural_size(studio, def.edge));
         }
-        self.groups_mut(def.edge).push(DockGroup {
-            panels: vec![id.to_string()],
-            active: id.to_string(),
-        });
+        let groups = self.groups_mut(def.edge);
+        if let Some(group) = groups.last_mut() {
+            group.panels.push(id.to_string());
+            group.active = id.to_string();
+        } else {
+            groups.push(DockGroup {
+                panels: vec![id.to_string()],
+                active: id.to_string(),
+            });
+        }
     }
 
     /// Closes a visible panel: it leaves every group, groups it emptied are

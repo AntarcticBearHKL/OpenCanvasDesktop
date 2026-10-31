@@ -107,6 +107,7 @@ component StudioMenuTab inherits Rectangle {
 
         Text {
             text: root.label;
+            height: 100%;
             font-size: 12px;
             font-weight: root.active ? 600 : 400;
             color: root.active ? StudioTheme.toolbar-active-text : StudioTheme.toolbar-item;
@@ -1104,6 +1105,7 @@ export component ImageStudio inherits Rectangle {
 
                                 for group[index] in root.dock-bottom : Rectangle {
                                     property <bool> collapsed: root.collapsed-group == "bottom|\{index}";
+
                                     horizontal-stretch: collapsed ? 0.0 : 1.0;
 
                                     VerticalLayout {
@@ -1237,6 +1239,7 @@ export component ImageStudio inherits Rectangle {
 
                             for group[index] in root.dock-right : Rectangle {
                                 property <bool> collapsed: root.collapsed-group == "right|\{index}";
+
                                 // The split ratio only governs a two-group edge
                                 // (the web's `DOCK_MAX_GROUPS` ceiling); every
                                 // other count shares the height evenly, which is
@@ -1373,6 +1376,7 @@ export component ImageStudio inherits Rectangle {
 
                             for group[index] in root.dock-left : Rectangle {
                                 property <bool> collapsed: root.collapsed-group == "left|\{index}";
+
                                 vertical-stretch: collapsed ? 0.0 : root.dock-left.length == 2 ? (index == 0 ? Theme.dock-image.left-split : 1.0 - Theme.dock-image.left-split) : 1.0;
 
                                 if index > 0 && root.dock-left.length == 2 && !collapsed : DockSplitter {

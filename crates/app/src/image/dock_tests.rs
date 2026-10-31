@@ -96,9 +96,9 @@ fn move_panel_carries_it_to_another_edge() -> TestResult {
     assert_eq!(layout.locate("color"), Some((DockEdge::Bottom, 0)));
     layout.move_panel("color", DockEdge::Right, 0);
     assert_eq!(layout.locate("color"), Some((DockEdge::Right, 0)));
-    // The vacated bottom group collapses, and the other bottom panels shift up.
-    assert!(!layout.bottom.iter().any(|group| group.panels.is_empty()));
-    assert_eq!(layout.bottom.len(), 3);
+    // The bottom edge keeps one tab group with the remaining panels.
+    assert_eq!(layout.bottom.len(), 1);
+    assert_eq!(layout.bottom[0].panels.len(), 3);
     assert_eq!(layout.locate("gradients"), Some((DockEdge::Bottom, 0)));
     // The moved panel becomes the active tab of its new group.
     assert_eq!(layout.right[0].active, "color");
@@ -111,13 +111,14 @@ fn stacking_two_panels_shares_one_tab_group() -> TestResult {
     let mut layout = default_layout(STUDIO_IMAGE);
     layout.reveal(studio, "layers");
     layout.reveal(studio, "history");
-    // Each reveal starts as its own group on the home edge.
-    assert_eq!(layout.right.len(), 2);
-    assert!(layout.right.iter().all(|group| group.panels.len() == 1));
-    // Dropping "history" onto the first right group makes it a tab.
-    layout.move_panel("history", DockEdge::Right, 0);
+    // Reveals share the edge's existing tab group: two panels never become
+    // two separate sidebars.
+    assert_eq!(layout.right.len(), 1);
     assert_eq!(layout.right[0].panels, vec!["layers", "history"]);
     assert_eq!(layout.right[0].active, "history");
+    // Dropping a panel back onto the group keeps it as a tab.
+    layout.move_panel("history", DockEdge::Right, 0);
+    assert_eq!(layout.right[0].panels, vec!["layers", "history"]);
     assert_eq!(layout.right.len(), 1);
     assert!(layout.is_visible("history"));
     // Activating a sibling tab switches the group without moving panels.
@@ -141,13 +142,14 @@ fn toggle_hides_and_reveals_a_panel_on_its_home_edge() -> TestResult {
     assert!(layout.right.is_empty(), "the emptied edge collapses");
     layout.toggle(studio, "layers");
     assert!(layout.is_visible("layers"));
-    // A revealed panel comes back as its own group at the end of its edge.
+    // A revealed panel joins the edge's existing tab group.
     layout.toggle(studio, "history");
     assert_eq!(
         layout.right.last().map(|group| group.active.clone()),
         Some("history".to_string())
     );
-    assert_eq!(layout.right.len(), 2);
+    assert_eq!(layout.right.len(), 1);
+    assert_eq!(layout.right[0].panels, vec!["layers", "history"]);
     Ok(())
 }
 
