@@ -197,6 +197,8 @@ export component ImageStudio inherits Rectangle {
     in-out property <string> draft: "";
     in-out property <string> snap-lines: "";
     in-out property <string> path-overlay: "";
+    // Dashed selection outline of the active pen path.
+    in-out property <string> path-selection: "";
     in-out property <string> transform-handles: "";
     in-out property <[RulerTick]> ruler-x: [];
     in-out property <[RulerTickImage]> ruler-y: [];
@@ -895,6 +897,13 @@ export component ImageStudio inherits Rectangle {
                         }
                         Path {
                             commands: root.path-overlay;
+                            fill: transparent;
+                            stroke: StudioTheme.image-path-line;
+                            stroke-width: 1.5px;
+                            fit: preserve;
+                        }
+                        Path {
+                            commands: root.path-selection;
                             fill: transparent;
                             stroke: StudioTheme.image-path-line;
                             stroke-width: 1.5px;
@@ -1658,7 +1667,13 @@ export component ImageStudio inherits Rectangle {
                     root.color-reset();
                 }
                 moved(x, y) => {
-                    root.tool-options-x = min(max(0px, x), root.width - 236px);
+                    // Keep the floating card off the tool rail: if it covered
+                    // the rail, the first click on a tool would hit the card
+                    // and the tool would need a second press.
+                    root.tool-options-x = min(
+                        max(StudioTheme.rail-w + 4px, x),
+                        root.width - 236px
+                    );
                     root.tool-options-y = min(max(0px, y), root.height - 120px);
                 }
             }
@@ -2415,9 +2430,11 @@ export component ImageStudio inherits Rectangle {
 
     // SmartCanvasSettingsPopover: ratio / resolution / background + opacity.
     if root.settings-open : Rectangle {
-        x: 0px;
+        // The rail stays clickable while board settings are open; choosing a
+        // tool closes the popover in the same click.
+        x: StudioTheme.rail-w;
         y: StudioTheme.menu-bar-h;
-        width: 100%;
+        width: parent.width - StudioTheme.rail-w;
         height: 100%;
         background: transparent;
         z: 55;

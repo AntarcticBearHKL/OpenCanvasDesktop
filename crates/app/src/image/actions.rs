@@ -153,6 +153,7 @@ impl App {
             // any open menu in the same click so the rail never needs a
             // second press just to dismiss the click-away layer.
             self.image.menu.clear();
+            self.image.settings_open = false;
             self.sync_image(ui);
         }
     }

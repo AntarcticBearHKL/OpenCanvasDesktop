@@ -488,6 +488,7 @@ export component AppWindow inherits Window {
     in-out property <string> image-draft: "";
     in-out property <string> image-snap-lines: "";
     in-out property <string> image-path-overlay: "";
+    in-out property <string> image-path-selection: "";
     in-out property <string> image-transform: "";
     in-out property <[RulerTick]> image-ruler-x: [];
     in-out property <[RulerTickImage]> image-ruler-y: [];
@@ -1621,6 +1622,7 @@ export component AppWindow inherits Window {
                 draft: root.image-draft;
                 snap-lines: root.image-snap-lines;
                 path-overlay: root.image-path-overlay;
+                path-selection: root.image-path-selection;
                 transform-handles: root.image-transform;
                 ruler-x: root.image-ruler-x;
                 ruler-y: root.image-ruler-y;

@@ -489,7 +489,10 @@ fn path_overlay_commands(
     // Every visible path stays on the canvas, not just the active one: a
     // hidden path is unselectable, while a visible path can be clicked to make
     // it active (and reveal its anchors).
-    for path in paths.iter().filter(|path| path.visible) {
+    for path in paths
+        .iter()
+        .filter(|path| path.visible && path.id != active_path)
+    {
         let points = open_canvas_ps::polyline(path, 24);
         for (index, p) in points.iter().enumerate() {
             let (px, py) = (sx(view, p.x), sy(view, p.y));
@@ -532,6 +535,69 @@ fn path_overlay_commands(
             }
         }
         anchor_box(ax, ay, &mut out);
+    }
+    out
+}
+
+/// The selected pen path's dashed outline. The dash runs in screen pixels so
+/// it stays readable at every zoom; the active path is omitted from the solid
+/// overlay and painted here instead.
+#[expect(
+    clippy::format_push_string,
+    reason = "dash segments are formatted into an infallible String write"
+)]
+fn path_selection_commands(
+    project: &ImageProject,
+    active_path: &str,
+    view: &crate::image::ImageView,
+) -> String {
+    let Some(path) = project.board_paths.as_ref().and_then(|paths| {
+        paths
+            .iter()
+            .find(|path| path.id == active_path && path.visible)
+    }) else {
+        return String::new();
+    };
+    let points: Vec<(f64, f64)> = open_canvas_ps::polyline(path, 24)
+        .iter()
+        .map(|point| (sx(view, point.x), sy(view, point.y)))
+        .collect();
+    let mut out = String::new();
+    let dash = 6.0;
+    let gap = 4.0;
+    let period = dash + gap;
+    let mut travelled = 0.0;
+    for pair in points.windows(2) {
+        let (ax, ay) = pair[0];
+        let (bx, by) = pair[1];
+        let length = (bx - ax).hypot(by - ay);
+        if length <= f64::EPSILON {
+            continue;
+        }
+        let mut local = 0.0;
+        while local < length {
+            let phase = (travelled + local) % period;
+            let drawing = phase < dash;
+            let step = (if drawing {
+                dash - phase
+            } else {
+                period - phase
+            })
+            .min(length - local);
+            if drawing {
+                let start = local / length;
+                let end = (local + step) / length;
+                out.push_str(&format!(
+                    "M {} {} L {} {} ",
+                    ax + (bx - ax) * start,
+                    ay + (by - ay) * start,
+                    ax + (bx - ax) * end,
+                    ay + (by - ay) * end
+                ));
+            }
+            local += step;
+        }
+        travelled += length;
     }
     out
 }
@@ -814,6 +880,9 @@ impl App {
         ui.set_image_snap_lines(line_commands(project, &view, &self.image.snap_lines).into());
         ui.set_image_path_overlay(
             path_overlay_commands(project, &self.image.active_path, &view).into(),
+        );
+        ui.set_image_path_selection(
+            path_selection_commands(project, &self.image.active_path, &view).into(),
         );
         ui.set_image_transform(
             transform_commands(
@@ -2151,6 +2220,50 @@ mod tests {
     }
 
     #[test]
+    fn active_path_gets_a_dashed_selection_outline() {
+        let mut project = project();
+        project.board_paths = Some(vec![
+            open_canvas_ps::create_path(
+                "p-1",
+                "Active",
+                vec![
+                    open_canvas_ps::path_anchor(10.0, 10.0),
+                    open_canvas_ps::path_anchor(40.0, 10.0),
+                ],
+                false,
+            ),
+            open_canvas_ps::create_path(
+                "p-2",
+                "Other",
+                vec![
+                    open_canvas_ps::path_anchor(30.0, 30.0),
+                    open_canvas_ps::path_anchor(40.0, 30.0),
+                ],
+                false,
+            ),
+        ]);
+        let view = ImageView {
+            x: 0.0,
+            y: 0.0,
+            k: 1.0,
+        };
+        let solid = path_overlay_commands(&project, "p-1", &view);
+        let dashed = path_selection_commands(&project, "p-1", &view);
+        assert!(
+            solid.contains("M 30 30"),
+            "the unselected path stays solid: {solid}"
+        );
+        assert!(
+            dashed.matches("M ").count() > 2,
+            "the selected path is split into dash segments: {dashed}"
+        );
+        assert!(
+            dashed.contains("10") && dashed.contains("40"),
+            "the dashes follow the selected path: {dashed}"
+        );
+    }
+
+    #[test]
     fn ellipse_marquee_draft_is_an_ellipse_not_a_rectangle() {
         let view = ImageView {
             x: 0.0,
@@ -2219,9 +2332,14 @@ mod tests {
             k: 1.0,
         };
         let commands = path_overlay_commands(&project, "p-1", &view);
+        let dashed = path_selection_commands(&project, "p-1", &view);
         assert!(
-            commands.contains("M 10 10") && commands.contains("L 20 10"),
-            "the active path stroke is painted: {commands}"
+            dashed.contains("M 10 10") && dashed.matches("M ").count() > 2,
+            "the active path is painted as a dashed selection: {dashed}"
+        );
+        assert!(
+            !commands.contains("L 20 10"),
+            "the active path is not also painted as a solid stroke: {commands}"
         );
         assert!(
             !commands.contains("M 30 30"),

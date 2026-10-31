@@ -1200,6 +1200,12 @@ impl App {
         }
         if let Some(path) = self.path_segment_hit(point, threshold) {
             self.image.active_path = path;
+            return;
+        }
+        // Direct Select is a general selection tool too: with no path under
+        // the pointer, select the topmost layer/object.
+        if let Some(layer) = self.layer_at(point) {
+            self.image.active_layer = layer;
         }
     }
 

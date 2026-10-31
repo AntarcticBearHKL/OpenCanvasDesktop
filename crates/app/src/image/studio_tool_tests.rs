@@ -618,6 +618,76 @@ fn every_tool_changes_the_document() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Direct Select falls back to selecting the topmost layer when no pen path
+/// is under the pointer.
+#[test]
+fn direct_select_selects_a_layer_when_no_path_is_hit() -> Result<(), Box<dyn std::error::Error>> {
+    init_backend_allow_existing();
+    let (ui, app, _dir) = harness()?;
+    let layer_id = crate::app::with_app_r(&app, |app| {
+        let id = app.image.project.board_layers[0].id.clone();
+        app.image.active_layer.clear();
+        app.image_tool(&ui, "direct-select");
+        click_doc(app, &ui, (8.0, 8.0));
+        id
+    })
+    .ok_or("borrowed")?;
+    let active =
+        crate::app::with_app_r(&app, |app| app.image.active_layer.clone()).ok_or("borrowed")?;
+    assert_eq!(active, layer_id, "the layer under the pointer is selected");
+    Ok(())
+}
+
+/// A board-settings popover no longer swallows the rail click; choosing a tool
+/// closes it and activates the tool in one press.
+#[test]
+fn rail_click_closes_board_settings_in_the_same_press() -> Result<(), Box<dyn std::error::Error>> {
+    init_backend_allow_existing();
+    let (ui, app, _dir) = harness()?;
+    crate::app::with_app(&app, |app| {
+        app.image.settings_open = true;
+        app.sync_image(&ui);
+    });
+    click(&ui, 20.0, 81.0);
+    let (tool, settings) =
+        crate::app::with_app_r(&app, |app| (app.image.tool, app.image.settings_open))
+            .ok_or("borrowed")?;
+    assert_eq!(tool, ImageTool::Pen, "the rail click reaches Pen");
+    assert!(!settings, "the same click closes board settings");
+    Ok(())
+}
+
+/// Every rail button is a one-click target from a clean state.
+#[test]
+fn every_rail_button_selects_on_the_first_click() -> Result<(), Box<dyn std::error::Error>> {
+    init_backend_allow_existing();
+    let (ui, app, _dir) = harness()?;
+    // Vertical centres of the 24px rail buttons, including the group rules.
+    let rows = [
+        ("hand", 56.0),
+        ("pen", 82.0),
+        ("direct-select", 107.0),
+        ("marquee", 133.0),
+        ("ellipse-marquee", 158.0),
+        ("lasso", 184.0),
+        ("polygon-lasso", 209.0),
+        ("wand", 235.0),
+        ("quick-select", 260.0),
+        ("brush", 286.0),
+        ("eraser", 311.0),
+        ("bucket", 337.0),
+        ("gradient", 362.0),
+        ("shape", 388.0),
+        ("eyedropper", 413.0),
+    ];
+    for (id, y) in rows {
+        click(&ui, 20.0, y);
+        let active = crate::app::with_app_r(&app, |app| app.image.tool).ok_or("borrowed")?;
+        assert_eq!(active.as_str(), id, "one click selects {id}");
+    }
+    Ok(())
+}
+
 /// The tool rail is a one-click target even while a menu is open: the menu's
 /// click-away layer must not swallow the first press on a tool button.
 #[test]
