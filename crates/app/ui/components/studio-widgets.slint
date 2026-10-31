@@ -226,8 +226,7 @@ export component StudioMenuItem inherits Rectangle {
     // the column layout, and a row with no constraints stretches to fill the
     // popup.
     property <length> row-height: root.note == "" ? 28px : 38px;
-    min-height: root.row-height;
-    max-height: root.row-height;
+    height: root.row-height;
     background: (ta.has-hover || root.selected) && root.enabled ? StudioTheme.selection : transparent;
     animate background {
         duration: StudioTheme.motion-hover;
@@ -251,7 +250,7 @@ export component StudioMenuItem inherits Rectangle {
     }
 
     HorizontalLayout {
-        height: 100%;
+        height: root.row-height;
         padding-left: StudioTheme.space-2;
         padding-right: StudioTheme.space-3;
         spacing: StudioTheme.space-2;
@@ -291,6 +290,7 @@ export component StudioMenuItem inherits Rectangle {
         }
         VerticalLayout {
             horizontal-stretch: 1;
+            height: 100%;
             spacing: 0;
             alignment: center;
             Text {

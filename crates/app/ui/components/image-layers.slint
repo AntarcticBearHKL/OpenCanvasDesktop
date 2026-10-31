@@ -5,7 +5,7 @@ import { StudioTheme } from "../studio-theme.slint";
 import { IconButton, Slider } from "widgets.slint";
 import { Icons } from "icons.slint";
 import { ImageEditorRow, ImageHistoryRow, ImageLayerRow, ImageParamRow, ImageStyleRow } from "overlay-types.slint";
-import { PanelTitle, StudioChip, StudioField, StudioIconButton, StudioSlider } from "studio-widgets.slint";
+import { StudioChip, StudioField, StudioIconButton, StudioSlider } from "studio-widgets.slint";
 import { ImageEditorRows } from "image-panels-extra.slint";
 
 component LayerNameEdit inherits Rectangle {
@@ -94,9 +94,6 @@ export component ImageLayersPanel inherits Rectangle {
             spacing: StudioTheme.space-2;
             cross-axis-alignment: center;
 
-            PanelTitle {
-                label: "Layers";
-            }
             StudioIconButton { variant: "studio";
                 icon: Icons.file-text;
                 clicked => {
@@ -513,22 +510,6 @@ export component ImageFxPanel inherits Rectangle {
     VerticalLayout {
         spacing: 0;
 
-        HorizontalLayout {
-            height: StudioTheme.header-h;
-            padding-left: StudioTheme.panel-pad;
-            padding-right: StudioTheme.panel-pad;
-            spacing: StudioTheme.space-2;
-            cross-axis-alignment: center;
-            PanelTitle {
-                label: "Layer Effects";
-            }
-        }
-
-        Rectangle {
-            height: 1px;
-            background: StudioTheme.border;
-        }
-
         for style in root.styles : Rectangle {
             height: StudioTheme.row-h;
             border-radius: StudioTheme.radius-sm;
@@ -674,22 +655,6 @@ export component ImageHistoryPanel inherits Rectangle {
     VerticalLayout {
         spacing: 0;
 
-        HorizontalLayout {
-            height: StudioTheme.header-h;
-            padding-left: StudioTheme.panel-pad;
-            padding-right: StudioTheme.panel-pad;
-            spacing: StudioTheme.space-2;
-            cross-axis-alignment: center;
-            PanelTitle {
-                label: "History";
-            }
-        }
-
-        Rectangle {
-            height: 1px;
-            background: StudioTheme.border;
-        }
-
         for entry in root.entries : Rectangle {
             height: StudioTheme.row-h;
             border-radius: StudioTheme.radius-sm;
@@ -780,9 +745,6 @@ export component ImagePropertiesPanel inherits Rectangle {
             padding-right: StudioTheme.panel-pad;
             spacing: StudioTheme.space-2;
             cross-axis-alignment: center;
-            PanelTitle {
-                label: "Properties";
-            }
             StudioIconButton { variant: "studio";
                 icon: Icons.settings;
                 clicked => {

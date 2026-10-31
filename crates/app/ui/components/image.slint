@@ -100,7 +100,7 @@ component StudioMenuTab inherits Rectangle {
     }
 
     HorizontalLayout {
-        height: 100%;
+        height: root.height;
         padding-left: 9px;
         padding-right: 9px;
         cross-axis-alignment: center;
@@ -201,6 +201,8 @@ export component ImageStudio inherits Rectangle {
     // own close affordance was used on: any other tool — or arming a transform —
     // opens the card again, so the dismissal is never a dead end.
     property <string> tool-options-dismissed-for: "";
+    property <length> tool-options-x: StudioTheme.rail-w + StudioTheme.space-3;
+    property <length> tool-options-y: 0px;
     out property <bool> tool-options-shown: root.tool-has-options(root.active-tool, root.transform-mode)
         && root.tool-options-dismissed-for != root.tool-options-key(root.active-tool, root.transform-mode);
     in-out property <[ImageLayerRow]> layers: [];
@@ -1565,8 +1567,8 @@ export component ImageStudio inherits Rectangle {
             // it; the card's own close affordance dismisses it until the tool
             // changes, and the last row of the card is always inside the board.
             if root.tool-options-shown : ImageToolOptions {
-                x: StudioTheme.rail-w + StudioTheme.space-3;
-                y: 0px;
+                x: root.tool-options-x;
+                y: root.tool-options-y;
                 z: 200;
                 tools: root.tools;
                 tool: root.active-tool;
@@ -1613,6 +1615,10 @@ export component ImageStudio inherits Rectangle {
                 }
                 color-reset() => {
                     root.color-reset();
+                }
+                moved(x, y) => {
+                    root.tool-options-x = min(max(0px, x), root.width - 236px);
+                    root.tool-options-y = min(max(0px, y), root.height - 120px);
                 }
             }
         }

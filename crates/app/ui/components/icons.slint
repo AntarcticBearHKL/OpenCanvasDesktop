@@ -195,7 +195,10 @@ export global Icons {
     out property <string> wand: "M 15 4 L 15 7 M 13.5 5.5 L 16.5 5.5 M 6 15 L 13 8 M 14 9 L 17.5 12.5 M 9 19 L 5 15 M 5 15 L 3 21 L 9 19 Z";
     out property <string> gradient-square: "M 4 4 L 20 4 L 20 20 L 4 20 Z M 4 20 L 20 4";
     out property <string> shape-tools: "M 4 4 L 10 4 L 10 10 L 4 10 Z M 14 14 L 20 14 L 20 20 L 14 20 Z M 17 4 L 20 7 M 20 4 L 17 7";
-    out property <string> quick-select: "M 5 19 C 5 13 9 9 15 9 M 15 9 A 3 3 0 1 0 15.01 9 Z M 4 4 L 7 4 M 12 4 L 15 4 M 4 4 L 4 7 M 4 12 L 4 15";
+    out property <string> quick-select: "M 12 4 A 8 8 0 0 1 20 12 M 20 12 A 8 8 0 0 1 12 20 M 12 20 A 8 8 0 0 1 4 12 M 4 12 A 8 8 0 0 1 12 4 M 18 5 L 21 2 M 19 2 L 21 2 L 21 4";
+    out property <string> ellipse-select: "M 12 3 A 9 9 0 0 1 18.4 5.6 M 21 12 A 9 9 0 0 1 18.4 18.4 M 12 21 A 9 9 0 0 1 5.6 18.4 M 3 12 A 9 9 0 0 1 5.6 5.6";
+    out property <string> polygon-lasso: "M 5 6 L 12 3 L 19 7 L 17 15 L 9 20 L 4 14 Z M 9 20 C 8 22 6 22 5 21";
+    out property <string> brush: "M 14 4 L 20 10 L 12 18 L 7 19 L 6 14 Z M 7 19 L 4 20 L 5 17 M 14 4 L 17 7";
 
     // Image Studio rail glyph (`TOOLS`, image-studio.tsx:99).
     public pure function image-tool-icon(tool: string) -> string {
@@ -204,12 +207,12 @@ export global Icons {
             : tool == "pen" ? pen
             : tool == "direct-select" ? pointer
             : tool == "marquee" ? select
-            : tool == "ellipse-marquee" ? circle
+            : tool == "ellipse-marquee" ? ellipse-select
             : tool == "lasso" ? lasso
-            : tool == "polygon-lasso" ? lasso
+            : tool == "polygon-lasso" ? polygon-lasso
             : tool == "wand" ? wand
             : tool == "quick-select" ? quick-select
-            : tool == "brush" ? pencil
+            : tool == "brush" ? brush
             : tool == "eraser" ? eraser
             : tool == "bucket" ? bucket
             : tool == "gradient" ? gradient-square

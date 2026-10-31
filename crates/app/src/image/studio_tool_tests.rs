@@ -138,8 +138,7 @@ fn near(a: f64, b: f64) -> bool {
 
 type Check = fn(&mut App, &AppWindow) -> Result<(), String>;
 
-/// Hand is the merged Move + Hand tool: a left press on the active layer drags
-/// it, a press off the layer pans the view.
+/// Hand selects and drags an object; a press off the object does not pan.
 fn check_hand(app: &mut App, ui: &AppWindow) -> Result<(), String> {
     let before = app.image.project.board_layers[0].clone();
     select(app, ui, "hand");
@@ -157,9 +156,9 @@ fn check_hand(app: &mut App, ui: &AppWindow) -> Result<(), String> {
 
     let view = app.image.view;
     drag(app, ui, &[at(24.0, 24.0), at(28.0, 28.0)]);
-    if !near(app.image.view.x, view.x + 16.0) || !near(app.image.view.y, view.y + 16.0) {
+    if !near(app.image.view.x, view.x) || !near(app.image.view.y, view.y) {
         return Err(format!(
-            "hand pan off the layer moved the view to {:?}",
+            "hand off the layer must not pan the view ({:?})",
             app.image.view
         ));
     }
@@ -733,7 +732,7 @@ fn transform_mode_drag_transforms_the_layer() -> Result<(), Box<dyn std::error::
 }
 
 /// Hand hit-tests the active layer: a layer that carries pixels is grabbed only
-/// where its pixels are opaque, and its transparent parts pan the view.
+/// where its pixels are opaque; transparent parts never pan the view.
 #[test]
 fn hand_grabs_the_layer_only_where_its_pixels_are_opaque() -> Result<(), Box<dyn std::error::Error>>
 {
@@ -784,8 +783,8 @@ fn hand_grabs_the_layer_only_where_its_pixels_are_opaque() -> Result<(), Box<dyn
             false,
         );
         assert!(
-            (app.image.view.x - (before.x + 8.0)).abs() < 0.01,
-            "a transparent pixel pans the view ({:?})",
+            (app.image.view.x - before.x).abs() < 0.01,
+            "a transparent pixel must not pan the view ({:?})",
             app.image.view
         );
         assert_eq!(
@@ -1047,10 +1046,9 @@ fn studio_chrome_is_full_window_and_its_menus_are_compact() {
         "the popup height comes from its rows"
     );
     assert!(
-        widgets.contains("min-height: root.row-height;")
-            && widgets.contains("max-height: root.row-height;")
+        widgets.contains("height: root.row-height;")
             && widgets.contains("root.note == \"\" ? 28px : 38px"),
-        "menu rows pin their 28px height through the layout constraints"
+        "menu rows pin their 28px height"
     );
     assert!(
         widgets.contains("horizontal-alignment: right;"),

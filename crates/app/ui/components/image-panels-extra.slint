@@ -8,7 +8,7 @@ import { StudioTheme } from "../studio-theme.slint";
 import { IconButton, Slider } from "widgets.slint";
 import { Icons } from "icons.slint";
 import { ImageActionRow, ImageAdjustmentGroup, ImageAdjustmentRow, ImageAssetRow, ImageBrushRow, ImageChannelRow, ImageCurvePoint, ImageEditorRow, ImageFilterParam, ImageGradientRow, ImageGradientStopRow, ImagePathRow, ImagePatternRow } from "overlay-types.slint";
-import { PanelTitle, StudioCheckbox, StudioChip, StudioField, StudioIconButton, StudioSlider } from "studio-widgets.slint";
+import { StudioCheckbox, StudioChip, StudioField, StudioIconButton, StudioSlider } from "studio-widgets.slint";
 
 // Shared panel header: title left, free-form actions row right.
 component PanelHead inherits Rectangle {
@@ -21,9 +21,6 @@ component PanelHead inherits Rectangle {
         padding-right: StudioTheme.panel-pad;
         spacing: StudioTheme.space-2;
         cross-axis-alignment: center;
-        PanelTitle {
-            label: root.title;
-        }
         @children
     }
 }
@@ -613,11 +610,6 @@ export component ImageAdjustmentsPanel inherits Rectangle {
     VerticalLayout {
         spacing: 0;
 
-        PanelHead {
-            title: "Adjustments";
-        }
-        PanelRule {
-        }
         VerticalLayout {
             padding: StudioTheme.panel-pad;
             spacing: StudioTheme.space-1;
@@ -1223,11 +1215,6 @@ export component ImageEditorPanel inherits Rectangle {
     VerticalLayout {
         spacing: 0;
 
-        PanelHead {
-            title: root.title;
-        }
-        PanelRule {
-        }
 
         Flickable {
             vertical-stretch: 1;

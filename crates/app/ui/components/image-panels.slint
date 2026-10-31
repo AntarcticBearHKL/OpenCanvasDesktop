@@ -298,6 +298,7 @@ export component ImageToolOptions inherits Rectangle {
     callback color-swap();
     callback color-reset();
     callback close();
+    callback moved(length, length);
 
     // Card metrics: the width the studio anchors it by, and the auto height its
     // content asks for.
@@ -324,6 +325,32 @@ export component ImageToolOptions inherits Rectangle {
     TouchArea {
         width: 100%;
         height: 100%;
+    }
+
+    // The header is the drag handle: the options card is free-floating, not
+    // pinned to the rail. Controls inside the body sit above this hit area.
+    property <length> drag-press-x: 0px;
+    property <length> drag-press-y: 0px;
+    property <length> drag-origin-x: 0px;
+    property <length> drag-origin-y: 0px;
+    header-drag := TouchArea {
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 34px;
+        mouse-cursor: grab;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.drag-press-x = self.absolute-position.x + self.mouse-x;
+                root.drag-press-y = self.absolute-position.y + self.mouse-y;
+                root.drag-origin-x = root.x;
+                root.drag-origin-y = root.y;
+            } else if (e.kind == PointerEventKind.move && self.pressed) {
+                let dx = (self.absolute-position.x + self.mouse-x) - root.drag-press-x;
+                let dy = (self.absolute-position.y + self.mouse-y) - root.drag-press-y;
+                root.moved(root.drag-origin-x + dx, root.drag-origin-y + dy);
+            }
+        }
     }
 
     card-body := VerticalLayout {

@@ -247,14 +247,12 @@ impl App {
         if self.image.tool == ImageTool::Hand {
             let point = self.image_doc_point(x, y);
             if !self.image_transform_begin((x, y)) {
-                if self.hand_grabs_active_layer(point) {
+                // Hand selects the topmost object under the pointer and can
+                // drag that object. An empty board press does nothing: the
+                // left button never pans the canvas.
+                if let Some(layer) = self.layer_at(point) {
+                    self.image.active_layer = layer;
                     self.image_move_start(x, y, point);
-                } else {
-                    self.image.gesture = Some(Gesture::Pan {
-                        start_x: x,
-                        start_y: y,
-                        view: self.image.view,
-                    });
                 }
             }
             return;
@@ -596,17 +594,21 @@ impl App {
         (next_x, next_y)
     }
 
-    /// Hand press: whether a press lands on the active layer rather than the
-    /// empty board. The layer's rect is the fallback; a layer that carries
-    /// pixels is grabbed only where those pixels are not transparent, so a
-    /// transparent part of a bitmap pans instead of dragging the layer.
-    fn hand_grabs_active_layer(&self, point: Point) -> bool {
-        let layer_id = self.image.active_layer_id();
-        let Some(layer) =
-            open_canvas_ps::layer_ops::find_ps_layer(&self.image.project.board_layers, &layer_id)
-        else {
-            return false;
-        };
+    /// The topmost visible, unlocked object under the pointer.
+    fn layer_at(&self, point: Point) -> Option<String> {
+        self.image
+            .project
+            .board_layers
+            .iter()
+            .rev()
+            .find(|layer| self.hand_hits_layer(layer, point))
+            .map(|layer| layer.id.clone())
+    }
+
+    /// Whether a pointer lands on one object. The layer's rect is the fallback;
+    /// a layer that carries pixels is hit only where those pixels are not
+    /// transparent, so a transparent bitmap area selects the object below.
+    fn hand_hits_layer(&self, layer: &open_canvas_ps::CanvasPsLayer, point: Point) -> bool {
         if layer.locked || layer.hidden {
             return false;
         }
