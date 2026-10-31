@@ -139,6 +139,9 @@ export component IconButton inherits Rectangle {
     in property <bool> at-least-size: root.variant == "ghost";
     in property <length> radius: root.variant == "menu" ? Theme.radius-md : Theme.radius-sm;
     in property <length> icon-size: root.compact ? 14px : root.variant == "toolbar" ? 18px : root.variant == "studio" || root.variant == "rail" ? 16px : 14px;
+    // Optical correction for glyphs whose ink is not perfectly symmetric in
+    // the 24px viewbox. The rail sets it per tool.
+    in property <length> icon-offset-x: 0px;
     in property <length> stroke-width: root.variant == "toolbar" || root.variant == "window" ? 1.5px : root.variant == "studio" || root.variant == "rail" ? 1.8px : 2px;
     in property <length> pad: Theme.space-2;
     in property <length> spacing: Theme.space-1;
@@ -247,7 +250,7 @@ export component IconButton inherits Rectangle {
 
     // Icon-only mode: the glyph is centred on the button's own box.
     if root.icon != "" && root.label == "" : Path {
-        x: (root.width - self.width) / 2;
+        x: (root.width - self.width) / 2 + root.icon-offset-x;
         y: (root.height - self.height) / 2;
         width: root.icon-size;
         height: root.icon-size;

@@ -43,6 +43,16 @@ export component ImageToolRail inherits Rectangle {
         return id == "pen" || id == "marquee" || id == "brush" || id == "shape" || id == "eyedropper";
     }
 
+    // Tiny optical corrections measured from the rendered glyphs. They put
+    // every tool's ink on the rail's 19.5px centre line.
+    pure function icon-offset(id: string) -> length {
+        return id == "hand" || id == "pen" || id == "wand" ? 1px
+            : id == "direct-select" || id == "polygon-lasso" || id == "bucket" ? 0.5px
+            : id == "quick-select" ? -0.25px
+            : id == "eyedropper" ? -0.5px
+            : 0px;
+    }
+
     VerticalLayout {
         padding-left: 8px;
         padding-right: 8px;
@@ -60,6 +70,7 @@ export component ImageToolRail inherits Rectangle {
             }
             StudioToolButton {
                 icon: Icons.image-tool-icon(tool.id);
+                icon-offset-x: root.icon-offset(tool.id);
                 tip: tool.label;
                 tip-studio: "image";
                 tooltip-enabled: true;

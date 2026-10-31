@@ -266,3 +266,46 @@ fn toggling_a_panel_repaints_the_dock() -> TestResult {
     );
     Ok(())
 }
+/// Visual audit fixture: save the studio menu and rail for the layout checks
+/// (text centering and icon alignment). This is intentionally a snapshot-only
+/// test; the assertions live in the geometry/source guards.
+#[test]
+fn studio_menu_and_rail_render_for_visual_audit() -> TestResult {
+    init_backend_allow_existing();
+    let menu = render_studio(View::Image, "image", |ui, _| {
+        ui.set_image_menu("view".into());
+    })?;
+    let pixels: Vec<u8> = menu
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(menu.width(), menu.height(), pixels)
+        .ok_or("studio menu snapshot size")?;
+    image.save(std::env::temp_dir().join("open-canvas-studio-menu.png"))?;
+
+    let rail = render_studio(View::Image, "image", |ui, _| {
+        ui.set_image_menu("".into());
+    })?;
+    let pixels: Vec<u8> = rail
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(rail.width(), rail.height(), pixels)
+        .ok_or("studio rail snapshot size")?;
+    image.save(std::env::temp_dir().join("open-canvas-studio-rail.png"))?;
+
+    let panels = render_studio(View::Image, "image", |ui, app| {
+        reveal(ui, app, &["layers", "properties"]);
+    })?;
+    let pixels: Vec<u8> = panels
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(panels.width(), panels.height(), pixels)
+        .ok_or("studio panels snapshot size")?;
+    image.save(std::env::temp_dir().join("open-canvas-studio-panels.png"))?;
+    Ok(())
+}
