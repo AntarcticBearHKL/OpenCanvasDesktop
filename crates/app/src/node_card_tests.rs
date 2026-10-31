@@ -1622,12 +1622,14 @@ fn smart_canvas_double_click_opens_the_studio_and_home_returns_to_the_canvas() -
 /// In Smart Canvas mode the board is a viewer: left-drag pans and right-hold
 /// returns to the origin canvas; right-click itself does not move the window.
 #[test]
-fn smart_canvas_board_pans_and_right_hold_returns_to_canvas() -> TestResult {
+fn smart_canvas_left_uses_the_tool_and_right_hold_returns_to_canvas() -> TestResult {
     let fixture = smart_fixture()?;
     crate::app::with_app(&fixture.app, |app| {
         app.node_double_click(&fixture.ui, &fixture.node_id);
         assert_eq!(app.view, crate::app::View::Image);
-        let before = app.image.view.x;
+        let before_view = app.image.view.x;
+        let before_label = app.image.history.current().map(|snap| snap.label.clone());
+        app.image_tool(&fixture.ui, "brush");
         app.image_pointer(
             &fixture.ui,
             PointerKind::Down,
@@ -1656,8 +1658,13 @@ fn smart_canvas_board_pans_and_right_hold_returns_to_canvas() -> TestResult {
             false,
         );
         assert!(
-            (app.image.view.x - before).abs() > 0.1,
-            "left-drag pans the Smart Canvas board"
+            (app.image.view.x - before_view).abs() < 0.1,
+            "left-drag does not pan the Smart Canvas board"
+        );
+        assert_ne!(
+            app.image.history.current().map(|snap| snap.label.clone()),
+            before_label,
+            "the active left-button tool paints instead"
         );
 
         app.clock_override = Some(1_000);

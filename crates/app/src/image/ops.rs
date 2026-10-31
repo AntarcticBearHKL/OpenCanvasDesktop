@@ -176,14 +176,6 @@ impl App {
                 });
                 true
             }
-            PointerKind::Down if button == Button::Left => {
-                self.image.gesture = Some(Gesture::Pan {
-                    start_x: x,
-                    start_y: y,
-                    view: self.image.view,
-                });
-                true
-            }
             PointerKind::Move => {
                 if let Some(hold) = self.home_hold {
                     if (x - hold.pos.x).abs() > HOME_HOLD_SLOP

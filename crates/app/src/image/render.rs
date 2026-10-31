@@ -804,11 +804,7 @@ impl App {
         ui.set_image_view_x(crate::vm::len(view.x));
         ui.set_image_view_y(crate::vm::len(view.y));
         ui.set_image_has_selection(self.image.selection.is_some());
-        ui.set_image_pan_cursor(
-            self.image.origin_canvas.is_some()
-                || self.image.tool == ImageTool::Hand
-                || self.image.space_held,
-        );
+        ui.set_image_pan_cursor(self.image.tool == ImageTool::Hand || self.image.space_held);
         ui.set_image_can_undo(self.image.history.can_undo());
         ui.set_image_can_redo(self.image.history.can_redo());
         ui.set_image_menu(self.image.menu.as_str().into());
