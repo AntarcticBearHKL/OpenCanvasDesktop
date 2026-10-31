@@ -747,15 +747,15 @@ fn the_filter_menu_paints_a_compact_popup_and_a_right_flyout() -> TestResult {
     assert!(y0 >= 40, "the popup starts below the menu bar ({y0})");
     assert!(
         y1 - y0 < 380,
-        "the popup hugs its eleven rows instead of scrolling ({y0}..{y1})"
+        "the popup hugs its ten rows instead of scrolling ({y0}..{y1})"
     );
     assert!(x0 > 200, "the popup hangs under the Filter tab ({x0})");
     assert!(x1 < 640, "the popup is one column wide ({x0}..{x1})");
 
-    // Rows: 1px border + 4px padding, then Repeat (28), a 5px divider, then the
-    // groups. Hover the first group row (Blur) and its flyout opens right of
-    // the popup, its top lined up with the row.
-    let blur_row = (y0 + 52) as f32;
+    // Rows: 1px border + 4px padding, then the nine group rows. Hover the
+    // first group row (Blur) and its flyout opens right of the popup, its top
+    // lined up with the row.
+    let blur_row = (y0 + 18) as f32;
     let position = slint::LogicalPosition::new((x0 + 20) as f32, blur_row);
     ui.window()
         .dispatch_event(WindowEvent::PointerMoved { position });
@@ -781,7 +781,7 @@ fn the_filter_menu_paints_a_compact_popup_and_a_right_flyout() -> TestResult {
 
     // Filter Gallery is the last group row; its flyout holds the six folders,
     // and the first folder opens the third level.
-    let gallery = (y0 + 38 + 9 * 28 + 14) as f32;
+    let gallery = (y0 + 4 + 9 * 28 + 14) as f32;
     let position = slint::LogicalPosition::new((x0 + 20) as f32, gallery);
     ui.window()
         .dispatch_event(WindowEvent::PointerMoved { position });
@@ -833,6 +833,66 @@ fn the_filter_menu_paints_a_compact_popup_and_a_right_flyout() -> TestResult {
         ui.get_image_menu().as_str(),
         "",
         "a click outside the popups closes the menu"
+    );
+    Ok(())
+}
+
+/// While a top-level menu is open, simply moving the pointer onto another
+/// top-level entry switches menus; hovering does nothing when every menu is
+/// closed. This drives the real Slint hit-testing, not just the action model.
+#[test]
+fn hovering_another_top_level_menu_switches_while_open() -> TestResult {
+    init_backend_allow_existing();
+    let dir = tempfile::TempDir::new()?;
+    let ui = AppWindow::new()?;
+    let store = Store::at(dir.path().to_path_buf());
+    let app = Rc::new(RefCell::new(crate::app::App::new(store)));
+    crate::events::wire(&ui, &app);
+    crate::app::with_app(&app, |app| {
+        app.view = View::Image;
+        app.sync_all(&ui);
+    });
+    ui.set_view("image".into());
+    ui.window().set_size(slint::LogicalSize::new(1280.0, 800.0));
+    ui.show()?;
+
+    // Open File from the model, then only move the pointer across the bar.
+    crate::app::with_app(&app, |app| {
+        app.image.menu = "file".to_string();
+        app.sync_image(&ui);
+    });
+    let mut switched_x = None;
+    for x in (40..360).step_by(4) {
+        let position = slint::LogicalPosition::new(x as f32, 20.0);
+        ui.window()
+            .dispatch_event(WindowEvent::PointerMoved { position });
+        if ui.get_image_menu().as_str() == "edit" {
+            switched_x = Some(x as f32);
+            break;
+        }
+    }
+    let switched_x = switched_x.ok_or("hovering Edit did not switch the open File menu")?;
+    assert_eq!(
+        ui.get_image_menu().as_str(),
+        "edit",
+        "the pointer alone switches the open menu"
+    );
+
+    // With no menu open, the same hover must not pop one open.
+    crate::app::with_app(&app, |app| {
+        app.image.menu.clear();
+        app.sync_image(&ui);
+    });
+    let away = slint::LogicalPosition::new(900.0, 600.0);
+    ui.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: away });
+    let back = slint::LogicalPosition::new(switched_x, 20.0);
+    ui.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: back });
+    assert_eq!(
+        ui.get_image_menu().as_str(),
+        "",
+        "hovering a closed menu bar does not open a menu"
     );
     Ok(())
 }

@@ -701,23 +701,15 @@ fn gallery_folder_key(category: &str) -> String {
     )
 }
 
-/// Builds the Filter menu's rows as a nested menu model: the top level is
-/// Repeat Last Filter plus one group row per non-empty Photoshop group, then
-/// Filter Gallery — whose flyout holds one group row per gallery folder.
+/// Builds the Filter menu's rows as a nested menu model: the top level is one
+/// group row per non-empty Photoshop group, then Filter Gallery — whose flyout
+/// holds one group row per gallery folder.
 ///
 /// Every row names the flyout it lives in (`parent`, `""` = top level) and a
 /// group row names the flyout it opens (`group`), so the UI can render each
 /// flyout from the same flat, static model.
 pub fn filter_menu_rows() -> Vec<crate::FilterMenuRow> {
-    let mut rows = vec![menu_row(
-        "repeat",
-        "Repeat Last Filter",
-        "repeat",
-        true,
-        "Ctrl+F",
-        "",
-        "",
-    )];
+    let mut rows = Vec::new();
     for (group, label) in PHOTOSHOP_GROUPS {
         let native: Vec<PsFilterType> = NATIVE_FILTER_ORDER
             .iter()
@@ -1077,28 +1069,9 @@ impl App {
             filter_id(dialog.choice),
             &dialog.params.record_string(),
         );
-        self.image.last_filter =
-            Some((filter_id(dialog.choice).to_string(), dialog.params.clone()));
         self.commit_image_core("Filter");
         self.image.filter_dialog = None;
         Ok(())
-    }
-
-    /// Repeat Last Filter (`Ctrl+F`).
-    pub fn image_filter_repeat(&mut self, ui: &AppWindow) {
-        self.image_filter_repeat_core();
-        self.sync_image(ui);
-    }
-
-    /// The repeat without a window (unit tests drive this directly).
-    pub fn image_filter_repeat_core(&mut self) {
-        let Some((id, params)) = self.image.last_filter.clone() else {
-            return;
-        };
-        let Some(choice) = FilterChoice::from_id(&id) else {
-            return;
-        };
-        drop(self.image_filter_apply(choice, &params));
     }
 }
 
@@ -1289,13 +1262,6 @@ mod tests {
             let after = bitmap(&app);
             assert!(after != before, "{id} must filter the bitmap");
             assert_eq!(app.image.history.label(1), Some("Filter"), "{id}");
-            assert!(
-                app.image
-                    .last_filter
-                    .as_ref()
-                    .is_some_and(|(last, _)| last == id),
-                "{id} becomes the repeat-last filter"
-            );
         }
         Ok(())
     }
@@ -1553,41 +1519,6 @@ mod tests {
     }
 
     #[test]
-    fn repeat_last_filter_reapplies_a_native_and_an_engine_filter(
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let (mut app, _dir) = filter_board_app()?;
-        app.image_filter_open_core("sharpen")?;
-        app.image_filter_param_core("amount", 300.0);
-        app.image_filter_apply_dialog_core()?;
-        let once = bitmap(&app);
-        app.image_filter_repeat_core();
-        let twice = bitmap(&app);
-        assert!(twice != once, "repeat applies the native filter again");
-        assert_eq!(app.image.history.label(2), Some("Filter"));
-
-        // An engine filter repeats the same way.
-        app.image_filter_open_core("oil-paint")?;
-        app.image_filter_param_core("stylization", 8.0);
-        app.image_filter_apply_dialog_core()?;
-        let painted = bitmap(&app);
-        assert!(
-            app.image
-                .last_filter
-                .as_ref()
-                .is_some_and(|(id, _)| id == "oil-paint"),
-            "the engine filter becomes repeat-last"
-        );
-        app.image_filter_repeat_core();
-        let repainted = bitmap(&app);
-        assert!(
-            repainted != painted,
-            "repeat applies the engine filter again"
-        );
-        assert_eq!(app.image.history.label(4), Some("Filter"));
-        Ok(())
-    }
-
-    #[test]
     fn a_gallery_filter_opens_previews_and_applies() -> Result<(), Box<dyn std::error::Error>> {
         let (mut app, _dir) = filter_board_app()?;
         let before = bitmap(&app);
@@ -1613,11 +1544,8 @@ mod tests {
     fn the_filter_menu_lists_every_filter_once_in_photoshop_order(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let rows = filter_menu_rows();
-        assert_eq!(rows.first().map(|row| row.kind.as_str()), Some("repeat"));
-        assert_eq!(
-            rows.first().map(|row| row.label.as_str()),
-            Some("Repeat Last Filter")
-        );
+        assert_eq!(rows.first().map(|row| row.kind.as_str()), Some("group"));
+        assert_eq!(rows.first().map(|row| row.label.as_str()), Some("Blur"));
         assert_eq!(rows.first().map(|row| row.parent.as_str()), Some(""));
 
         let item_ids: Vec<&str> = rows
@@ -1646,13 +1574,11 @@ mod tests {
             "the menu reaches every filter, no duplicates"
         );
 
-        // The top level is Repeat Last Filter followed by one submenu per
-        // non-empty group, then Filter Gallery.
+        // The top level is one submenu per non-empty group, then Filter Gallery.
         let top: Vec<&crate::FilterMenuRow> =
             rows.iter().filter(|row| row.parent.is_empty()).collect();
         assert_eq!(
             top.iter()
-                .skip(1)
                 .map(|row| (row.kind.as_str(), row.label.as_str()))
                 .collect::<Vec<_>>(),
             vec![

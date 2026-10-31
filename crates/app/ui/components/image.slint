@@ -79,7 +79,11 @@ component SettingsChip inherits Rectangle {
 component StudioMenuTab inherits Rectangle {
     in property <string> label: "";
     in property <bool> active: false;
+    // True while any menu is open: moving over another top-level entry
+    // switches to that menu without requiring a click.
+    in property <bool> menu-open: false;
     callback picked();
+    callback hovered();
 
     height: StudioTheme.menu-bar-h;
     width: self.preferred-width;
@@ -96,6 +100,11 @@ component StudioMenuTab inherits Rectangle {
         mouse-cursor: pointer;
         clicked => {
             root.picked();
+        }
+        changed has-hover => {
+            if (self.has-hover && root.menu-open && !root.active) {
+                root.hovered();
+            }
         }
     }
 
@@ -141,11 +150,11 @@ component FilterMenuEntry inherits Rectangle {
     min-height: root.row-height;
     max-height: root.row-height;
 
-    if root.entry.kind == "repeat" || root.entry.kind == "item" : StudioMenuItem {
+    if root.entry.kind == "item" : StudioMenuItem {
         width: root.width;
         height: root.height;
         label: root.entry.label;
-        shortcut: root.entry.kind == "repeat" ? "Ctrl+F" : "";
+        shortcut: "";
         note: root.entry.note;
         enabled: root.entry.enabled;
         clicked => {
@@ -654,49 +663,77 @@ export component ImageStudio inherits Rectangle {
                 file-btn := StudioMenuTab {
                     label: "File";
                     active: root.menu == "file";
+                    menu-open: root.menu != "";
                     picked => {
+                        root.action("file");
+                    }
+                    hovered => {
                         root.action("file");
                     }
                 }
                 edit-btn := StudioMenuTab {
                     label: "Edit";
                     active: root.menu == "edit";
+                    menu-open: root.menu != "";
                     picked => {
+                        root.action("edit");
+                    }
+                    hovered => {
                         root.action("edit");
                     }
                 }
                 image-btn := StudioMenuTab {
                     label: "Image";
                     active: root.menu == "image";
+                    menu-open: root.menu != "";
                     picked => {
+                        root.action("image");
+                    }
+                    hovered => {
                         root.action("image");
                     }
                 }
                 layer-btn := StudioMenuTab {
                     label: "Layer";
                     active: root.menu == "layer";
+                    menu-open: root.menu != "";
                     picked => {
+                        root.action("layer");
+                    }
+                    hovered => {
                         root.action("layer");
                     }
                 }
                 select-btn := StudioMenuTab {
                     label: "Select";
                     active: root.menu == "select";
+                    menu-open: root.menu != "";
                     picked => {
+                        root.action("select");
+                    }
+                    hovered => {
                         root.action("select");
                     }
                 }
                 filter-btn := StudioMenuTab {
                     label: "Filter";
                     active: root.menu == "filter";
+                    menu-open: root.menu != "";
                     picked => {
+                        root.action("filter");
+                    }
+                    hovered => {
                         root.action("filter");
                     }
                 }
                 view-btn := StudioMenuTab {
                     label: "View";
                     active: root.menu == "view";
+                    menu-open: root.menu != "";
                     picked => {
+                        root.action("view");
+                    }
+                    hovered => {
                         root.action("view");
                     }
                 }
@@ -705,7 +742,11 @@ export component ImageStudio inherits Rectangle {
                 dock-btn := StudioMenuTab {
                     label: "Window";
                     active: root.menu == "dock";
+                    menu-open: root.menu != "";
                     picked => {
+                        root.action("dock");
+                    }
+                    hovered => {
                         root.action("dock");
                     }
                 }
@@ -2143,8 +2184,8 @@ export component ImageStudio inherits Rectangle {
         }
     }
     // ---- Filter menu: nested flyouts, not one long scrolling list ----------
-    // The top level is Repeat Last Filter plus one row per filter group; each
-    // group row opens its flyout to the right, and Filter Gallery's flyout
+    // The top level is one row per filter group; each group row opens its
+    // flyout to the right, and Filter Gallery's flyout
     // opens a third level with one foldout per gallery folder. Every level is
     // drawn from the same static row model, hidden rows belonging elsewhere.
     if root.menu == "filter" : StudioMenu {
@@ -2156,7 +2197,7 @@ export component ImageStudio inherits Rectangle {
             entry: row;
             selected: row.kind == "group" && root.filter-open-group == row.group;
             activated => {
-                root.action(row.kind == "repeat" ? "filter.repeat" : "filter." + row.id);
+                root.action("filter." + row.id);
             }
             opened(row-y) => {
                 root.open-filter-group(row.group, row-y);

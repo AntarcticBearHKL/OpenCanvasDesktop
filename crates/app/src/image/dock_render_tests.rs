@@ -284,6 +284,18 @@ fn studio_menu_and_rail_render_for_visual_audit() -> TestResult {
         .ok_or("studio menu snapshot size")?;
     image.save(std::env::temp_dir().join("open-canvas-studio-menu.png"))?;
 
+    let filter = render_studio(View::Image, "image", |ui, _| {
+        ui.set_image_menu("filter".into());
+    })?;
+    let pixels: Vec<u8> = filter
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(filter.width(), filter.height(), pixels)
+        .ok_or("studio filter snapshot size")?;
+    image.save(std::env::temp_dir().join("open-canvas-studio-filter.png"))?;
+
     let rail = render_studio(View::Image, "image", |ui, _| {
         ui.set_image_menu("".into());
     })?;

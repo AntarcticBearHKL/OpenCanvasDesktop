@@ -547,9 +547,8 @@ pub struct ImageState {
     /// The per-type editor's target + picked gradient stop.
     pub editor_target: EditorTarget,
     pub editor_stop: usize,
-    /// The open filter dialog + the last applied filter (Repeat Last Filter).
+    /// The open filter dialog.
     pub filter_dialog: Option<crate::image::filter::FilterDialog>,
-    pub last_filter: Option<(String, crate::image::filter::FilterParams)>,
     /// The open menu modal + the last numeric transform (Repeat Transform).
     pub modal: Option<crate::image::menu::TransformModal>,
     pub last_transform: Option<open_canvas_ps::PsNumericTransform>,
@@ -687,7 +686,6 @@ impl Default for ImageState {
             editor_target: EditorTarget::default(),
             editor_stop: 0,
             filter_dialog: None,
-            last_filter: None,
             modal: None,
             last_transform: None,
             transform_mode: None,

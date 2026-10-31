@@ -36,10 +36,6 @@ impl App {
             self.image.menu.clear();
             self.sync_image(ui);
         }
-        if id == "filter.repeat" {
-            self.image_filter_repeat(ui);
-            return;
-        }
         // Gradient tool options' blend-mode chips (`image-studio.tsx`'s
         // gradient `mode` select): `gradient.blend.<id>`.
         if let Some(blend) = id.strip_prefix("gradient.blend.") {
