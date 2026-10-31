@@ -639,6 +639,94 @@ fn tool_rail_click_while_a_menu_is_open_selects_in_one_click(
     Ok(())
 }
 
+/// A single brush click is a one-dab stroke; it must not require a drag before
+/// the first paint appears.
+#[test]
+fn brush_single_click_paints_a_dab() -> Result<(), Box<dyn std::error::Error>> {
+    init_backend_allow_existing();
+    let (ui, app, _dir) = harness()?;
+    crate::app::with_app(&app, |app| {
+        app.image.color = "#ff0000".to_string();
+        app.image.brush_size = 6.0;
+        app.image_tool(&ui, "brush");
+        click_doc(app, &ui, (8.0, 8.0));
+    });
+    let dab = crate::app::with_app_r(&app, |app| {
+        active_bitmap(app).map(|bitmap| bitmap.get(4, 4))
+    })
+    .ok_or("borrowed")?
+    .ok_or("brush painted no bitmap")?;
+    assert!(
+        dab[3] > 0 && dab[0] > 200,
+        "the click leaves a red dab: {dab:?}"
+    );
+    Ok(())
+}
+
+/// The real Slint board hit area (not the Rust gesture core) must deliver a
+/// brush drag. This exercises the same window coordinates a user clicks.
+#[test]
+fn brush_drag_through_the_board_hit_area_paints() -> Result<(), Box<dyn std::error::Error>> {
+    init_backend_allow_existing();
+    let (ui, app, _dir) = harness()?;
+    crate::app::with_app(&app, |app| {
+        app.image.project.width = 640.0;
+        app.image.project.height = 360.0;
+        app.image.project.board_layers.clear();
+        app.image.active_layer.clear();
+        app.image.canvas = (1240.0, 760.0);
+        app.image.fitted = "img-tool:640x360".to_string();
+        app.image.view = ImageView {
+            x: 100.0,
+            y: 100.0,
+            k: 1.0,
+        };
+        app.image.color = "#ff0000".to_string();
+        app.image.brush_size = 12.0;
+        app.image_tool(&ui, "brush");
+    });
+    // Board-local (500, 400) = document (400, 300), outside the floating
+    // options card; window = menu bar 40 + rail 40 + board-local.
+    let down = slint::LogicalPosition::new(540.0, 440.0);
+    let moved = slint::LogicalPosition::new(560.0, 440.0);
+    ui.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: down });
+    ui.window().dispatch_event(WindowEvent::PointerPressed {
+        position: down,
+        button: PointerEventButton::Left,
+    });
+    ui.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: moved });
+    ui.window().dispatch_event(WindowEvent::PointerReleased {
+        position: moved,
+        button: PointerEventButton::Left,
+    });
+    let (layers, dab) = crate::app::with_app_r(&app, |app| {
+        let layer = app
+            .image
+            .project
+            .board_layers
+            .iter()
+            .find(|layer| layer.id == app.image.active_layer_id())
+            .cloned();
+        let dab = layer.and_then(|layer| layer.storage_key).and_then(|key| {
+            app.image
+                .bitmaps
+                .get(&key)
+                .map(|bitmap| bitmap.get(400, 300))
+        });
+        (app.image.project.board_layers.len(), dab)
+    })
+    .ok_or("borrowed")?;
+    assert!(layers >= 1, "the brush creates a pixel layer");
+    let dab = dab.ok_or("the brush created no bitmap")?;
+    assert!(
+        dab[3] > 0 && dab[0] > 200,
+        "the brush stroke is visible: {dab:?}"
+    );
+    Ok(())
+}
+
 /// One history step per committed gesture, and no step for a pan.
 #[test]
 fn history_records_one_step_per_gesture() -> Result<(), Box<dyn std::error::Error>> {

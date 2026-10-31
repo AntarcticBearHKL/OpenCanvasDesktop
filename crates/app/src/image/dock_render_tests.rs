@@ -308,6 +308,21 @@ fn studio_menu_and_rail_render_for_visual_audit() -> TestResult {
         .ok_or("studio rail snapshot size")?;
     image.save(std::env::temp_dir().join("open-canvas-studio-rail.png"))?;
 
+    let brush = render_studio(View::Image, "image", |ui, app| {
+        crate::app::with_app(app, |app| {
+            app.image_tool(ui, "brush");
+            app.sync_image(ui);
+        });
+    })?;
+    let pixels: Vec<u8> = brush
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(brush.width(), brush.height(), pixels)
+        .ok_or("studio brush snapshot size")?;
+    image.save(std::env::temp_dir().join("open-canvas-studio-brush.png"))?;
+
     let paths = render_studio(View::Image, "image", |ui, app| {
         crate::app::with_app(app, |app| {
             app.image.project.board_paths = Some(vec![

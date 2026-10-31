@@ -314,6 +314,10 @@ impl App {
                 self.begin_paint();
                 let layer = self.image.active_layer_id();
                 let erase = self.paint_erase();
+                // A click without a drag is a one-dab stroke, like a real
+                // brush. The move path only stamps from `last` onward, so
+                // without this first dab a click left no mark at all.
+                self.paint_segment(&layer, point, point, erase);
                 self.image.gesture = Some(Gesture::Paint {
                     layer,
                     erase,
