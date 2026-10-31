@@ -287,6 +287,23 @@ impl App {
                 }
             }
             ImageTool::Marquee | ImageTool::EllipseMarquee => {
+                // Dragging inside the current selection moves the selection
+                // outline itself (the common Photoshop marquee gesture). A
+                // modifier still starts a new combine selection.
+                if !shift
+                    && !alt
+                    && self.image.selection.as_ref().is_some_and(|selection| {
+                        selection.get(vm::f2i(point.x.floor()), vm::f2i(point.y.floor()))[3] > 0
+                    })
+                {
+                    if let Some(selection) = self.image.selection.clone() {
+                        self.image.gesture = Some(Gesture::SelectionMove {
+                            start: point,
+                            selection,
+                        });
+                        return;
+                    }
+                }
                 self.image.gesture = Some(Gesture::Marquee {
                     tool: self.image.tool,
                     start: point,
@@ -491,6 +508,12 @@ impl App {
                     alt,
                 });
             }
+            Gesture::SelectionMove { start, selection } => {
+                let dx = vm::f2i((point.x - start.x).round());
+                let dy = vm::f2i((point.y - start.y).round());
+                self.image.selection = Some(translate_selection(&selection, dx, dy));
+                self.image.gesture = Some(Gesture::SelectionMove { start, selection });
+            }
             Gesture::Lasso { mut points } => {
                 let far = match points.last() {
                     Some(last) => {
@@ -541,6 +564,8 @@ impl App {
                 };
                 self.finish_image(label);
             }
+            Gesture::SelectionMove { .. } => {}
+
             Gesture::Marquee {
                 tool,
                 start,
@@ -1419,6 +1444,35 @@ impl App {
 }
 
 /// One brush dab: a soft round stamp (hardness = hard-core fraction).
+/// Copies a selection mask shifted by `(dx, dy)` document pixels. Pixels
+/// shifted off the board are clipped; the mask keeps its original dimensions.
+fn translate_selection(source: &Surface, dx: i64, dy: i64) -> Surface {
+    let (width, height) = (source.width(), source.height());
+    let mut out = Surface::new(width, height);
+    if dx.abs() >= i64::try_from(width).unwrap_or(i64::MAX)
+        || dy.abs() >= i64::try_from(height).unwrap_or(i64::MAX)
+    {
+        return out;
+    }
+    for y in 0..height {
+        let sy = i64::try_from(y).unwrap_or(i64::MAX) - dy;
+        if sy < 0 || sy >= i64::try_from(height).unwrap_or(i64::MAX) {
+            continue;
+        }
+        for x in 0..width {
+            let sx = i64::try_from(x).unwrap_or(i64::MAX) - dx;
+            if sx >= 0 && sx < i64::try_from(width).unwrap_or(i64::MAX) {
+                out.set(
+                    i64::try_from(x).unwrap_or(i64::MAX),
+                    i64::try_from(y).unwrap_or(i64::MAX),
+                    source.get(sx, sy),
+                );
+            }
+        }
+    }
+    out
+}
+
 fn stamp_dab(
     bitmap: &mut Surface,
     centre: Point,

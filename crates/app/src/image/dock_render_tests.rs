@@ -323,6 +323,27 @@ fn studio_menu_and_rail_render_for_visual_audit() -> TestResult {
         .ok_or("studio brush snapshot size")?;
     image.save(std::env::temp_dir().join("open-canvas-studio-brush.png"))?;
 
+    let ellipse = render_studio(View::Image, "image", |ui, app| {
+        crate::app::with_app(app, |app| {
+            app.image.gesture = Some(crate::image::Gesture::Marquee {
+                tool: crate::image::ImageTool::EllipseMarquee,
+                start: open_canvas_ps::Point::new(100.0, 100.0),
+                current: open_canvas_ps::Point::new(420.0, 280.0),
+                shift: false,
+                alt: false,
+            });
+            app.sync_image(ui);
+        });
+    })?;
+    let pixels: Vec<u8> = ellipse
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(ellipse.width(), ellipse.height(), pixels)
+        .ok_or("studio ellipse snapshot size")?;
+    image.save(std::env::temp_dir().join("open-canvas-studio-ellipse.png"))?;
+
     let paths = render_studio(View::Image, "image", |ui, app| {
         crate::app::with_app(app, |app| {
             app.image.project.board_paths = Some(vec![

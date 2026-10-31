@@ -270,6 +270,11 @@ pub enum Gesture {
         shift: bool,
         alt: bool,
     },
+    /// Dragging inside an existing selection translates its mask.
+    SelectionMove {
+        start: Point,
+        selection: Surface,
+    },
     Lasso {
         points: Vec<Point>,
     },

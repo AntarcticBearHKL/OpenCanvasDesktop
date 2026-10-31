@@ -639,6 +639,36 @@ fn tool_rail_click_while_a_menu_is_open_selects_in_one_click(
     Ok(())
 }
 
+/// Dragging inside the current marquee selection translates the selection
+/// mask instead of starting a new marquee from the press point.
+#[test]
+fn dragging_inside_a_selection_moves_the_mask() -> Result<(), Box<dyn std::error::Error>> {
+    init_backend_allow_existing();
+    let (ui, app, _dir) = harness()?;
+    crate::app::with_app(&app, |app| {
+        let mut selection = open_canvas_ps::selection_create(32, 32);
+        open_canvas_ps::selection_rect(
+            &mut selection,
+            open_canvas_ps::Bounds::new(4.0, 4.0, 8.0, 8.0),
+            false,
+            0.0,
+            false,
+            open_canvas_ps::SelectionMode::Replace,
+        );
+        app.image.selection = Some(selection);
+        app.image_tool(&ui, "marquee");
+        drag(app, &ui, &[at(6.0, 6.0), at(10.0, 8.0)]);
+    });
+    let (moved, old) = crate::app::with_app_r(&app, |app| {
+        let selection = app.image.selection.as_ref().expect("selection");
+        (selection.get(9, 7)[3], selection.get(5, 5)[3])
+    })
+    .ok_or("borrowed")?;
+    assert!(moved > 0, "the translated selection covers the drag target");
+    assert_eq!(old, 0, "the original selection area moved away");
+    Ok(())
+}
+
 /// A single brush click is a one-dab stroke; it must not require a drag before
 /// the first paint appears.
 #[test]

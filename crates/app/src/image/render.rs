@@ -394,7 +394,36 @@ fn draft_commands(gesture: Option<&Gesture>, view: &crate::image::ImageView) -> 
     let mut out = String::new();
     let point = |p: &Point| (sx(view, p.x), sy(view, p.y));
     match gesture {
-        Some(Gesture::Marquee { start, current, .. } | Gesture::Shape { start, current }) => {
+        Some(Gesture::Marquee {
+            tool,
+            start,
+            current,
+            ..
+        }) => {
+            let (ax, ay) = point(start);
+            let (bx, by) = point(current);
+            let (x0, x1) = (ax.min(bx), ax.max(bx));
+            let (y0, y1) = (ay.min(by), ay.max(by));
+            if *tool == crate::image::ImageTool::EllipseMarquee {
+                // The committed mask is an ellipse; the live preview must be
+                // one too, rather than the bounding rectangle.
+                let cx = (x0 + x1) / 2.0;
+                let cy = (y0 + y1) / 2.0;
+                let rx = ((x1 - x0) / 2.0).max(0.5);
+                let ry = ((y1 - y0) / 2.0).max(0.5);
+                out.push_str(&format!(
+                    "M {cx} {} A {rx} {ry} 0 1 0 {cx} {} A {rx} {ry} 0 1 0 {cx} {} Z ",
+                    cy - ry,
+                    cy + ry,
+                    cy - ry
+                ));
+            } else {
+                out.push_str(&format!(
+                    "M {x0} {y0} L {x1} {y0} L {x1} {y1} L {x0} {y1} Z "
+                ));
+            }
+        }
+        Some(Gesture::Shape { start, current }) => {
             let (ax, ay) = point(start);
             let (bx, by) = point(current);
             let (x0, x1) = (ax.min(bx), ax.max(bx));
@@ -2119,6 +2148,44 @@ mod tests {
         assert!(state.is_collapsed("g-1"));
         state.toggle_collapse("g-1");
         assert!(!state.is_collapsed("g-1"));
+    }
+
+    #[test]
+    fn ellipse_marquee_draft_is_an_ellipse_not_a_rectangle() {
+        let view = ImageView {
+            x: 0.0,
+            y: 0.0,
+            k: 1.0,
+        };
+        let ellipse = Gesture::Marquee {
+            tool: crate::image::ImageTool::EllipseMarquee,
+            start: Point::new(10.0, 10.0),
+            current: Point::new(40.0, 30.0),
+            shift: false,
+            alt: false,
+        };
+        let commands = draft_commands(Some(&ellipse), &view);
+        assert!(
+            commands.contains(" A "),
+            "the ellipse preview uses arc segments: {commands}"
+        );
+        assert!(
+            !commands.contains(" L "),
+            "the ellipse preview is not the bounding rectangle: {commands}"
+        );
+
+        let rectangle = Gesture::Marquee {
+            tool: crate::image::ImageTool::Marquee,
+            start: Point::new(10.0, 10.0),
+            current: Point::new(40.0, 30.0),
+            shift: false,
+            alt: false,
+        };
+        let commands = draft_commands(Some(&rectangle), &view);
+        assert!(
+            commands.contains(" L "),
+            "the rectangular marquee still draws its box: {commands}"
+        );
     }
 
     #[test]
