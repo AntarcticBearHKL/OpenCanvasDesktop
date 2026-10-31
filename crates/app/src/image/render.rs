@@ -453,26 +453,33 @@ fn path_overlay_commands(
     active_path: &str,
     view: &crate::image::ImageView,
 ) -> String {
-    let Some(path) = project
-        .board_paths
-        .as_ref()
-        .and_then(|paths| paths.iter().find(|path| path.id == active_path))
-    else {
+    let Some(paths) = project.board_paths.as_ref() else {
         return String::new();
     };
     let mut out = String::new();
-    let points = open_canvas_ps::polyline(path, 24);
-    for (index, p) in points.iter().enumerate() {
-        let (px, py) = (sx(view, p.x), sy(view, p.y));
-        if index == 0 {
-            out.push_str(&format!("M {px} {py} "));
-        } else {
-            out.push_str(&format!("L {px} {py} "));
+    // Every visible path stays on the canvas, not just the active one: a
+    // hidden path is unselectable, while a visible path can be clicked to make
+    // it active (and reveal its anchors).
+    for path in paths.iter().filter(|path| path.visible) {
+        let points = open_canvas_ps::polyline(path, 24);
+        for (index, p) in points.iter().enumerate() {
+            let (px, py) = (sx(view, p.x), sy(view, p.y));
+            if index == 0 {
+                out.push_str(&format!("M {px} {py} "));
+            } else {
+                out.push_str(&format!("L {px} {py} "));
+            }
+        }
+        if path.closed && !points.is_empty() {
+            out.push_str("Z ");
         }
     }
-    if path.closed && !points.is_empty() {
-        out.push_str("Z ");
-    }
+    let Some(path) = paths
+        .iter()
+        .find(|path| path.id == active_path && path.visible)
+    else {
+        return out;
+    };
     let anchor_box = |px: f64, py: f64, out: &mut String| {
         out.push_str(&format!(
             "M {} {} L {} {} L {} {} L {} {} Z ",
@@ -2112,6 +2119,53 @@ mod tests {
         assert!(state.is_collapsed("g-1"));
         state.toggle_collapse("g-1");
         assert!(!state.is_collapsed("g-1"));
+    }
+
+    #[test]
+    fn path_overlay_paints_visible_paths_and_anchors_only_for_the_active_one() {
+        let mut project = project();
+        let mut hidden = open_canvas_ps::create_path(
+            "p-2",
+            "Hidden",
+            vec![
+                open_canvas_ps::path_anchor(30.0, 30.0),
+                open_canvas_ps::path_anchor(40.0, 30.0),
+            ],
+            false,
+        );
+        hidden.visible = false;
+        project.board_paths = Some(vec![
+            open_canvas_ps::create_path(
+                "p-1",
+                "Active",
+                vec![
+                    open_canvas_ps::path_anchor(10.0, 10.0),
+                    open_canvas_ps::path_anchor(20.0, 10.0),
+                ],
+                false,
+            ),
+            hidden,
+        ]);
+        let view = ImageView {
+            x: 0.0,
+            y: 0.0,
+            k: 1.0,
+        };
+        let commands = path_overlay_commands(&project, "p-1", &view);
+        assert!(
+            commands.contains("M 10 10") && commands.contains("L 20 10"),
+            "the active path stroke is painted: {commands}"
+        );
+        assert!(
+            !commands.contains("M 30 30"),
+            "a hidden path is neither painted nor clickable: {commands}"
+        );
+        project.board_paths.as_mut().expect("paths")[1].visible = true;
+        let commands = path_overlay_commands(&project, "p-1", &view);
+        assert!(
+            commands.contains("M 30 30"),
+            "every visible path stays on the canvas: {commands}"
+        );
     }
 
     #[test]

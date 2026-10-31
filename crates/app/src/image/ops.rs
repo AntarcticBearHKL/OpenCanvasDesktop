@@ -22,6 +22,28 @@ const HANDLE_HIT: f64 = 8.0;
 /// Arm-length threshold for a pen anchor drag.
 const ANCHOR_HIT: f64 = 8.0;
 
+/// A hit on a path anchor (part 0) or one of its handles (1 in / 2 out).
+struct PathHit {
+    path: String,
+    index: usize,
+    part: u8,
+}
+
+/// Distance from a document point to a line segment; used for path-stroke
+/// hit-testing at the same screen-space tolerance as anchors.
+fn distance_to_segment(point: Point, a: Point, b: Point) -> f64 {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let length_sq = dx * dx + dy * dy;
+    if length_sq <= f64::EPSILON {
+        return (point.x - a.x).hypot(point.y - a.y);
+    }
+    let t = (((point.x - a.x) * dx + (point.y - a.y) * dy) / length_sq).clamp(0.0, 1.0);
+    let x = a.x + t * dx;
+    let y = a.y + t * dy;
+    (point.x - x).hypot(point.y - y)
+}
+
 /// A stroke is a chain of brush dabs; this caps the per-move segment work.
 const DAB_SPACING_RATIO: f64 = 0.35;
 
@@ -1060,8 +1082,25 @@ impl App {
         self.image.selection = Some(selection);
     }
 
-    /// Pen: append an anchor to the active path (creating the path if needed).
+    /// Pen: select an existing anchor/path under the pointer, else append an
+    /// anchor to the active path (creating the path if needed). This mirrors
+    /// the hand feel of the direct-select tool while keeping the pen's
+    /// add-anchor flow.
     fn pen_down(&mut self, point: Point) {
+        let threshold = ANCHOR_HIT / self.image.view.k.max(0.01);
+        if let Some(hit) = self.path_anchor_hit(point, threshold) {
+            self.image.active_path = hit.path.clone();
+            self.image.gesture = Some(Gesture::AnchorDrag {
+                path: hit.path,
+                anchor: hit.index,
+                part: hit.part,
+            });
+            return;
+        }
+        if let Some(path) = self.path_segment_hit(point, threshold) {
+            self.image.active_path = path;
+            return;
+        }
         let existing = self
             .image
             .project
@@ -1116,44 +1155,99 @@ impl App {
         }
     }
 
-    /// Direct-select down: hit an anchor (0) or one of its handles (1 in / 2 out).
+    /// Direct-select down: hit an anchor/handle of any visible path, or the
+    /// path's stroke itself. A stroke hit activates the path so its anchors
+    /// become visible; a second click can then drag one.
     fn anchor_down(&mut self, point: Point) {
-        let Some(path) = self
-            .image
-            .project
-            .board_paths
-            .as_ref()
-            .and_then(|paths| paths.iter().find(|path| path.id == self.image.active_path))
-            .cloned()
-        else {
-            return;
-        };
         let threshold = ANCHOR_HIT / self.image.view.k.max(0.01);
-        for (index, anchor) in path.anchors.iter().enumerate() {
-            // The anchor wins over its own handles: a zero-length handle sits
-            // exactly on the anchor and would otherwise make the point
-            // impossible to drag (`part` 0 = move the anchor).
-            if (anchor.x - point.x).hypot(anchor.y - point.y) <= threshold {
-                self.image.gesture = Some(Gesture::AnchorDrag {
-                    path: path.id.clone(),
-                    anchor: index,
-                    part: 0,
-                });
-                return;
-            }
-            for (part, handle) in [(1_u8, anchor.handle_in), (2_u8, anchor.handle_out)] {
-                let hx = anchor.x + handle.x;
-                let hy = anchor.y + handle.y;
-                if (hx - point.x).hypot(hy - point.y) <= threshold {
-                    self.image.gesture = Some(Gesture::AnchorDrag {
-                        path: path.id.clone(),
-                        anchor: index,
-                        part,
-                    });
-                    return;
+        if let Some(hit) = self.path_anchor_hit(point, threshold) {
+            self.image.active_path = hit.path.clone();
+            self.image.gesture = Some(Gesture::AnchorDrag {
+                path: hit.path,
+                anchor: hit.index,
+                part: hit.part,
+            });
+            return;
+        }
+        if let Some(path) = self.path_segment_hit(point, threshold) {
+            self.image.active_path = path;
+        }
+    }
+
+    /// Nearest visible anchor; handles are only tested on the active path
+    /// because only that path paints them. An anchor always wins over a
+    /// zero-length handle sitting on the same point.
+    fn path_anchor_hit(&self, point: Point, threshold: f64) -> Option<PathHit> {
+        let paths = self.image.project.board_paths.as_deref()?;
+        let active = self.image.active_path.as_str();
+        let mut best: Option<(f64, PathHit)> = None;
+        for path in paths.iter().filter(|path| path.visible) {
+            for (index, anchor) in path.anchors.iter().enumerate() {
+                let distance = (anchor.x - point.x).hypot(anchor.y - point.y);
+                if distance <= threshold
+                    && best
+                        .as_ref()
+                        .is_none_or(|(best_distance, _)| distance < *best_distance)
+                {
+                    best = Some((
+                        distance,
+                        PathHit {
+                            path: path.id.clone(),
+                            index,
+                            part: 0,
+                        },
+                    ));
                 }
             }
         }
+        if best.is_some() {
+            return best.map(|(_, hit)| hit);
+        }
+        for path in paths
+            .iter()
+            .filter(|path| path.visible && path.id == active)
+        {
+            for (index, anchor) in path.anchors.iter().enumerate() {
+                for (part, handle) in [(1_u8, anchor.handle_in), (2_u8, anchor.handle_out)] {
+                    let hx = anchor.x + handle.x;
+                    let hy = anchor.y + handle.y;
+                    let distance = (hx - point.x).hypot(hy - point.y);
+                    if distance <= threshold
+                        && best
+                            .as_ref()
+                            .is_none_or(|(best_distance, _)| distance < *best_distance)
+                    {
+                        best = Some((
+                            distance,
+                            PathHit {
+                                path: path.id.clone(),
+                                index,
+                                part,
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+        best.map(|(_, hit)| hit)
+    }
+
+    /// Nearest visible path stroke, measured against its flattened outline.
+    fn path_segment_hit(&self, point: Point, threshold: f64) -> Option<String> {
+        let paths = self.image.project.board_paths.as_deref()?;
+        let mut best = threshold;
+        let mut found = None;
+        for path in paths.iter().filter(|path| path.visible) {
+            let points = open_canvas_ps::polyline(path, 24);
+            for pair in points.windows(2) {
+                let distance = distance_to_segment(point, pair[0], pair[1]);
+                if distance <= best {
+                    best = distance;
+                    found = Some(path.id.clone());
+                }
+            }
+        }
+        found
     }
 
     fn drag_anchor(&mut self, path_id: &str, index: usize, part: u8, point: Point) {

@@ -308,6 +308,42 @@ fn studio_menu_and_rail_render_for_visual_audit() -> TestResult {
         .ok_or("studio rail snapshot size")?;
     image.save(std::env::temp_dir().join("open-canvas-studio-rail.png"))?;
 
+    let paths = render_studio(View::Image, "image", |ui, app| {
+        crate::app::with_app(app, |app| {
+            app.image.project.board_paths = Some(vec![
+                open_canvas_ps::create_path(
+                    "p-1",
+                    "Pen path",
+                    vec![
+                        open_canvas_ps::path_anchor(100.0, 120.0),
+                        open_canvas_ps::path_anchor(260.0, 80.0),
+                        open_canvas_ps::path_anchor(420.0, 160.0),
+                    ],
+                    false,
+                ),
+                open_canvas_ps::create_path(
+                    "p-2",
+                    "Other path",
+                    vec![
+                        open_canvas_ps::path_anchor(140.0, 220.0),
+                        open_canvas_ps::path_anchor(420.0, 240.0),
+                    ],
+                    false,
+                ),
+            ]);
+            app.image.active_path = "p-1".to_string();
+            app.sync_image(ui);
+        });
+    })?;
+    let pixels: Vec<u8> = paths
+        .as_slice()
+        .iter()
+        .flat_map(|pixel| [pixel.r, pixel.g, pixel.b, pixel.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(paths.width(), paths.height(), pixels)
+        .ok_or("studio paths snapshot size")?;
+    image.save(std::env::temp_dir().join("open-canvas-studio-paths.png"))?;
+
     let panels = render_studio(View::Image, "image", |ui, app| {
         reveal(ui, app, &["layers", "properties"]);
     })?;

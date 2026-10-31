@@ -207,6 +207,161 @@ fn check_direct_select(app: &mut App, ui: &AppWindow) -> Result<(), String> {
     Ok(())
 }
 
+/// A direct-select click can grab an anchor on a path that is not active;
+/// activating that path and moving the anchor happen in one gesture.
+#[test]
+fn direct_select_grabs_an_anchor_on_an_inactive_path() -> Result<(), Box<dyn std::error::Error>> {
+    init_backend_allow_existing();
+    let (ui, app, _dir) = harness()?;
+    crate::app::with_app(&app, |app| {
+        app.image.project.board_paths = Some(vec![
+            open_canvas_ps::create_path(
+                "path-1",
+                "Path 1",
+                vec![
+                    open_canvas_ps::path_anchor(2.0, 2.0),
+                    open_canvas_ps::path_anchor(6.0, 2.0),
+                ],
+                false,
+            ),
+            open_canvas_ps::create_path(
+                "path-2",
+                "Path 2",
+                vec![
+                    open_canvas_ps::path_anchor(20.0, 20.0),
+                    open_canvas_ps::path_anchor(28.0, 20.0),
+                ],
+                false,
+            ),
+        ]);
+        app.image.active_path = "path-1".to_string();
+        app.image_tool(&ui, "direct-select");
+        drag(app, &ui, &[at(20.0, 20.0), at(24.0, 22.0)]);
+    });
+    let (active, anchor) = crate::app::with_app_r(&app, |app| {
+        let anchor = app
+            .image
+            .project
+            .board_paths
+            .as_ref()
+            .and_then(|paths| paths.iter().find(|path| path.id == "path-2"))
+            .and_then(|path| path.anchors.first())
+            .copied();
+        (app.image.active_path.clone(), anchor)
+    })
+    .ok_or("borrowed")?;
+    let anchor = anchor.ok_or("path-2 anchor missing")?;
+    assert_eq!(active, "path-2", "the clicked path becomes active");
+    assert!(
+        near(anchor.x, 24.0) && near(anchor.y, 22.0),
+        "the inactive path's anchor follows the drag: {anchor:?}"
+    );
+    Ok(())
+}
+
+/// Clicking a path's stroke with Direct Select activates it, so its anchor
+/// overlay appears without first finding the Paths panel.
+#[test]
+fn direct_select_clicking_a_stroke_activates_its_path() -> Result<(), Box<dyn std::error::Error>> {
+    init_backend_allow_existing();
+    let (ui, app, _dir) = harness()?;
+    crate::app::with_app(&app, |app| {
+        app.image.project.board_paths = Some(vec![
+            open_canvas_ps::create_path(
+                "path-1",
+                "Path 1",
+                vec![
+                    open_canvas_ps::path_anchor(2.0, 2.0),
+                    open_canvas_ps::path_anchor(6.0, 2.0),
+                ],
+                false,
+            ),
+            open_canvas_ps::create_path(
+                "path-2",
+                "Path 2",
+                vec![
+                    open_canvas_ps::path_anchor(4.0, 20.0),
+                    open_canvas_ps::path_anchor(28.0, 20.0),
+                ],
+                false,
+            ),
+        ]);
+        app.image.active_path = "path-1".to_string();
+        app.image_tool(&ui, "direct-select");
+        tap(app, &ui, (16.0, 21.0));
+    });
+    let active =
+        crate::app::with_app_r(&app, |app| app.image.active_path.clone()).ok_or("borrowed")?;
+    assert_eq!(active, "path-2", "the stroke click selects the path");
+    Ok(())
+}
+
+/// The Pen tool selects an existing anchor/stroke instead of silently adding
+/// another anchor on top of it.
+#[test]
+fn pen_clicking_an_existing_anchor_or_stroke_selects_it() -> Result<(), Box<dyn std::error::Error>>
+{
+    init_backend_allow_existing();
+    let (ui, app, _dir) = harness()?;
+    crate::app::with_app(&app, |app| {
+        app.image.project.board_paths = Some(vec![
+            open_canvas_ps::create_path(
+                "path-1",
+                "Path 1",
+                vec![
+                    open_canvas_ps::path_anchor(2.0, 2.0),
+                    open_canvas_ps::path_anchor(6.0, 2.0),
+                ],
+                false,
+            ),
+            open_canvas_ps::create_path(
+                "path-2",
+                "Path 2",
+                vec![
+                    open_canvas_ps::path_anchor(4.0, 20.0),
+                    open_canvas_ps::path_anchor(28.0, 20.0),
+                ],
+                false,
+            ),
+        ]);
+        app.image.active_path = "path-1".to_string();
+        app.image_tool(&ui, "pen");
+        tap(app, &ui, (4.0, 20.0));
+    });
+    let (active, anchors) = crate::app::with_app_r(&app, |app| {
+        let anchors = app
+            .image
+            .project
+            .board_paths
+            .as_ref()
+            .and_then(|paths| paths.iter().find(|path| path.id == "path-2"))
+            .map_or(0, |path| path.anchors.len());
+        (app.image.active_path.clone(), anchors)
+    })
+    .ok_or("borrowed")?;
+    assert_eq!(active, "path-2", "the pen selects the clicked path");
+    assert_eq!(anchors, 2, "selecting an anchor never appends a duplicate");
+
+    crate::app::with_app(&app, |app| {
+        app.image_tool(&ui, "pen");
+        tap(app, &ui, (16.0, 20.0));
+    });
+    let (active, anchors) = crate::app::with_app_r(&app, |app| {
+        let anchors = app
+            .image
+            .project
+            .board_paths
+            .as_ref()
+            .and_then(|paths| paths.iter().find(|path| path.id == "path-2"))
+            .map_or(0, |path| path.anchors.len());
+        (app.image.active_path.clone(), anchors)
+    })
+    .ok_or("borrowed")?;
+    assert_eq!(active, "path-2", "the pen selects the clicked stroke");
+    assert_eq!(anchors, 2, "clicking the stroke does not append an anchor");
+    Ok(())
+}
+
 fn check_marquee(app: &mut App, ui: &AppWindow) -> Result<(), String> {
     select(app, ui, "marquee");
     drag(app, ui, &[at(2.0, 2.0), at(10.0, 8.0)]);
