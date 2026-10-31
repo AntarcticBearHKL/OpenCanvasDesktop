@@ -618,6 +618,27 @@ fn every_tool_changes_the_document() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// The tool rail is a one-click target even while a menu is open: the menu's
+/// click-away layer must not swallow the first press on a tool button.
+#[test]
+fn tool_rail_click_while_a_menu_is_open_selects_in_one_click(
+) -> Result<(), Box<dyn std::error::Error>> {
+    init_backend_allow_existing();
+    let (ui, app, _dir) = harness()?;
+    crate::app::with_app(&app, |app| {
+        app.image.menu = "file".to_string();
+        app.sync_image(&ui);
+    });
+    // Pen is the second 24px rail button: menu bar 40 + rail top 4 + hand 24
+    // + spacing 1, so its centre is at y=81.
+    click(&ui, 20.0, 81.0);
+    let (tool, menu) = crate::app::with_app_r(&app, |app| (app.image.tool, app.image.menu.clone()))
+        .ok_or("borrowed")?;
+    assert_eq!(tool, ImageTool::Pen, "the first rail click picks Pen");
+    assert!(menu.is_empty(), "the same click dismisses the open menu");
+    Ok(())
+}
+
 /// One history step per committed gesture, and no step for a pan.
 #[test]
 fn history_records_one_step_per_gesture() -> Result<(), Box<dyn std::error::Error>> {

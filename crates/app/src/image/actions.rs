@@ -149,6 +149,10 @@ impl App {
             }
             self.image.tool = tool;
             self.image.gesture = None;
+            // Choosing a tool is a document action, not a menu action: close
+            // any open menu in the same click so the rail never needs a
+            // second press just to dismiss the click-away layer.
+            self.image.menu.clear();
             self.sync_image(ui);
         }
     }

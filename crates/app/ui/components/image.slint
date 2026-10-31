@@ -1878,9 +1878,12 @@ export component ImageStudio inherits Rectangle {
     // declaration order keeps the popups above it and clickable (a popup is a
     // conditional component, whose root `z` orders it only inside its repeater).
     if root.menu != "" : Rectangle {
-        x: 0px;
+        // Leave the tool rail uncovered: selecting a tool is a single click
+        // even while a menu is open, instead of the first click only closing
+        // the menu.
+        x: StudioTheme.rail-w;
         y: StudioTheme.menu-bar-h;
-        width: 100%;
+        width: parent.width - StudioTheme.rail-w;
         height: 100%;
         background: transparent;
 
