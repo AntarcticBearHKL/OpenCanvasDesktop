@@ -330,6 +330,43 @@ fn the_zoom_badge_uses_larger_type_at_the_same_inset() {
     );
 }
 
+/// Every action the image-node hover bar can show has a human-readable label,
+/// and the bar requests the shared tooltip surface on hover.
+#[test]
+fn node_hover_bar_labels_every_image_tool() {
+    let src = include_str!("../ui/components/floating.slint");
+    for (id, label) in [
+        ("info", "Info"),
+        ("duplicate", "Duplicate"),
+        ("crop", "Crop"),
+        ("mask", "Mask"),
+        ("split", "Split"),
+        ("resolution", "Resolution"),
+        ("analyze", "Analyze"),
+        ("ocr", "OCR"),
+        ("segment", "Segment"),
+        ("angle", "Angle"),
+        ("layers", "Layers"),
+        ("delete", "Delete"),
+        ("font-down", "Decrease font"),
+        ("font-up", "Increase font"),
+        ("attempt-generate", "Generate"),
+    ] {
+        assert!(
+            src.contains(&format!(r#"id == "{id}" ? "{label}""#)),
+            "{id} has the label {label}"
+        );
+    }
+    assert!(
+        src.contains("tip: HoverIcons.tool-label(action.id);"),
+        "the hover bar passes the label to every action"
+    );
+    assert!(
+        src.contains(r#"Theme.dock-request("#) && src.contains(r#""tip.show""#),
+        "hovering an action requests the shared tooltip label"
+    );
+}
+
 #[test]
 fn dock_tooltip_layer_paints_on_the_canvas() -> TestResult {
     init_backend()?;

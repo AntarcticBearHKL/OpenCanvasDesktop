@@ -53,6 +53,7 @@ export component PopoverCard inherits Rectangle {
 component BarAction inherits Rectangle {
     in property <string> icon: "";
     in property <string> label: "";
+    in property <string> tip: "";
     in property <bool> show-label: false;
     in property <bool> active: false;
     in property <bool> danger: false;
@@ -79,6 +80,18 @@ component BarAction inherits Rectangle {
         }
         changed has-hover => {
             root.hovered(self.has-hover);
+            if (self.has-hover && root.tip != "") {
+                Theme.dock-request(
+                    "",
+                    "tip.show",
+                    root.tip,
+                    "",
+                    self.absolute-position.x / 1px,
+                    (self.absolute-position.y + self.height) / 1px
+                );
+            } else {
+                Theme.dock-request("", "tip.hide", "", "", 0, 0);
+            }
         }
         changed pressed => {
             root.press-state(self.pressed);
@@ -493,6 +506,31 @@ global HoverIcons {
             : id == "attempt-generate" ? Icons.sparkles
             : Icons.hover-icon(id);
     }
+
+    /// Human-readable names for the node hover bar. Every image-node quick
+    /// tool has a label; unknown plugin actions fall back to their id.
+    public pure function tool-label(id: string) -> string {
+        return id == "info" ? "Info"
+            : id == "duplicate" ? "Duplicate"
+            : id == "crop" ? "Crop"
+            : id == "mask" ? "Mask"
+            : id == "split" ? "Split"
+            : id == "resolution" ? "Resolution"
+            : id == "analyze" ? "Analyze"
+            : id == "ocr" ? "OCR"
+            : id == "segment" ? "Segment"
+            : id == "angle" ? "Angle"
+            : id == "layers" ? "Layers"
+            : id == "delete" ? "Delete"
+            : id == "font-down" ? "Decrease font"
+            : id == "font-up" ? "Increase font"
+            : id == "attempt-generate" ? "Generate"
+            : id == "plugin-interact" ? "Toggle interactive"
+            : id == "plugin-generate" ? "Generate"
+            : id == "plugin-reset" ? "Reset"
+            : id == "plugin-palette" ? "Palette"
+            : id;
+    }
 }
 
 // Node hover toolbar (canvas-node-hover-toolbar.tsx): 44px bar under the node,
@@ -551,6 +589,7 @@ export component HoverBar inherits Rectangle {
 
             for action in root.actions : BarAction {
                 icon: HoverIcons.tool-icon(action.id);
+                tip: HoverIcons.tool-label(action.id);
                 danger: action.danger;
                 active: action.active;
                 clicked => {
